@@ -32,16 +32,13 @@ final class PqForgePointyCastleAeadEngine implements PqForgeAeadEngine {
   }) async {
     cipherSuite.requireKey(key);
     cipherSuite.requireNonce(nonce);
-    return switch (cipherSuite) {
-      PqForgeCipherSuite.aes256Gcm => (pc.GCMBlockCipher(
-        pc.AESEngine(),
-      )..init(true, _params(key, nonce, aad))).process(plaintext),
-      PqForgeCipherSuite.chaCha20Poly1305 => _drive(
-        pc.ChaCha20Poly1305(pc.ChaCha7539Engine(), pc.Poly1305())
-          ..init(true, _params(key, nonce, aad)),
-        plaintext,
-      ),
-    };
+    return _crypt(
+      forEncryption: true,
+      key: key,
+      nonce: nonce,
+      data: plaintext,
+      aad: aad,
+    );
   }
 
   @override
@@ -59,25 +56,69 @@ final class PqForgePointyCastleAeadEngine implements PqForgeAeadEngine {
       );
     }
     try {
-      return switch (cipherSuite) {
-        PqForgeCipherSuite.aes256Gcm => (pc.GCMBlockCipher(
-          pc.AESEngine(),
-        )..init(false, _params(key, nonce, aad))).process(cipherTextWithTag),
-        PqForgeCipherSuite.chaCha20Poly1305 => _drive(
-          pc.ChaCha20Poly1305(pc.ChaCha7539Engine(), pc.Poly1305())
-            ..init(false, _params(key, nonce, aad)),
-          cipherTextWithTag,
-        ),
-      };
+      return _crypt(
+        forEncryption: false,
+        key: key,
+        nonce: nonce,
+        data: cipherTextWithTag,
+        aad: aad,
+      );
     } on pc.InvalidCipherTextException {
       // GCMBlockCipher reports a failed tag this way.
       throw _authFailure();
     } on ArgumentError catch (error) {
       // PointyCastle's ChaCha20Poly1305 reports a failed tag as an ArgumentError
       // ('mac check in ChaCha20Poly1305 failed'); anything else is a real bug.
-      if (error.message.toString().contains('mac check')) {
+      if (error.message?.toString().contains('mac check') == true) {
         throw _authFailure();
       }
+      rethrow;
+    }
+  }
+
+  // Builds and runs the selected AEAD cipher to completion. GCMBlockCipher and
+  // ChaCha20Poly1305 share no AEAD supertype but expose the same drive surface
+  // (getOutputSize / processBytes / doFinal), so each branch feeds a closure to
+  // the shared zeroizing runner.
+  Uint8List _crypt({
+    required bool forEncryption,
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List data,
+    required Uint8List aad,
+  }) {
+    final params = _params(key, nonce, aad);
+    switch (cipherSuite) {
+      case PqForgeCipherSuite.aes256Gcm:
+        final cipher = pc.GCMBlockCipher(pc.AESEngine())
+          ..init(forEncryption, params);
+        return _runZeroizing(cipher.getOutputSize(data.length), (out) {
+          final n = cipher.processBytes(data, 0, data.length, out, 0);
+          return n + cipher.doFinal(out, n);
+        });
+      case PqForgeCipherSuite.chaCha20Poly1305:
+        final cipher = pc.ChaCha20Poly1305(pc.ChaCha7539Engine(), pc.Poly1305())
+          ..init(forEncryption, params);
+        return _runZeroizing(cipher.getOutputSize(data.length), (out) {
+          final n = cipher.processBytes(data, 0, data.length, out, 0);
+          return n + cipher.doFinal(out, n);
+        });
+    }
+  }
+
+  // Sizes the output buffer, runs [fill], and returns the written prefix. If the
+  // run throws (most importantly a failed tag check on decryption, where `out`
+  // already holds unauthenticated plaintext), the buffer is zeroized before the
+  // error propagates so the fragments never linger in the heap.
+  Uint8List _runZeroizing(int outputSize, int Function(Uint8List out) fill) {
+    final out = Uint8List(outputSize);
+    try {
+      final written = fill(out);
+      return written == out.length
+          ? out
+          : Uint8List.sublistView(out, 0, written);
+    } catch (_) {
+      out.fillRange(0, out.length, 0);
       rethrow;
     }
   }
@@ -92,16 +133,6 @@ final class PqForgePointyCastleAeadEngine implements PqForgeAeadEngine {
     nonce,
     aad,
   );
-
-  // GCMBlockCipher.process() finalises on its own, but ChaCha20Poly1305 (a
-  // stream AEADCipher) does not — its process() neither calls doFinal nor sizes
-  // the output for the tag. So we size against getOutputSize and finalise here.
-  Uint8List _drive(pc.ChaCha20Poly1305 cipher, Uint8List input) {
-    final out = Uint8List(cipher.getOutputSize(input.length));
-    var written = cipher.processBytes(input, 0, input.length, out, 0);
-    written += cipher.doFinal(out, written);
-    return written == out.length ? out : Uint8List.sublistView(out, 0, written);
-  }
 
   PqForgeAuthTagException _authFailure() => PqForgeAuthTagException(
     '${cipherSuite.id} authentication tag verification failed',

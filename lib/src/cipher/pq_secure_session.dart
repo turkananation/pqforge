@@ -1,15 +1,12 @@
 /// High-level secure session: cipher-suite selection, AEAD, and wire packets.
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
 
+import '../primitives/pq_primitives.dart';
 import 'pq_cipher_suite.dart';
 import 'pq_cryptography_aead_engine.dart';
 import 'pq_pointycastle_aead_engine.dart';
-
-/// Process-wide CSPRNG used to generate per-message nonces.
-final Random _secureRandom = Random.secure();
 
 /// Encrypts and decrypts application payloads into self-describing AEAD wire
 /// packets, with an explicit choice of cipher suite and backend engine.
@@ -23,6 +20,7 @@ final Random _secureRandom = Random.secure();
 ///
 /// final packet = await session.encrypt(payload, associatedData: header);
 /// final clear  = await session.decrypt(packet, associatedData: header);
+/// session.dispose(); // wipe the key when finished
 /// ```
 ///
 /// ## Wire format
@@ -65,6 +63,7 @@ final class PqForgeSecureSession {
 
   final Uint8List _secretKey;
   final PqForgeAeadEngine _engine;
+  bool _disposed = false;
 
   static PqForgeAeadEngine _resolveEngine(
     PqForgeCipherSuite suite,
@@ -83,11 +82,14 @@ final class PqForgeSecureSession {
   /// into the authentication tag (protecting routing headers, session IDs,
   /// sequence numbers, …) but is not encrypted and is not included in the
   /// packet; the peer must supply the identical AAD to [decrypt].
+  ///
+  /// Throws [StateError] if the session has been [dispose]d.
   Future<Uint8List> encrypt(
     Uint8List payload, {
     Uint8List? associatedData,
   }) async {
-    final nonce = _randomNonce(cipherSuite.nonceLength);
+    _ensureNotDisposed();
+    final nonce = PqBytes.randomBytes(cipherSuite.nonceLength);
     final body = await _engine.seal(
       key: _secretKey,
       nonce: nonce,
@@ -103,16 +105,18 @@ final class PqForgeSecureSession {
   ///
   /// Slices off the leading [PqForgeCipherSuite.nonceLength] nonce bytes, then
   /// authenticates and decrypts the remainder using the same [associatedData]
-  /// that was supplied to [encrypt].
+  /// that was supplied to [encrypt]. The nonce and body are passed to the engine
+  /// as zero-copy views over [packet]; the packet itself is never mutated.
   ///
   /// Throws [PqForgeAuthTagException] when authentication fails — a tampered
   /// nonce, ciphertext, or tag, or mismatched [associatedData]. Throws
   /// [ArgumentError] when [packet] is structurally too short to contain a nonce
-  /// and a tag.
+  /// and a tag, and [StateError] if the session has been [dispose]d.
   Future<Uint8List> decrypt(
     Uint8List packet, {
     Uint8List? associatedData,
   }) async {
+    _ensureNotDisposed();
     final nonceLength = cipherSuite.nonceLength;
     final minLength = nonceLength + cipherSuite.tagLength;
     if (packet.length < minLength) {
@@ -124,19 +128,27 @@ final class PqForgeSecureSession {
     }
     return _engine.open(
       key: _secretKey,
-      nonce: packet.sublist(0, nonceLength),
-      cipherTextWithTag: packet.sublist(nonceLength),
+      nonce: Uint8List.sublistView(packet, 0, nonceLength),
+      cipherTextWithTag: Uint8List.sublistView(packet, nonceLength),
       aad: associatedData ?? _emptyAad,
     );
   }
 
-  static final Uint8List _emptyAad = Uint8List(0);
-
-  Uint8List _randomNonce(int length) {
-    final nonce = Uint8List(length);
-    for (var i = 0; i < length; i++) {
-      nonce[i] = _secureRandom.nextInt(256);
-    }
-    return nonce;
+  /// Zeroizes the session's internal copy of the secret key.
+  ///
+  /// After disposal the session can no longer [encrypt] or [decrypt]; either
+  /// throws [StateError]. The caller's original key bytes are unaffected — the
+  /// constructor took a defensive copy. Idempotent.
+  void dispose() {
+    _secretKey.fillRange(0, _secretKey.length, 0);
+    _disposed = true;
   }
+
+  void _ensureNotDisposed() {
+    if (_disposed) {
+      throw StateError('PqForgeSecureSession has been disposed');
+    }
+  }
+
+  static final Uint8List _emptyAad = Uint8List(0);
 }

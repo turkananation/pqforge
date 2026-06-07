@@ -64,7 +64,7 @@ as the classical secret; `postQuantumSecret` is placed second.
 A configuration is a **cipher suite × engine provider**; all four combinations
 produce the identical wire layout and are mutually interoperable.
 
-|  | `PqForgeEngineProvider.pureDart` | `PqForgeEngineProvider.nativeCryptography` |
+| Cipher suite / Provider | `PqForgeEngineProvider.pureDart` | `PqForgeEngineProvider.nativeCryptography` |
 | --- | --- | --- |
 | `PqForgeCipherSuite.aes256Gcm` | PointyCastle `GCMBlockCipher` | cryptography `AesGcm` |
 | `PqForgeCipherSuite.chaCha20Poly1305` | PointyCastle `ChaCha20Poly1305` | cryptography `Chacha20.poly1305Aead` |
@@ -88,6 +88,7 @@ PqForgeSecureSession({
 
 Future<Uint8List> encrypt(Uint8List payload, {Uint8List? associatedData});
 Future<Uint8List> decrypt(Uint8List packet,  {Uint8List? associatedData});
+void dispose(); // zeroizes the session's key copy; further use throws StateError
 ```
 
 - A fresh cryptographically secure 12-byte nonce is generated per `encrypt`.

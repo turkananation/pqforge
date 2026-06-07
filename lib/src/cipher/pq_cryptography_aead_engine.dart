@@ -68,10 +68,13 @@ final class PqForgeCryptographyAeadEngine implements PqForgeAeadEngine {
       );
     }
     final split = cipherTextWithTag.length - tagLength;
+    // Zero-copy views: cryptography's decrypt reads cipherText into a separate
+    // output buffer and never mutates its inputs (a regression test guards this
+    // against dependency upgrades).
     final box = crypto.SecretBox(
-      cipherTextWithTag.sublist(0, split),
+      Uint8List.sublistView(cipherTextWithTag, 0, split),
       nonce: nonce,
-      mac: crypto.Mac(cipherTextWithTag.sublist(split)),
+      mac: crypto.Mac(Uint8List.sublistView(cipherTextWithTag, split)),
     );
     try {
       final clear = await _cipher.decrypt(

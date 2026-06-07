@@ -295,6 +295,50 @@ void main() {
       });
     }
   });
+
+  group('memory hygiene and lifecycle', () {
+    for (final suite in _suites) {
+      for (final provider in _providers) {
+        test(
+          '${suite.id} / ${provider.name}: decrypt does not mutate the packet',
+          () async {
+            final session = PqForgeSecureSession(
+              secretKey: _filled(32, 4),
+              cipherSuite: suite,
+              engineProvider: provider,
+            );
+            final packet = await session.encrypt(
+              _bytes('zero-copy views must not alter the source packet'),
+              associatedData: _bytes('ad'),
+            );
+            final snapshot = Uint8List.fromList(packet);
+
+            await session.decrypt(packet, associatedData: _bytes('ad'));
+
+            expect(
+              packet,
+              orderedEquals(snapshot),
+              reason: 'decrypt mutated its input packet',
+            );
+          },
+        );
+      }
+    }
+
+    test('dispose zeroizes the key and blocks further use', () async {
+      final session = PqForgeSecureSession(
+        secretKey: _filled(32, 9),
+        cipherSuite: PqForgeCipherSuite.aes256Gcm,
+      );
+      final packet = await session.encrypt(_bytes('before disposal'));
+
+      session.dispose();
+      session.dispose(); // idempotent
+
+      await expectLater(session.encrypt(_bytes('x')), throwsStateError);
+      await expectLater(session.decrypt(packet), throwsStateError);
+    });
+  });
 }
 
 Uint8List _filled(int length, int value) =>
