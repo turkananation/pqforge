@@ -43,6 +43,92 @@ final opened = forge.decryptFileBytes(
 | Identity key bindings | `createIdentityBinding()` / `verifyIdentityBinding()` |
 | Signed logs and artifacts | `appendSignedLogEntry()` / `signArtifact()` |
 | Hybrid session derivation | `deriveHybridSessionKey()` |
+| Hybrid KEM secret combining | `PqForgeCombiner` / `SecretKey.deriveHybridSecretKey()` |
+| AEAD secure sessions & wire packets | `PqForgeSecureSession` |
+
+## Hybrid KEM secret combining
+
+When you run a classical KEX (such as X25519) alongside ML-KEM, the two shared
+secrets must be combined safely. `PqForgeCombiner` implements the
+concatenate-then-KDF construction from the IETF hybrid drafts
+(`draft-ietf-tls-hybrid-design`, `draft-kwiatkowski-tls-ecdhe-mlkem`): the
+classical secret is placed first, the post-quantum secret second (no length
+framing, since each length is fixed by the ciphersuite), and the join is run
+through HKDF.
+
+There are two entry strategies:
+
+```dart
+// Option A — zero-dependency core, raw bytes (package:pqforge/pqforge.dart):
+final sessionKey = const PqForgeCombiner.balanced().combine(
+  classicalSharedSecret: x25519Shared, // fixed length per ciphersuite
+  postQuantumSharedSecret: mlKemShared, // 32 bytes for ML-KEM
+  info: Uint8List.fromList(utf8.encode('myapp/session/v1/client')), // required
+);
+
+// Option B — package:cryptography SecretKey extension
+// (package:pqforge/pqforge_cryptography.dart):
+final session = await classicalSecret.deriveHybridSecretKey(
+  postQuantumSecret: mlKemSecret,
+  info: Uint8List.fromList(utf8.encode('myapp/session/v1/client')),
+  profile: PqHybridProfile.heavy,
+);
+```
+
+| Profile | HKDF digest | Pairs with |
+| --- | --- | --- |
+| `PqHybridProfile.balanced` | SHA-256 | ML-KEM-768 |
+| `PqHybridProfile.heavy` | SHA-512 | ML-KEM-1024 |
+
+The `info` label is mandatory: it provides domain separation so a key derived
+for one protocol context can never collide with another. The core
+(`package:pqforge/pqforge.dart`) depends only on Pointy Castle; the `SecretKey`
+extension lives in `package:pqforge/pqforge_cryptography.dart` so apps that do
+not use `package:cryptography` never pull it in.
+
+## Secure sessions and wire packets
+
+Once you hold a 32-byte session key (for example from `PqForgeCombiner` above),
+`PqForgeSecureSession` encrypts application payloads into self-describing AEAD
+wire packets. Pick a cipher suite and a backend engine explicitly:
+
+```dart
+import 'package:pqforge/pqforge_cryptography.dart';
+
+final session = PqForgeSecureSession(
+  secretKey: derivedHybridKey,                     // 32 bytes
+  cipherSuite: PqForgeCipherSuite.chaCha20Poly1305,
+  engineProvider: PqForgeEngineProvider.pureDart,  // or .nativeCryptography
+);
+
+final packet = await session.encrypt(payload, associatedData: header);
+final clear = await session.decrypt(packet, associatedData: header);
+```
+
+Every packet is one contiguous byte array — a fresh random 12-byte nonce
+followed by the ciphertext and its 16-byte authentication tag:
+
+```text
++-----------------------------+------------------------------------+
+|      Nonce / IV (12 B)      |      Ciphertext + Tag (variable)   |
++-----------------------------+------------------------------------+
+```
+
+| Cipher suite | Best for |
+| --- | --- |
+| `PqForgeCipherSuite.aes256Gcm` | Hardware with AES-NI acceleration |
+| `PqForgeCipherSuite.chaCha20Poly1305` | Software-only platforms / mobile CPUs |
+
+| Engine provider | Backend |
+| --- | --- |
+| `PqForgeEngineProvider.pureDart` | PointyCastle (zero native dependencies) |
+| `PqForgeEngineProvider.nativeCryptography` | `package:cryptography` (may use OS acceleration) |
+
+Both backends emit the identical `nonce || ciphertext || tag` layout, so a
+packet sealed by one decrypts cleanly under the other. A fresh nonce is
+generated for every `encrypt`; `associatedData` (AAD) is authenticated but not
+encrypted; and any authentication failure — tampered nonce, ciphertext, tag, or
+mismatched AAD — throws `PqForgeAuthTagException`.
 
 ## Profiles
 
@@ -100,6 +186,7 @@ and legal/compliance policy.
 
 ## Documentation
 
+- [API reference](doc/API.md)
 - [Technical blueprint](doc/technical/PQFORGE_TECHNICAL_BLUEPRINT.md)
 - [Roadmap](doc/roadmap/ROADMAP.md)
 - [Project tracker](doc/roadmap/PROJECT_TRACKER.md)

@@ -6,3 +6,6 @@
 # https://dart.dev/tools/pub/private-files#pubspec-lock.
 pubspec.lock
 verdicts/
+
+# Generated `dart doc` API output.
+doc/api/

@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import '../algorithms/pq_algorithms.dart';
 import '../codecs/pq_envelope.dart';
+import '../hybrid/pq_hybrid_combiner.dart';
 import '../keys/pq_keys.dart';
 import '../primitives/pq_primitives.dart';
 import '../recipes/pq_recipes.dart';
@@ -666,14 +667,18 @@ class PqForge {
       pqForgeDefaultDeploymentSaltBytes,
     );
     requireLength('transcriptHash', transcriptHash, 32);
-    return PqSymmetricPrimitives.hkdfSha256(
-      ikm: PqBytes.concat([classicalSharedSecret, latticeSharedSecret]),
-      salt: PqBytes.concat([deploymentSalt, transcriptHash]),
+    // Delegates to the profile-agile PqForgeCombiner. The balanced profile
+    // pins SHA-256, keeping this byte-compatible with prior releases while the
+    // combiner owns the canonical classical||post-quantum join and wiping.
+    return const PqForgeCombiner.balanced().combine(
+      classicalSharedSecret: classicalSharedSecret,
+      postQuantumSharedSecret: latticeSharedSecret,
       info: PqBytes.concat([
         PqBytes.utf8Bytes(profile.infoPrefix),
         ?roleContext,
       ]),
-      outputBytes: outputBytes ?? profile.sessionKeyBytes,
+      salt: PqBytes.concat([deploymentSalt, transcriptHash]),
+      length: outputBytes ?? profile.sessionKeyBytes,
     );
   }
 
