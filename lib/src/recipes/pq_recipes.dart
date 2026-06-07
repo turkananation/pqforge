@@ -97,6 +97,77 @@ class PqArtifactSignature {
   );
 }
 
+class PqSignedToken {
+  PqSignedToken({
+    required this.issuer,
+    required this.subject,
+    required this.issuedAtMs,
+    required this.expiresAtMs,
+    required Map<String, Object?> claims,
+    required this.signatureAlgorithm,
+    required Uint8List signature,
+  }) : claims = Map.unmodifiable(claims),
+       signature = PqBytes.copy(signature) {
+    if (expiresAtMs <= issuedAtMs) {
+      throw ArgumentError.value(
+        expiresAtMs,
+        'expiresAtMs',
+        'must be greater than issuedAtMs',
+      );
+    }
+    requireLength(
+      'signature',
+      this.signature,
+      signatureAlgorithm.signatureBytes,
+    );
+  }
+
+  final String issuer;
+  final String subject;
+  final int issuedAtMs;
+  final int expiresAtMs;
+  final Map<String, Object?> claims;
+  final PqSignatureAlgorithm signatureAlgorithm;
+  final Uint8List signature;
+
+  Uint8List message() => PqRecipeMessages.token(
+    issuer: issuer,
+    subject: subject,
+    issuedAtMs: issuedAtMs,
+    expiresAtMs: expiresAtMs,
+    claims: claims,
+  );
+
+  Map<String, Object?> toJson() => {
+    'version': 1,
+    'issuer': issuer,
+    'subject': subject,
+    'issuedAtMs': issuedAtMs,
+    'expiresAtMs': expiresAtMs,
+    'claims': claims,
+    'signatureAlgorithm': signatureAlgorithm.id,
+    'signature': base64Encode(signature),
+  };
+
+  static PqSignedToken fromJson(Map<String, Object?> json) {
+    final version = json['version'] as int? ?? 1;
+    if (version != 1) {
+      throw PqForgeException('Unsupported signed token version: $version');
+    }
+    return PqSignedToken(
+      issuer: json['issuer'] as String,
+      subject: json['subject'] as String,
+      issuedAtMs: json['issuedAtMs'] as int,
+      expiresAtMs: json['expiresAtMs'] as int,
+      claims: Map<String, Object?>.from(json['claims'] as Map? ?? const {}),
+      signatureAlgorithm: PqSignatureAlgorithm.byId(
+        json['signatureAlgorithm'] as String,
+      ),
+      signature: base64Decode(json['signature'] as String),
+    );
+  }
+}
+
 enum PqDualSignaturePolicy { requireBoth, acceptEither }
 
 class PqDualSignature {
@@ -216,6 +287,34 @@ class PqRecipeMessages {
     ]);
   }
 
+  static Uint8List text({
+    required String textId,
+    required String encoding,
+    required Uint8List textBytes,
+  }) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/text/v1'),
+      PqBytes.utf8Bytes(textId),
+      PqBytes.utf8Bytes(encoding),
+      PqBytes.sha256(textBytes),
+      PqBytes.uint64(textBytes.length),
+    ]);
+  }
+
+  static Uint8List media({
+    required String mediaId,
+    required String mimeType,
+    required Uint8List mediaBytes,
+  }) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/media/v1'),
+      PqBytes.utf8Bytes(mediaId),
+      PqBytes.utf8Bytes(mimeType),
+      PqBytes.sha256(mediaBytes),
+      PqBytes.uint64(mediaBytes.length),
+    ]);
+  }
+
   static Uint8List webhook({
     required String eventType,
     required int timestampMs,
@@ -229,7 +328,94 @@ class PqRecipeMessages {
     ]);
   }
 
+  static Uint8List fileAad({
+    required String fileName,
+    String? relativePath,
+    Uint8List? aad,
+  }) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/file/v1'),
+      PqBytes.utf8Bytes(fileName),
+      PqBytes.utf8Bytes(relativePath ?? ''),
+      aad ?? Uint8List(0),
+    ]);
+  }
+
+  static Uint8List folderEntryAad({
+    required String relativePath,
+    Uint8List? aad,
+  }) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/folder-entry/v1'),
+      PqBytes.utf8Bytes(relativePath),
+      aad ?? Uint8List(0),
+    ]);
+  }
+
+  static Uint8List emailAad({required String messageId, Uint8List? aad}) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/email-seal/v1'),
+      PqBytes.utf8Bytes(messageId),
+      aad ?? Uint8List(0),
+    ]);
+  }
+
+  static Uint8List textAad({required String textId, Uint8List? aad}) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/text-seal/v1'),
+      PqBytes.utf8Bytes(textId),
+      aad ?? Uint8List(0),
+    ]);
+  }
+
+  static Uint8List mediaAad({
+    required String mediaId,
+    required String mimeType,
+    Uint8List? aad,
+  }) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/media-seal/v1'),
+      PqBytes.utf8Bytes(mediaId),
+      PqBytes.utf8Bytes(mimeType),
+      aad ?? Uint8List(0),
+    ]);
+  }
+
+  static Uint8List token({
+    required String issuer,
+    required String subject,
+    required int issuedAtMs,
+    required int expiresAtMs,
+    required Map<String, Object?> claims,
+  }) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/signed-token/v1'),
+      PqBytes.utf8Bytes(issuer),
+      PqBytes.utf8Bytes(subject),
+      PqBytes.uint64(issuedAtMs),
+      PqBytes.uint64(expiresAtMs),
+      PqBytes.utf8Bytes(_canonicalJson(claims)),
+    ]);
+  }
+
   static Uint8List metadata(Map<String, Object?> metadata) {
     return PqBytes.utf8Bytes(jsonEncode(metadata));
   }
+}
+
+String _canonicalJson(Object? value) => jsonEncode(_canonicalize(value));
+
+Object? _canonicalize(Object? value) {
+  if (value is Map) {
+    final out = <String, Object?>{};
+    final keys = value.keys.map((key) => key.toString()).toList()..sort();
+    for (final key in keys) {
+      out[key] = _canonicalize(value[key]);
+    }
+    return out;
+  }
+  if (value is Iterable) {
+    return value.map(_canonicalize).toList();
+  }
+  return value;
 }

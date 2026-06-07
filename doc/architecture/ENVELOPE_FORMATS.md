@@ -14,7 +14,7 @@ Fields:
 5. optional ML-DSA algorithm ID
 6. nonce
 7. KEM ciphertext
-8. AES-GCM payload
+8. AEAD payload
 9. optional AAD hash
 10. optional signer key ID
 11. optional signature
@@ -27,5 +27,8 @@ Use this shape for APIs, Serverpod models, webhooks, and debug tooling.
 
 ## Compatibility
 
-Envelope v1 must remain decodable after V1.0 unless a new magic/version pair is
-introduced. New optional metadata can be added without changing the core frame.
+Envelope v1 is still pre-1.0. The current CLI and recipes use structured AAD
+labels such as `pqforge/file/v1`, `pqforge/folder-entry/v1`,
+`pqforge/text-seal/v1`, and `pqforge/media-seal/v1`. New optional metadata can
+be added without changing the core frame, but any future post-1.0 incompatible
+change should use a new magic/version pair.

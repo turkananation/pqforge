@@ -22,5 +22,6 @@ export 'src/cipher/pq_cipher_suite.dart';
 export 'src/cipher/pq_cryptography_aead_engine.dart';
 export 'src/cipher/pq_pointycastle_aead_engine.dart';
 export 'src/cipher/pq_secure_session.dart';
+export 'src/hybrid/pq_classical_hybrid.dart';
 export 'src/hybrid/pq_cryptography_extensions.dart';
 export 'src/hybrid/pq_hybrid_combiner.dart';

@@ -1,20 +1,76 @@
-name: pqforge-ci
+name: CI
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
+    name: Analyze, test, examples, and package dry run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: dart-lang/setup-dart@v1
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
         with:
           sdk: stable
-      - run: dart pub get
-      - run: dart format --output=none --set-exit-if-changed .
-      - run: dart analyze
-      - run: dart test
-      - run: dart run example/pqforge_example.dart
-      - run: dart pub publish --dry-run
+
+      - name: Print Dart version
+        run: dart --version
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Verify generated visibility files
+        run: dart run tool/visibility/generate_visibility.dart --check
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze source
+        run: dart analyze
+
+      - name: Run tests
+        run: dart test
+
+      - name: Run examples
+        run: |
+          dart run example/pqforge_example.dart
+          dart run example/file_encryption_example.dart
+          dart run example/hybrid_combiner_example.dart
+          dart run example/secure_session_example.dart
+          dart run example/hybrid_key_agreement_example.dart
+          dart run example/catalog_recipes_example.dart
+
+      - name: Run wrapped-key CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          export PQFORGE_PASSPHRASE='ci-smoke-passphrase'
+          printf 'hello pqforge cli\n' > "$tmp/plain.txt"
+          mkdir -p "$tmp/folder/docs"
+          printf 'folder secret\n' > "$tmp/folder/docs/report.txt"
+          dart run pqforge keygen --profile compact --key-id ci --out-dir "$tmp/keys" --passphrase-env PQFORGE_PASSPHRASE
+          dart run pqforge encrypt --recipient-public "$tmp/keys/ci.kem.public.json" --in "$tmp/plain.txt" --out "$tmp/plain.pqf" --profile compact
+          dart run pqforge decrypt --recipient-secret "$tmp/keys/ci.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.pqf" --out "$tmp/opened.txt"
+          cmp "$tmp/plain.txt" "$tmp/opened.txt"
+          dart run pqforge encrypt-folder --recipient-public "$tmp/keys/ci.kem.public.json" --in-dir "$tmp/folder" --out-dir "$tmp/folder.pqf" --profile compact
+          dart run pqforge decrypt-folder --recipient-secret "$tmp/keys/ci.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in-dir "$tmp/folder.pqf" --out-dir "$tmp/folder.open"
+          cmp "$tmp/folder/docs/report.txt" "$tmp/folder.open/docs/report.txt"
+          dart run pqforge encrypt-text --recipient-public "$tmp/keys/ci.kem.public.json" --text 'private memo' --text-id memo --out "$tmp/memo.pqf" --profile compact
+          dart run pqforge decrypt-text --recipient-secret "$tmp/keys/ci.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/memo.pqf" --out "$tmp/memo.txt"
+          grep -q 'private memo' "$tmp/memo.txt"
+
+      - name: Package dry run
+        run: dart pub publish --dry-run
