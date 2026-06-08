@@ -68,7 +68,7 @@ engine doing the work — read `🛡️ → 🔒` as "wrap a quantum-safe key, t
 the bytes with it":
 
 - 🛡️ **`pqcrypto`** — pure-Dart PQC: ML-KEM (FIPS 203), ML-DSA (FIPS 204)
-- 🔒 **PointyCastle** — pure-Dart classical: AES-256-GCM, ChaCha20-Poly1305, HKDF, Argon2id, ECDSA-P256
+- 🔒 **`PointyCastle`** — pure-Dart classical: AES-256-GCM, ChaCha20-Poly1305, HKDF, Argon2id, ECDSA-P256
 - 🤝 **`cryptography`** — native/optimized classical: X25519, Ed25519
 
 | App idea | Use this surface | Powered by |

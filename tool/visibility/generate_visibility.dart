@@ -71,7 +71,7 @@ Map<String, String> _generateOutputs(JsonMap manifest) {
     'site/index.html': _siteIndex(manifest),
     'site/404.html': _siteNotFound(manifest),
     'site/styles.css': _siteCss(),
-    'site/assets/pqforge-protocol.svg': _protocolSvg(),
+    'site/assets/pqforge-protocol.png': _protocolSvg(),
     'site/favicon.svg': _faviconSvg(),
     'site/sitemap.xml': _sitemap(manifest),
   };
@@ -504,7 +504,7 @@ String _siteIndex(JsonMap manifest) {
         </div>
       </div>
       <figure class="hero-visual">
-        <img src="assets/pqforge-protocol.svg" alt="pqforge recipe pipeline from payloads to post-quantum envelopes">
+        <img src="assets/pqforge-protocol.png" alt="pqforge recipe pipeline from payloads to post-quantum envelopes">
       </figure>
     </section>
 
