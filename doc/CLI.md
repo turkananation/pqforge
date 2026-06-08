@@ -232,6 +232,85 @@ dart run pqforge decrypt \
   --out report.open.pdf
 ```
 
+## Classical Keys
+
+`keygen --classical` adds classical keypairs next to the ML-KEM/ML-DSA bundle.
+The option is repeatable and accepts `x25519` (hybrid key agreement), `ed25519`,
+and `ecdsa-p256` (hybrid/standalone signers). Pass `--classical-only` to skip
+the post-quantum bundle entirely.
+
+```bash
+dart run pqforge keygen \
+  --key-id vault \
+  --out-dir keys \
+  --classical ed25519 \
+  --classical ecdsa-p256 \
+  --passphrase-env PQFORGE_PASSPHRASE
+```
+
+Classical keys follow the `<key-id>.<algo>.public.json` /
+`<key-id>.<algo>.secret[.wrapped].json` naming, and secret keys are wrapped with
+Argon2id + AES-256-GCM when a passphrase source is supplied — the same custody
+path as ML-KEM/ML-DSA secrets. Only the secret key is stored; the public key is
+recomputed from it when signing.
+
+## Hybrid Signatures
+
+`hybrid-sign` produces one ML-DSA signature **and** one classical signature
+(Ed25519 or ECDSA-P256, chosen by the classical key) bound over the same
+message. The post-quantum profile is inferred from the ML-DSA key.
+
+```bash
+dart run pqforge hybrid-sign \
+  --signer-secret keys/vault.sign.secret.wrapped.json \
+  --classical-secret keys/vault.ecdsa-p256.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --in release.tar.gz \
+  --out release.hybrid.json \
+  --context release:v7
+
+dart run pqforge hybrid-verify \
+  --signer-public keys/vault.sign.public.json \
+  --classical-public keys/vault.ecdsa-p256.public.json \
+  --in release.tar.gz \
+  --signature release.hybrid.json
+```
+
+`--context` is an optional domain-separation string; when supplied to
+`hybrid-sign` it is stored in the signature JSON and reused automatically by
+`hybrid-verify` (override it with `--context` if needed). The default `--policy
+require-both` fails unless **both** signatures verify; `--policy accept-either`
+records an either-or policy instead.
+
+## Standalone ECDSA-P256
+
+`ecdsa-sign` / `ecdsa-verify` use the pure classical ECDSA-P256 path (RFC 6979
+deterministic nonces, canonical low-S) over the raw file bytes — no
+post-quantum key involved.
+
+```bash
+dart run pqforge ecdsa-sign \
+  --secret keys/vault.ecdsa-p256.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --in firmware.bin \
+  --out firmware.ecdsa.json
+
+dart run pqforge ecdsa-verify \
+  --public keys/vault.ecdsa-p256.public.json \
+  --in firmware.bin \
+  --signature firmware.ecdsa.json
+```
+
+`verify`, `hybrid-verify`, and `ecdsa-verify` exit `0` on a valid signature and
+`1` on a failed one, so they slot directly into shell `&&` chains and CI gates.
+
+## Color And Help
+
+Run `pqforge` with no arguments (or `pqforge --help`) for a grouped command
+overview, and `pqforge <command> --help` for per-command options and examples.
+Colors auto-disable when output is piped or `NO_COLOR` is set; force them off
+with `--no-color`. `pqforge --version` prints the version.
+
 ## Operational Notes
 
 - Keep wrapped secret-key JSON in a protected store.

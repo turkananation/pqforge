@@ -2,8 +2,8 @@
 /// secure session layer.
 ///
 /// These types are pure Dart — no PointyCastle or `package:cryptography`
-/// imports — so they live in the zero-dependency core and are shared by every
-/// backend implementation.
+/// imports — so they are dependency-free and shared by every backend
+/// implementation.
 library;
 
 import 'dart:typed_data';

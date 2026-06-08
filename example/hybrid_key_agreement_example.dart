@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/pqforge_cryptography.dart';
 
 Future<void> main() async {
   const profile = PqForgeProfile.compact;
@@ -39,7 +38,7 @@ Future<void> main() async {
   final pqcSigner = forge.generateSignatureKeyPair();
   const signer = PqForgeHybridSigner(profile: profile);
   final ed25519 = await signer.generateClassicalKeyPair();
-  final ed25519Public = await ed25519.extractPublicKey();
+  final ed25519Public = ed25519.publicKey;
   final message = Uint8List.fromList(utf8.encode('release manifest'));
   final signature = await signer.sign(
     pqcSecretKey: pqcSigner.secretKey,
@@ -59,4 +58,27 @@ Future<void> main() async {
   print('classical algorithm: ${signature.classicalAlgorithm.id}');
   print('pqc algorithm: ${signature.pqcAlgorithm.id}');
   print('verified: $ok');
+
+  // The same signer also supports ECDSA over NIST P-256 (pure-Dart PointyCastle).
+  const ecdsaSigner = PqForgeHybridSigner(
+    profile: profile,
+    classicalAlgorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
+  );
+  final ecdsaKeyPair = await ecdsaSigner.generateClassicalKeyPair();
+  final ecdsaSignature = await ecdsaSigner.sign(
+    pqcSecretKey: pqcSigner.secretKey,
+    classicalKeyPair: ecdsaKeyPair,
+    message: message,
+    context: PqBytes.utf8Bytes('release/v1'),
+  );
+  final ecdsaOk = await ecdsaSigner.verify(
+    pqcPublicKey: pqcSigner.publicKey,
+    classicalPublicKey: ecdsaKeyPair.publicKey,
+    message: message,
+    signature: PqHybridSignature.fromJson(ecdsaSignature.toJson()),
+    context: PqBytes.utf8Bytes('release/v1'),
+  );
+  print('\nhybrid signature (ECDSA-P256 option)');
+  print('classical algorithm: ${ecdsaSignature.classicalAlgorithm.id}');
+  print('verified: $ecdsaOk');
 }

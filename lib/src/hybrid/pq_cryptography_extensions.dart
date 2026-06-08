@@ -1,10 +1,8 @@
 /// Ergonomic `package:cryptography` layer over the hybrid combiner (Option B).
 ///
-/// This wrapper is kept in its own entrypoint
-/// (`package:pqforge/pqforge_cryptography.dart`) so that the zero-dependency
-/// core ([PqForgeCombiner], reachable from `package:pqforge/pqforge.dart`) never
-/// drags `package:cryptography` into an application's import graph unless the
-/// developer opts in.
+/// Adds `SecretKey.deriveHybridSecretKey`, letting `package:cryptography` users
+/// feed a [crypto.SecretKey] straight into the [PqForgeCombiner] core. Surfaced
+/// through the single `package:pqforge/pqforge.dart` entrypoint.
 library;
 
 import 'dart:typed_data';

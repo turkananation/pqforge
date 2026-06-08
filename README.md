@@ -63,19 +63,28 @@ are raw JSON. Secret keys are Argon2id + AES-256-GCM wrapped JSON when you pass
 
 ## What You Can Build
 
-| App idea | Use this surface |
-| --- | --- |
-| Local file vaults and server export jobs | `encrypt`, `decrypt`, `encryptFileBytes` |
-| Folder archives and evidence bundles | `encrypt-folder`, `decrypt-folder`, `encryptFolderEntry` |
-| Notes, prompts, and short secrets | `encrypt-text`, `decrypt-text`, `sealText`, `signText` |
-| Images, audio, video, PDFs, and media records | `encrypt-media`, `decrypt-media`, `sealMedia`, `signMedia` |
-| Contracts, approvals, certificates, and reports | `sign --kind document`, `signDocument` |
-| Payment callbacks and server events | `signWebhook`, `verifyWebhook` |
-| API capability grants and admin actions | `issueToken`, `verifyToken` |
-| Secure notification bodies | `sealEmail`, `openEmail` |
-| Medical, government, and registry records | `encryptRecord`, `appendSignedLogEntry` |
-| Release bundles and firmware | `sign --kind artifact`, `signArtifact` |
-| Serverpod/API hybrid sessions | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` |
+Every row is post-quantum where it counts. The **Powered by** column names the
+engine doing the work — read `🛡️ → 🔒` as "wrap a quantum-safe key, then encrypt
+the bytes with it":
+
+- 🛡️ **`pqcrypto`** — pure-Dart PQC: ML-KEM (FIPS 203), ML-DSA (FIPS 204)
+- 🔒 **`PointyCastle`** — pure-Dart classical: AES-256-GCM, ChaCha20-Poly1305, HKDF, Argon2id, ECDSA-P256
+- 🤝 **`cryptography`** — native/optimized classical: X25519, Ed25519
+
+| App idea | Use this surface | Powered by |
+| --- | --- | --- |
+| Local file vaults and server export jobs | `encrypt`, `decrypt`, `encryptFileBytes` | 🛡️ ML-KEM → 🔒 AES-256-GCM (KEM-DEM via HKDF) |
+| Folder archives and evidence bundles | `encrypt-folder`, `decrypt-folder`, `encryptFolderEntry` | 🛡️ ML-KEM → 🔒 AES-256-GCM per entry |
+| Notes, prompts, and short secrets | `encrypt-text`, `decrypt-text`, `sealText`, `signText` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · sign 🛡️ ML-DSA |
+| Images, audio, video, PDFs, and media records | `encrypt-media`, `decrypt-media`, `sealMedia`, `signMedia` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · sign 🛡️ ML-DSA |
+| Contracts, approvals, certificates, and reports | `sign --kind document`, `signDocument` | 🛡️ ML-DSA (FIPS 204) |
+| Payment callbacks and server events | `signWebhook`, `verifyWebhook` | 🛡️ ML-DSA + timestamp/nonce binding |
+| API capability grants and admin actions | `issueToken`, `verifyToken` | 🛡️ ML-DSA over canonical claims |
+| Secure notification bodies | `sealEmail`, `openEmail` | 🛡️ ML-KEM → 🔒 AES-256-GCM |
+| Medical, government, and registry records | `encryptRecord`, `appendSignedLogEntry` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · log 🛡️ ML-DSA hash chain |
+| Release bundles and firmware | `sign --kind artifact`, `signArtifact` | 🛡️ ML-DSA (pre-hash) |
+| Serverpod/API hybrid sessions | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` | 🤝 X25519 + 🛡️ ML-KEM → 🔒 AEAD |
+| Hybrid signatures (PQC + classical) | `PqForgeHybridSigner` | 🛡️ ML-DSA + (🤝 Ed25519 \| 🔒 ECDSA-P256) |
 
 The full app catalog is in [doc/cookbook/PROJECT_CATALOG.md](doc/cookbook/PROJECT_CATALOG.md).
 
@@ -112,14 +121,38 @@ final signature = forge.signArtifact(
 
 | Command | Purpose |
 | --- | --- |
-| `keygen` | Generate public keys and raw or wrapped secret keys |
+| `keygen` | Generate ML-KEM/ML-DSA bundles and optional X25519/Ed25519/ECDSA-P256 keys |
 | `encrypt` / `decrypt` | Encrypt and decrypt a single file |
 | `encrypt-folder` / `decrypt-folder` | Encrypt and decrypt folder trees |
 | `encrypt-text` / `decrypt-text` | Encrypt and decrypt UTF-8 text |
 | `encrypt-media` / `decrypt-media` | Encrypt and decrypt media or PDFs |
 | `sign` / `verify` | Sign and verify documents, text, media, and artifacts |
+| `hybrid-sign` / `hybrid-verify` | ML-DSA + Ed25519/ECDSA-P256 dual signatures |
+| `ecdsa-sign` / `ecdsa-verify` | Standalone ECDSA-P256 signatures (RFC 6979, low-S) |
 
-Read the complete command guide at [doc/CLI.md](doc/CLI.md).
+`pqforge` with no arguments prints a banner and grouped command help; every
+command has `--help` with worked examples. Read the complete command guide at
+[doc/CLI.md](doc/CLI.md).
+
+### Hybrid and classical signers — now in the CLI
+
+`keygen --classical` emits classical keypairs, and the hybrid and standalone
+classical signers are wired into matching commands:
+
+| Capability | CLI | Library API | Powered by |
+| --- | --- | --- | --- |
+| Hybrid signatures (PQC + Ed25519/ECDSA-P256) | `hybrid-sign` / `hybrid-verify` | `PqForgeHybridSigner()` | 🛡️ ML-DSA + (🤝 Ed25519 \| 🔒 ECDSA-P256) |
+| Standalone ECDSA-P256 sign/verify | `ecdsa-sign` / `ecdsa-verify` | `PqEcdsaP256` | 🔒 ECDSA-P256 (RFC 6979, low-S) |
+| Classical signer keypair (Ed25519 / ECDSA-P256) | `keygen --classical ed25519\|ecdsa-p256` | `PqForgeHybridSigner.generateClassicalKeyPair()` | 🤝 Ed25519 · 🔒 ECDSA-P256 |
+| X25519 key-agreement keypair | `keygen --classical x25519` | `PqForgeHybridKeyAgreement.generateClassicalKeyPair()` | 🤝 X25519 |
+
+Two primitives stay library-only **by design** — they can't be expressed as a
+one-shot CLI command:
+
+| Capability | Library API | Why library-only |
+| --- | --- | --- |
+| App-supplied dual signatures | `dualSign` / `dualVerify` | `dualVerify` takes a classical-verifier **callback**, so a bring-your-own scheme can't be passed on a command line. Use `hybrid-sign` for the built-in Ed25519/ECDSA-P256 schemes. |
+| Hybrid session derivation (raw bytes) | `PqForgeCombiner`, `SecretKey.deriveHybridSecretKey()` | Interactive, multi-party key agreement; the raw classical ‖ ML-KEM join is a building block, not a workflow. |
 
 ## Profiles
 
@@ -131,16 +164,17 @@ Read the complete command guide at [doc/CLI.md](doc/CLI.md).
 
 ## Hybrid Sessions
 
-The optional `package:pqforge/pqforge_cryptography.dart` entrypoint adds:
+The single `package:pqforge/pqforge.dart` import also provides:
 
 - `PqForgeHybridKeyAgreement` for X25519 + ML-KEM session key agreement;
-- `PqForgeHybridSigner` for ML-DSA + Ed25519 dual signatures;
+- `PqForgeHybridSigner` for ML-DSA + Ed25519 **or ECDSA-P256** dual signatures;
 - `PqForgeSecureSession` for AES-256-GCM or ChaCha20-Poly1305 packets;
 - `SecretKey.deriveHybridSecretKey()` for `package:cryptography` users.
 
-ECDSA remains app-supplied through `dualSign` / `dualVerify` because
-`cryptography 2.9.0` exposes P-256 but does not implement Dart VM key generation
-for that path.
+ECDSA over NIST P-256 is built in via `PqEcdsaP256` (pure-Dart PointyCastle, with
+RFC 6979 deterministic nonces and low-S signatures), because `cryptography 2.9.0`
+cannot generate P-256 keys on the Dart VM. `dualSign` / `dualVerify` remain for
+any other app-supplied classical signature scheme.
 
 ## Claim Boundary
 

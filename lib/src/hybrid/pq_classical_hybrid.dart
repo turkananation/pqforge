@@ -1,7 +1,10 @@
 /// Batteries-included classical + post-quantum hybrid helpers.
 ///
-/// This file intentionally depends on `package:cryptography`, so it is exported
-/// only from `package:pqforge/pqforge_cryptography.dart`.
+/// Provides X25519 + ML-KEM key agreement (via `package:cryptography`) and
+/// hybrid signatures pairing ML-DSA with a classical signature — Ed25519
+/// (`package:cryptography`) or ECDSA over NIST P-256 ([PqEcdsaP256], pure-Dart
+/// PointyCastle). Surfaced through the single `package:pqforge/pqforge.dart`
+/// entrypoint.
 library;
 
 import 'dart:convert';
@@ -13,6 +16,7 @@ import '../algorithms/pq_algorithms.dart';
 import '../primitives/pq_primitives.dart';
 import '../recipes/pq_recipes.dart';
 import '../services/pqforge_service.dart';
+import 'pq_ecdsa_p256.dart';
 import 'pq_hybrid_combiner.dart';
 
 enum PqClassicalKeyAgreementAlgorithm {
@@ -37,11 +41,36 @@ enum PqClassicalKeyAgreementAlgorithm {
 }
 
 enum PqClassicalSignatureAlgorithm {
-  ed25519(id: 'ed25519');
+  ed25519(
+    id: 'ed25519',
+    publicKeyBytes: 32,
+    secretKeyBytes: 32,
+    signatureBytes: 64,
+  ),
+  ecdsaP256(
+    id: 'ecdsa-p256',
+    publicKeyBytes: 65,
+    secretKeyBytes: 32,
+    signatureBytes: 64,
+  );
 
-  const PqClassicalSignatureAlgorithm({required this.id});
+  const PqClassicalSignatureAlgorithm({
+    required this.id,
+    required this.publicKeyBytes,
+    required this.secretKeyBytes,
+    required this.signatureBytes,
+  });
 
   final String id;
+
+  /// Public-key length in bytes (Ed25519: 32; ECDSA-P256 uncompressed: 65).
+  final int publicKeyBytes;
+
+  /// Secret-key length in bytes (the 32-byte Ed25519 seed / EC scalar).
+  final int secretKeyBytes;
+
+  /// Signature length in bytes (Ed25519: 64; ECDSA-P256 raw `r||s`: 64).
+  final int signatureBytes;
 
   static PqClassicalSignatureAlgorithm byId(String id) {
     for (final value in values) {
@@ -49,6 +78,24 @@ enum PqClassicalSignatureAlgorithm {
     }
     throw PqForgeException('Unsupported classical signature algorithm: $id');
   }
+}
+
+/// A classical signature key pair as raw bytes, so both backends — Ed25519 via
+/// `package:cryptography` and ECDSA-P256 via [PqEcdsaP256] — share one type.
+class PqClassicalSignatureKeyPair {
+  PqClassicalSignatureKeyPair({
+    required this.algorithm,
+    required Uint8List publicKey,
+    required Uint8List secretKey,
+  }) : publicKey = PqBytes.copy(publicKey),
+       secretKey = PqBytes.copy(secretKey) {
+    requireLength('publicKey', this.publicKey, algorithm.publicKeyBytes);
+    requireLength('secretKey', this.secretKey, algorithm.secretKeyBytes);
+  }
+
+  final PqClassicalSignatureAlgorithm algorithm;
+  final Uint8List publicKey;
+  final Uint8List secretKey;
 }
 
 class PqHybridKeyAgreementRequest {
@@ -201,6 +248,25 @@ class PqForgeHybridKeyAgreement {
         : crypto.X25519().newKeyPairFromSeed(seed);
   }
 
+  /// Generates an X25519 key-agreement key pair as raw 32-byte arrays.
+  ///
+  /// A byte-oriented companion to [generateClassicalKeyPair] for callers that
+  /// persist keys as bytes (such as the CLI) rather than holding a live
+  /// `package:cryptography` `SimpleKeyPair`.
+  Future<({Uint8List publicKey, Uint8List secretKey})>
+  generateClassicalKeyPairBytes({Uint8List? seed}) async {
+    final keyPair = await generateClassicalKeyPair(seed: seed);
+    try {
+      final publicKey = await keyPair.extractPublicKey();
+      return (
+        publicKey: Uint8List.fromList(publicKey.bytes),
+        secretKey: Uint8List.fromList(await keyPair.extractPrivateKeyBytes()),
+      );
+    } finally {
+      keyPair.destroy();
+    }
+  }
+
   Future<PqHybridKeyAgreementResult> initiate({
     required crypto.SimplePublicKey serverClassicalPublicKey,
     required Uint8List serverKemPublicKey,
@@ -347,9 +413,11 @@ class PqHybridSignature {
       this.pqcSignature,
       pqcAlgorithm.signatureBytes,
     );
-    if (this.classicalSignature.isEmpty) {
-      throw ArgumentError.value(0, 'classicalSignature', 'must not be empty');
-    }
+    requireLength(
+      'classicalSignature',
+      this.classicalSignature,
+      classicalAlgorithm.signatureBytes,
+    );
   }
 
   final Uint8List pqcSignature;
@@ -399,30 +467,113 @@ class PqForgeHybridSigner {
   final PqForgeProfile profile;
   final PqClassicalSignatureAlgorithm classicalAlgorithm;
 
-  Future<crypto.KeyPair> generateClassicalKeyPair({Uint8List? seed}) {
-    final algorithm = _signatureAlgorithm(classicalAlgorithm);
-    return seed == null
-        ? algorithm.newKeyPair()
-        : algorithm.newKeyPairFromSeed(seed);
+  /// Generates a classical key pair for [classicalAlgorithm].
+  ///
+  /// [seed] (a 32-byte seed) is supported only for Ed25519; ECDSA-P256 keys are
+  /// always randomly generated and reject a supplied seed.
+  Future<PqClassicalSignatureKeyPair> generateClassicalKeyPair({
+    Uint8List? seed,
+  }) async {
+    switch (classicalAlgorithm) {
+      case PqClassicalSignatureAlgorithm.ed25519:
+        final ed25519 = crypto.Ed25519();
+        final keyPair = seed == null
+            ? await ed25519.newKeyPair()
+            : await ed25519.newKeyPairFromSeed(seed);
+        try {
+          final publicKey = await keyPair.extractPublicKey();
+          return PqClassicalSignatureKeyPair(
+            algorithm: PqClassicalSignatureAlgorithm.ed25519,
+            publicKey: Uint8List.fromList(publicKey.bytes),
+            secretKey: Uint8List.fromList(
+              await keyPair.extractPrivateKeyBytes(),
+            ),
+          );
+        } finally {
+          keyPair.destroy();
+        }
+      case PqClassicalSignatureAlgorithm.ecdsaP256:
+        if (seed != null) {
+          throw const PqForgeException(
+            'Seeded key generation is not supported for ECDSA-P256',
+          );
+        }
+        final pair = PqEcdsaP256.generateKeyPair();
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
+          publicKey: pair.publicKey,
+          secretKey: pair.secretKey,
+        );
+    }
   }
 
+  /// Reconstructs a usable [PqClassicalSignatureKeyPair] from a stored 32-byte
+  /// [secretKey] for [classicalAlgorithm], deriving the public key when it is
+  /// not supplied.
+  ///
+  /// This lets callers (such as the CLI) persist only the secret key and still
+  /// sign later: for Ed25519 the public key is recovered from the seed, and for
+  /// ECDSA-P256 it is recomputed as `d · G` via [PqEcdsaP256.publicKeyFromPrivate].
+  /// A supplied [publicKey] is used as-is (and length-checked by the key-pair
+  /// constructor) without re-derivation.
+  Future<PqClassicalSignatureKeyPair> classicalKeyPairFromSecret(
+    Uint8List secretKey, {
+    Uint8List? publicKey,
+  }) async {
+    switch (classicalAlgorithm) {
+      case PqClassicalSignatureAlgorithm.ed25519:
+        final derived = publicKey ?? await _ed25519PublicKeyFromSeed(secretKey);
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ed25519,
+          publicKey: derived,
+          secretKey: secretKey,
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP256:
+        final derived =
+            publicKey ?? PqEcdsaP256.publicKeyFromPrivate(secretKey);
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
+          publicKey: derived,
+          secretKey: secretKey,
+        );
+    }
+  }
+
+  static Future<Uint8List> _ed25519PublicKeyFromSeed(Uint8List seed) async {
+    final keyPair = await crypto.Ed25519().newKeyPairFromSeed(seed);
+    try {
+      final publicKey = await keyPair.extractPublicKey();
+      return Uint8List.fromList(publicKey.bytes);
+    } finally {
+      keyPair.destroy();
+    }
+  }
+
+  /// Signs [message] with ML-DSA and the classical algorithm, binding [context].
   Future<PqHybridSignature> sign({
     required Uint8List pqcSecretKey,
-    required crypto.KeyPair classicalKeyPair,
+    required PqClassicalSignatureKeyPair classicalKeyPair,
     required Uint8List message,
     Uint8List? context,
     PqSignatureAlgorithm? pqcAlgorithm,
     PqDualSignaturePolicy policy = PqDualSignaturePolicy.requireBoth,
   }) async {
+    if (classicalKeyPair.algorithm != classicalAlgorithm) {
+      throw PqForgeException(
+        'Classical key pair algorithm ${classicalKeyPair.algorithm.id} does '
+        'not match signer algorithm ${classicalAlgorithm.id}',
+      );
+    }
     final selectedPqc = pqcAlgorithm ?? profile.signature;
     final boundMessage = _hybridSignatureMessage(message, context);
-    final classicalSignature = await _signatureAlgorithm(
-      classicalAlgorithm,
-    ).sign(boundMessage, keyPair: classicalKeyPair);
+    final classicalSignature = await _signClassical(
+      classicalKeyPair,
+      boundMessage,
+    );
     final dual = PqForge(profile: profile).dualSign(
       secretKey: pqcSecretKey,
       message: boundMessage,
-      classicalSignature: Uint8List.fromList(classicalSignature.bytes),
+      classicalSignature: classicalSignature,
       algorithm: selectedPqc,
       policy: policy,
     );
@@ -435,9 +586,13 @@ class PqForgeHybridSigner {
     );
   }
 
+  /// Verifies a [signature] over [message] under both public keys.
+  ///
+  /// [classicalPublicKey] is the raw classical public key (Ed25519: 32 bytes;
+  /// ECDSA-P256: the 65-byte uncompressed SEC1 point).
   Future<bool> verify({
     required Uint8List pqcPublicKey,
-    required crypto.PublicKey classicalPublicKey,
+    required Uint8List classicalPublicKey,
     required Uint8List message,
     required PqHybridSignature signature,
     Uint8List? context,
@@ -452,34 +607,69 @@ class PqForgeHybridSigner {
       context: PqBytes.utf8Bytes('pqforge/dual-signature/v1'),
     );
     final classicalValid = await _verifyClassical(
-      boundMessage,
-      signature,
+      classicalAlgorithm,
       classicalPublicKey,
+      boundMessage,
+      signature.classicalSignature,
     );
     return signature.dualSignature.combine(pqcValid, classicalValid);
   }
-}
 
-Future<bool> _verifyClassical(
-  Uint8List boundMessage,
-  PqHybridSignature signature,
-  crypto.PublicKey publicKey,
-) {
-  return _signatureAlgorithm(signature.classicalAlgorithm).verify(
-    boundMessage,
-    signature: crypto.Signature(
-      signature.classicalSignature,
-      publicKey: publicKey,
-    ),
-  );
-}
+  static Future<Uint8List> _signClassical(
+    PqClassicalSignatureKeyPair keyPair,
+    Uint8List boundMessage,
+  ) async {
+    switch (keyPair.algorithm) {
+      case PqClassicalSignatureAlgorithm.ed25519:
+        final signature = await crypto.Ed25519().sign(
+          boundMessage,
+          keyPair: crypto.SimpleKeyPairData(
+            keyPair.secretKey,
+            publicKey: crypto.SimplePublicKey(
+              keyPair.publicKey,
+              type: crypto.KeyPairType.ed25519,
+            ),
+            type: crypto.KeyPairType.ed25519,
+          ),
+        );
+        return Uint8List.fromList(signature.bytes);
+      case PqClassicalSignatureAlgorithm.ecdsaP256:
+        return PqEcdsaP256.sign(
+          privateKey: keyPair.secretKey,
+          message: boundMessage,
+        );
+    }
+  }
 
-crypto.SignatureAlgorithm _signatureAlgorithm(
-  PqClassicalSignatureAlgorithm algorithm,
-) {
-  return switch (algorithm) {
-    PqClassicalSignatureAlgorithm.ed25519 => crypto.Ed25519(),
-  };
+  static Future<bool> _verifyClassical(
+    PqClassicalSignatureAlgorithm algorithm,
+    Uint8List publicKey,
+    Uint8List boundMessage,
+    Uint8List signatureBytes,
+  ) async {
+    switch (algorithm) {
+      case PqClassicalSignatureAlgorithm.ed25519:
+        if (publicKey.length != 32 || signatureBytes.length != 64) {
+          return false;
+        }
+        return crypto.Ed25519().verify(
+          boundMessage,
+          signature: crypto.Signature(
+            signatureBytes,
+            publicKey: crypto.SimplePublicKey(
+              publicKey,
+              type: crypto.KeyPairType.ed25519,
+            ),
+          ),
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP256:
+        return PqEcdsaP256.verify(
+          publicKey: publicKey,
+          message: boundMessage,
+          signature: signatureBytes,
+        );
+    }
+  }
 }
 
 Uint8List _hybridSignatureMessage(Uint8List message, Uint8List? context) {
