@@ -131,7 +131,7 @@ Read the complete command guide at [doc/CLI.md](doc/CLI.md).
 
 ## Hybrid Sessions
 
-The optional `package:pqforge/pqforge.dart` entrypoint adds:
+The single `package:pqforge/pqforge.dart` import also provides:
 
 - `PqForgeHybridKeyAgreement` for X25519 + ML-KEM session key agreement;
 - `PqForgeHybridSigner` for ML-DSA + Ed25519 dual signatures;

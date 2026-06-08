@@ -1,23 +1,28 @@
 /// High-level post-quantum composition helpers for Dart, Flutter, and Serverpod.
-/// `package:cryptography` & `package:pointycastle`- powered layer for pqforge.
 ///
-/// Import this entrypoint when you want to use the full power of
-/// post quantum + classical hybrid key agreement and signatures,
-///  with the option of pure quantum or hybrid combiners.
-///
-/// * the type-safe `SecretKey` hybrid-combiner extension
-///   ([PqForgeCryptographyExtensions] — combiner **Option B**), or
-/// * the native (`package:cryptography`) AEAD backend for
-///   [PqForgeSecureSession] ([PqForgeEngineProvider.nativeCryptography]).
+/// `pqforge` exposes its entire public API through this single entrypoint:
 ///
 /// ```dart
 /// import 'package:pqforge/pqforge.dart';
 /// ```
 ///
-/// The zero-dependency core — [PqForgeCombiner] / [PqHybridProfile], the cipher
-/// enums, and the pure-Dart [PqForgePointyCastleAeadEngine] — is also available
-/// on its own from `package:pqforge/pqforge.dart`, which does not pull in
-/// `package:cryptography`. It is re-exported here for convenience.
+/// From here you get the full stack:
+///
+/// * the [PqForge] facade — key generation, ML-KEM/ML-DSA, KEM-DEM envelopes,
+///   document/artifact signing, key custody, and recipes;
+/// * hybrid key derivation — [PqForgeCombiner] (raw bytes) and the
+///   [PqForgeCryptographyExtensions] `SecretKey.deriveHybridSecretKey` ergonomic;
+/// * batteries-included classical + post-quantum hybrid —
+///   [PqForgeHybridKeyAgreement] (X25519 + ML-KEM) and [PqForgeHybridSigner]
+///   (ML-DSA + Ed25519);
+/// * AEAD wire packets — [PqForgeSecureSession] over AES-256-GCM or
+///   ChaCha20-Poly1305, on either the pure-Dart PointyCastle or the native
+///   `package:cryptography` backend ([PqForgeEngineProvider]).
+///
+/// The pure-Dart pieces ([PqForgeCombiner], [PqForgePointyCastleAeadEngine]) use
+/// only PointyCastle internally; the hybrid, native-AEAD, and `SecretKey` pieces
+/// use `package:cryptography`. Unused backends are tree-shaken from release
+/// builds, so you only pay for the APIs you actually call.
 library;
 
 export 'src/cipher/pq_cipher_suite.dart';

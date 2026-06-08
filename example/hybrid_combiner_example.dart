@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
-// The core combiner (Option A) is part of package:pqforge/pqforge.dart; the
-// SecretKey extension (Option B) lives behind the cryptography entrypoint.
+// Both the core combiner (Option A) and the SecretKey extension (Option B) come
+// from the single package:pqforge/pqforge.dart import.
 import 'package:pqforge/pqforge.dart';
 
 Future<void> main() async {

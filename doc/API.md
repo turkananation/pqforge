@@ -1,13 +1,23 @@
 # pqforge API reference
 
-`pqforge` exposes its public API through two import entrypoints.
+`pqforge` exposes its entire public API through a single import:
 
-| Import | What you get | Pulls in `package:cryptography`? |
-| --- | --- | --- |
-| `package:pqforge/pqforge.dart` | The full zero-dependency core: the `PqForge` facade, primitives, codecs, key custody, the hybrid `PqForgeCombiner`, the cipher-suite enums, and the pure-Dart AEAD engine. | No |
-| `package:pqforge/pqforge.dart` | Everything above (re-exported) **plus** the `SecretKey` extension, native AEAD engine, `PqForgeSecureSession`, X25519 + ML-KEM agreement, and ML-DSA + Ed25519 hybrid signatures. | Yes |
+```dart
+import 'package:pqforge/pqforge.dart';
+```
 
-> Rule of thumb: import `pqforge.dart` unless you specifically want the `cryptography`-package ergonomics, the unified `PqForgeSecureSession`, or the built-in X25519/Ed25519 hybrid tier.
+That one entrypoint provides the whole stack:
+
+| Layer | What you get |
+| --- | --- |
+| Core facade & primitives | `PqForge`, ML-KEM/ML-DSA, codecs, key custody, recipes — pure Dart over PointyCastle |
+| Hybrid KEM combining | `PqForgeCombiner` (raw bytes) and the `SecretKey.deriveHybridSecretKey` extension |
+| Built-in classical hybrid | `PqForgeHybridKeyAgreement` (X25519 + ML-KEM), `PqForgeHybridSigner` (ML-DSA + Ed25519) |
+| AEAD wire packets | `PqForgeSecureSession` over AES-256-GCM / ChaCha20-Poly1305, pure-Dart or native backend |
+
+`package:cryptography` is a standard dependency (it powers the hybrid, native-AEAD,
+and `SecretKey` pieces). The pure-Dart classes use only PointyCastle internally, and
+unused backends are tree-shaken from release builds — you pay only for the APIs you call.
 
 ---
 
@@ -40,7 +50,7 @@ Uint8List combine({
 static void wipe(Uint8List buffer); // zeroization primitive
 ```
 
-### Option B — `SecretKey.deriveHybridSecretKey` (cryptography entrypoint)
+### Option B — `SecretKey.deriveHybridSecretKey`
 
 ```dart
 // extension PqForgeCryptographyExtensions on crypto.SecretKey
@@ -60,9 +70,8 @@ as the classical secret; `postQuantumSecret` is placed second.
 
 ## 2. Built-in classical hybrid tier
 
-The optional `pqforge.dart` entrypoint adds batteries-included
-classical helpers for CLI/server projects that do not want to supply their own
-classical stack.
+The single `pqforge.dart` import includes batteries-included classical helpers
+for CLI/server projects that do not want to supply their own classical stack.
 
 ### X25519 + ML-KEM key agreement
 
@@ -150,7 +159,7 @@ produce the identical wire layout and are mutually interoperable.
 +-----------------------------+------------------------------------+
 ```
 
-### `PqForgeSecureSession` (cryptography entrypoint)
+### `PqForgeSecureSession`
 
 ```dart
 PqForgeSecureSession({
@@ -184,8 +193,8 @@ abstract interface class PqForgeAeadEngine {
       required Uint8List cipherTextWithTag, required Uint8List aad}); // throws PqForgeAuthTagException
 }
 
-PqForgePointyCastleAeadEngine(PqForgeCipherSuite suite);  // core (zero-dep)
-PqForgeCryptographyAeadEngine(PqForgeCipherSuite suite);  // cryptography entrypoint
+PqForgePointyCastleAeadEngine(PqForgeCipherSuite suite);  // pure-Dart (PointyCastle)
+PqForgeCryptographyAeadEngine(PqForgeCipherSuite suite);  // native (package:cryptography)
 ```
 
 ---

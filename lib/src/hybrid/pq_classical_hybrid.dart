@@ -1,7 +1,8 @@
 /// Batteries-included classical + post-quantum hybrid helpers.
 ///
-/// This file intentionally depends on `package:cryptography`, so it is exported
-/// only from `package:pqforge/pqforge.dart`.
+/// Provides X25519 + ML-KEM key agreement and ML-DSA + Ed25519 signatures using
+/// `package:cryptography`, surfaced through the single
+/// `package:pqforge/pqforge.dart` entrypoint.
 library;
 
 import 'dart:convert';
