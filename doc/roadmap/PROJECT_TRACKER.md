@@ -7,6 +7,7 @@
 - [x] Add portable key wrapping and storage interfaces.
 - [x] Add document, record, file, folder, text, media, email, webhook, token, log, artifact, identity, and dual-signature helpers.
 - [x] Add built-in X25519 + ML-KEM and ML-DSA + Ed25519 hybrid tier.
+- [x] Add built-in ECDSA-P256 classical signatures (pure-Dart PointyCastle).
 - [x] Add universal CLI with wrapped key reuse.
 - [x] Add generated GitHub Pages and AI discovery surfaces.
 - [x] Add GitHub Wiki sync source.

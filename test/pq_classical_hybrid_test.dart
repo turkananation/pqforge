@@ -85,7 +85,7 @@ void main() {
       final pqc = forge.generateSignatureKeyPair();
       const signer = PqForgeHybridSigner(profile: profile);
       final classical = await signer.generateClassicalKeyPair();
-      final classicalPublic = await classical.extractPublicKey();
+      final classicalPublic = classical.publicKey;
       final message = _bytes('release manifest');
       final context = _bytes('release:v1');
 
@@ -118,6 +118,78 @@ void main() {
         isFalse,
       );
     });
+
+    test('signs and verifies with ML-DSA + ECDSA-P256', () async {
+      const profile = PqForgeProfile.compact;
+      final forge = PqForge(profile: profile);
+      final pqc = forge.generateSignatureKeyPair();
+      const signer = PqForgeHybridSigner(
+        profile: profile,
+        classicalAlgorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
+      );
+      final classical = await signer.generateClassicalKeyPair();
+      expect(classical.algorithm, PqClassicalSignatureAlgorithm.ecdsaP256);
+      expect(classical.publicKey, hasLength(65));
+      final message = _bytes('firmware image v4');
+      final context = _bytes('firmware:v1');
+
+      final signature = await signer.sign(
+        pqcSecretKey: pqc.secretKey,
+        classicalKeyPair: classical,
+        message: message,
+        context: context,
+      );
+      expect(
+        signature.classicalAlgorithm,
+        PqClassicalSignatureAlgorithm.ecdsaP256,
+      );
+      final restored = PqHybridSignature.fromJson(signature.toJson());
+
+      expect(
+        await signer.verify(
+          pqcPublicKey: pqc.publicKey,
+          classicalPublicKey: classical.publicKey,
+          message: message,
+          signature: restored,
+          context: context,
+        ),
+        isTrue,
+      );
+      expect(
+        await signer.verify(
+          pqcPublicKey: pqc.publicKey,
+          classicalPublicKey: classical.publicKey,
+          message: _bytes('tampered image'),
+          signature: restored,
+          context: context,
+        ),
+        isFalse,
+      );
+    });
+
+    test(
+      'rejects a key pair whose algorithm differs from the signer',
+      () async {
+        const profile = PqForgeProfile.compact;
+        final forge = PqForge(profile: profile);
+        final pqc = forge.generateSignatureKeyPair();
+        const ed25519Signer = PqForgeHybridSigner(profile: profile);
+        const ecdsaSigner = PqForgeHybridSigner(
+          profile: profile,
+          classicalAlgorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
+        );
+        final ecdsaKeyPair = await ecdsaSigner.generateClassicalKeyPair();
+
+        await expectLater(
+          ed25519Signer.sign(
+            pqcSecretKey: pqc.secretKey,
+            classicalKeyPair: ecdsaKeyPair,
+            message: _bytes('x'),
+          ),
+          throwsA(isA<PqForgeException>()),
+        );
+      },
+    );
   });
 }
 

@@ -105,20 +105,30 @@ Future<Uint8List> accept({
 public key, ML-KEM ciphertext, transcript context, and transcript hash. It has
 `toJson()` / `fromJson()` for transport or server DTOs.
 
-### ML-DSA + Ed25519 dual signatures
+### ML-DSA + Ed25519 / ECDSA-P256 dual signatures
+
+`PqForgeHybridSigner` pairs an ML-DSA signature with a classical signature; pick
+the classical algorithm via `classicalAlgorithm`:
+
+| `PqClassicalSignatureAlgorithm` | Backend | Public key | Signature |
+| --- | --- | --- | --- |
+| `ed25519` | `package:cryptography` | 32 B | 64 B |
+| `ecdsaP256` | PointyCastle (`PqEcdsaP256`, pure Dart) | 65 B uncompressed | 64 B (`r‖s`) |
 
 ```dart
 const PqForgeHybridSigner({
   PqForgeProfile profile = PqForgeProfile.balanced,
   PqClassicalSignatureAlgorithm classicalAlgorithm =
-      PqClassicalSignatureAlgorithm.ed25519,
+      PqClassicalSignatureAlgorithm.ed25519, // or .ecdsaP256
 });
 
-Future<crypto.KeyPair> generateClassicalKeyPair({Uint8List? seed});
+// Classical keys are raw bytes (PqClassicalSignatureKeyPair) so both backends
+// share one type. ed25519 accepts a 32-byte seed; ecdsaP256 is always random.
+Future<PqClassicalSignatureKeyPair> generateClassicalKeyPair({Uint8List? seed});
 
 Future<PqHybridSignature> sign({
   required Uint8List pqcSecretKey,
-  required crypto.KeyPair classicalKeyPair,
+  required PqClassicalSignatureKeyPair classicalKeyPair,
   required Uint8List message,
   Uint8List? context,
   PqSignatureAlgorithm? pqcAlgorithm,
@@ -127,16 +137,17 @@ Future<PqHybridSignature> sign({
 
 Future<bool> verify({
   required Uint8List pqcPublicKey,
-  required crypto.PublicKey classicalPublicKey,
+  required Uint8List classicalPublicKey, // raw bytes
   required Uint8List message,
   required PqHybridSignature signature,
   Uint8List? context,
 });
 ```
 
-`PqHybridSignature` has `toJson()` / `fromJson()`. Built-in ECDSA is not exposed
-because `cryptography 2.9.0` does not implement P-256 key generation on the
-Dart VM; use `dualSign` / `dualVerify` for app-supplied ECDSA signatures.
+`PqHybridSignature` has `toJson()` / `fromJson()`. ECDSA-P256 uses RFC 6979
+deterministic nonces and canonical low-S signatures; the standalone `PqEcdsaP256`
+primitive (keygen / sign / verify over raw bytes) is also exported for use
+without the hybrid wrapper.
 
 ---
 

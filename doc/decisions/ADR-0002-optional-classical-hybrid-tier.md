@@ -4,8 +4,8 @@
 
 Accepted on 2026-06-07. Updated 2026-06-08: the classical hybrid tier was folded
 into the single `package:pqforge/pqforge.dart` entrypoint — there is no longer a
-separate `pqforge_cryptography.dart` import. The decision below stands; only the
-packaging changed.
+separate `pqforge_cryptography.dart` import — and ECDSA-P256 was added as a
+built-in classical signature option (see Consequences). The core decision stands.
 
 ## Context
 
@@ -35,8 +35,10 @@ Add a built-in classical hybrid tier, exported from the single
   X25519 or Ed25519 glue.
 - The hybrid tier pulls in `package:cryptography`, which is now a standard
   dependency; unused backends are tree-shaken from release builds.
-- ECDSA remains app-supplied through `dualSign` / `dualVerify` because
-  `cryptography 2.9.0` does not implement Dart VM P-256 key generation.
+- ECDSA over NIST P-256 is a built-in classical option (`PqEcdsaP256`, pure-Dart
+  PointyCastle with RFC 6979 deterministic nonces and low-S signatures), because
+  `cryptography 2.9.0` cannot generate P-256 keys on the Dart VM. `dualSign` /
+  `dualVerify` remain for any other app-supplied classical signature scheme.
 - RC4 is not supported. It is not PQC, not AEAD, and not acceptable for new
   encrypted payloads.
 
