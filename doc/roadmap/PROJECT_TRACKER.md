@@ -5,7 +5,11 @@
 - [x] Split implementation layers.
 - [x] Add binary and JSON envelopes.
 - [x] Add portable key wrapping and storage interfaces.
-- [x] Add document, record, file, log, artifact, identity, and dual-signature helpers.
+- [x] Add document, record, file, folder, text, media, email, webhook, token, log, artifact, identity, and dual-signature helpers.
+- [x] Add optional X25519 + ML-KEM and ML-DSA + Ed25519 hybrid tier.
+- [x] Add universal CLI with wrapped key reuse.
+- [x] Add generated GitHub Pages and AI discovery surfaces.
+- [x] Add GitHub Wiki sync source.
 - [x] Expand tests across layers and recipes.
 - [x] Add CI workflow.
 - [x] Add durable `/doc` tree.
@@ -16,7 +20,10 @@
 - [ ] Add benchmark snapshots for common operations.
 - [ ] Add Serverpod JSON DTO example.
 - [ ] Add Flutter isolate example.
-- [ ] Add CLI file-vault example.
+- [x] Add CLI file-vault example.
+- [ ] Add streaming/chunked file encryption for multi-GB payloads.
+- [ ] Add Serverpod DTO example for envelopes and signed tokens.
+- [ ] Add Flutter UX sample for wrapped-key import/export.
 
 ## Release gates
 
@@ -24,4 +31,7 @@
 - [ ] `dart analyze`
 - [ ] `dart test`
 - [ ] `dart run example/pqforge_example.dart`
+- [ ] `dart run example/catalog_recipes_example.dart`
+- [ ] wrapped-key CLI smoke
+- [ ] `dart run tool/visibility/generate_visibility.dart --check`
 - [ ] `dart pub publish --dry-run`

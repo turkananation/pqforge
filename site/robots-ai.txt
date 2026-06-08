@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Preferred AI entrypoints
+Sitemap: https://turkananation.github.io/pqforge/sitemap.xml
+LLMS: https://turkananation.github.io/pqforge/llms.txt
+LLMS-Full: https://turkananation.github.io/pqforge/llms-full.txt

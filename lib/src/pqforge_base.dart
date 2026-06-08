@@ -1,6 +1,8 @@
 export 'algorithms/pq_algorithms.dart';
+export 'cipher/pq_cipher_suite.dart';
+export 'cipher/pq_pointycastle_aead_engine.dart';
 export 'codecs/pq_envelope.dart';
-export 'core/crypto_service.dart';
+export 'hybrid/pq_hybrid_combiner.dart';
 export 'keys/pq_key_custody.dart';
 export 'keys/pq_keys.dart';
 export 'primitives/pq_primitives.dart';

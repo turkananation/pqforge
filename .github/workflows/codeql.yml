@@ -1,0 +1,31 @@
+name: CodeQL
+
+on:
+  push:
+    branches: ["main", "develop", "feat/hybrid-combiner-secure-session"]
+  pull_request:
+    branches: ["main", "develop", "feat/hybrid-combiner-secure-session"]
+  schedule:
+    - cron: "27 3 * * 2"
+
+permissions:
+  security-events: write
+  packages: read
+  actions: read
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze GitHub Actions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: actions
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4

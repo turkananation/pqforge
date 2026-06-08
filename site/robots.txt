@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://turkananation.github.io/pqforge/sitemap.xml

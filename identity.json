@@ -1,0 +1,160 @@
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "pqforge",
+  "alternateName": "pqforge: Post-Quantum Application Recipes",
+  "description": "pqforge turns pqcrypto ML-KEM and ML-DSA primitives into application-ready envelopes, signatures, hybrid key agreement, wrapped key custody, and a local/server CLI.",
+  "url": "https://turkananation.github.io/pqforge/",
+  "codeRepository": "https://github.com/turkananation/pqforge",
+  "programmingLanguage": "Dart",
+  "runtimePlatform": [
+    "Dart VM",
+    "Flutter",
+    "Serverpod",
+    "CLI"
+  ],
+  "license": "MIT",
+  "softwareVersion": "0.1.0",
+  "applicationCategory": "Cryptography composition library",
+  "keywords": [
+    "Dart post-quantum encryption",
+    "Flutter post-quantum encryption",
+    "ML-KEM file encryption",
+    "ML-DSA signatures",
+    "PQC CLI",
+    "post-quantum webhooks",
+    "post-quantum document signing",
+    "Serverpod PQC",
+    "hybrid key agreement",
+    "Argon2id key wrapping"
+  ],
+  "maintainer": {
+    "@type": "Organization",
+    "name": "Turkana Nation"
+  },
+  "sameAs": [
+    "https://github.com/turkananation/pqforge",
+    "https://pub.dev/packages/pqforge",
+    "https://pub.dev/documentation/pqforge/latest/",
+    "https://github.com/turkananation/pqforge/wiki"
+  ],
+  "capabilities": [
+    "ML-KEM-512/768/1024 KEM-DEM envelopes through pqcrypto",
+    "ML-DSA-44/65/87 detached signatures through pqcrypto",
+    "AES-256-GCM and ChaCha20-Poly1305 secure sessions",
+    "X25519 plus ML-KEM built-in hybrid key agreement",
+    "ML-DSA plus Ed25519 built-in hybrid signatures",
+    "Argon2id plus AES-GCM wrapped key custody",
+    "Named recipes for files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, and identity bindings",
+    "Universal CLI for local and server encryption, decryption, signing, and verification"
+  ],
+  "doesNotProvide": [
+    "CMVP/FIPS 140 module validation",
+    "A hard constant-time guarantee for Dart runtimes",
+    "A hard memory-erasure guarantee",
+    "Public-key trust, identity vetting, or legal e-signature policy",
+    "Replay stores, authorization policy, TLS, or secure infrastructure operations",
+    "RC4 or unauthenticated encryption"
+  ],
+  "evidenceBoundary": {
+    "allowed_claims": [
+      "FIPS 203-aligned ML-KEM through pqcrypto.",
+      "FIPS 204-aligned ML-DSA through pqcrypto.",
+      "Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key custody, signatures, recipes, and CLI workflows.",
+      "Best-effort zeroization in Dart."
+    ],
+    "forbidden_claims": [
+      "FIPS validated",
+      "FIPS 140 validated",
+      "CMVP validated",
+      "certified",
+      "hard constant-time Dart guarantee",
+      "hard memory-erasure guarantee",
+      "ML-KEM alone is secure transport",
+      "AES signs documents",
+      "RC4 is supported"
+    ],
+    "summary": "The package provides application composition around pqcrypto evidence. It is not a validated cryptographic module."
+  },
+  "recipes": [
+    {
+      "name": "Local File Vault",
+      "surface": "CLI: keygen, encrypt, decrypt",
+      "apps": "developer machines, backup jobs, admin laptops, server batch jobs",
+      "apis": "encryptFileBytes, decryptFileBytes, PqEnvelope",
+      "caveat": "Use wrapped secret keys and external storage policy."
+    },
+    {
+      "name": "Folder Archive",
+      "surface": "CLI: encrypt-folder, decrypt-folder",
+      "apps": "case files, release bundles, evidence folders, internal archives",
+      "apis": "encryptFolderEntry, decryptFolderEntry",
+      "caveat": "Each file is an independent envelope; design streaming for very large files."
+    },
+    {
+      "name": "Text Snippets",
+      "surface": "CLI: encrypt-text, decrypt-text, sign --kind text",
+      "apps": "notes, secrets, prompts, policy snippets, short messages",
+      "apis": "sealText, openText, signText, verifyText",
+      "caveat": "UTF-8 text only; binary data should use file or media recipes."
+    },
+    {
+      "name": "Media Assets",
+      "surface": "CLI: encrypt-media, decrypt-media, sign --kind media",
+      "apps": "photos, audio, video, PDFs, campaign media, identity images",
+      "apis": "sealMedia, openMedia, signMedia, verifyMedia",
+      "caveat": "Bind MIME type and media id; classify content before storing."
+    },
+    {
+      "name": "Document Signing",
+      "surface": "CLI: sign, verify",
+      "apps": "contracts, reports, certificates, approvals, policy documents",
+      "apis": "signDocument, verifyDocument",
+      "caveat": "Application owns legal policy and signer identity vetting."
+    },
+    {
+      "name": "Webhook Integrity",
+      "surface": "library",
+      "apps": "payment callbacks, audit delivery, server-to-server events",
+      "apis": "signWebhook, verifyWebhook",
+      "caveat": "Application owns replay windows and key publication."
+    },
+    {
+      "name": "Signed Tokens",
+      "surface": "library",
+      "apps": "API capabilities, admin actions, short-lived grants",
+      "apis": "issueToken, verifyToken",
+      "caveat": "Application owns revocation and authorization policy."
+    },
+    {
+      "name": "Private Email Payloads",
+      "surface": "library",
+      "apps": "encrypted mail bodies, secure notifications, outbound archive mail",
+      "apis": "sealEmail, openEmail",
+      "caveat": "Transport headers and metadata may remain visible unless the app hides them."
+    },
+    {
+      "name": "Government And Medical Records",
+      "surface": "library",
+      "apps": "public-sector records, patient records, registry payloads",
+      "apis": "encryptRecord, appendSignedLogEntry",
+      "caveat": "Application owns access control, retention, and audit policy."
+    },
+    {
+      "name": "Software Artifacts",
+      "surface": "CLI/library",
+      "apps": "release bundles, firmware, packages, configuration rollouts",
+      "apis": "signArtifact, verifyArtifact",
+      "caveat": "Sign version and target metadata to block rollback replay."
+    },
+    {
+      "name": "Hybrid Server Sessions",
+      "surface": "cryptography entrypoint",
+      "apps": "Serverpod, API services, local agents, backend handshakes",
+      "apis": "PqForgeHybridKeyAgreement, PqForgeSecureSession",
+      "caveat": "Authenticate public key bundles and design replay/session storage."
+    }
+  ],
+  "generatedBy": "Generated by dart run tool/visibility/generate_visibility.dart. Edit tool/visibility/visibility_manifest.json instead.",
+  "dateModified": "2026-06-07"
+}

@@ -372,6 +372,262 @@ void main() {
       );
     });
 
+    test('webhook signatures bind event type, timestamp, and payload', () {
+      final signer = forge.generateSignatureKeyPair();
+      final payload = _bytes('{"event":"paid","id":"evt_1"}');
+      final timestampMs = 1700000000000;
+      final signature = forge.signWebhook(
+        signerSecretKey: signer.secretKey,
+        eventType: 'invoice.paid',
+        timestampMs: timestampMs,
+        payload: payload,
+      );
+
+      expect(
+        forge.verifyWebhook(
+          signerPublicKey: signer.publicKey,
+          eventType: 'invoice.paid',
+          timestampMs: timestampMs,
+          payload: payload,
+          signature: signature,
+          nowMs: timestampMs + 1000,
+        ),
+        isTrue,
+      );
+      expect(
+        forge.verifyWebhook(
+          signerPublicKey: signer.publicKey,
+          eventType: 'invoice.refunded',
+          timestampMs: timestampMs,
+          payload: payload,
+          signature: signature,
+          nowMs: timestampMs + 1000,
+        ),
+        isFalse,
+      );
+      expect(
+        forge.verifyWebhook(
+          signerPublicKey: signer.publicKey,
+          eventType: 'invoice.paid',
+          timestampMs: timestampMs,
+          payload: payload,
+          signature: signature,
+          nowMs: timestampMs + 600000,
+        ),
+        isFalse,
+      );
+    });
+
+    test('email sealing binds message id into AAD', () {
+      final recipient = forge.generateKemKeyPair(
+        algorithm: PqKemAlgorithm.mlKem1024,
+      );
+      final envelope = forge.sealEmail(
+        recipient.publicKey,
+        _bytes('From: pqforge@example.test\nSubject: private\n'),
+        messageId: 'msg-1',
+        aad: _bytes('tenant:mail-a'),
+      );
+
+      expect(envelope.metadata['recipe'], 'email-seal');
+      expect(
+        forge.openEmail(
+          recipient.secretKey,
+          envelope,
+          aad: _bytes('tenant:mail-a'),
+        ),
+        _bytes('From: pqforge@example.test\nSubject: private\n'),
+      );
+      expect(
+        () => forge.openEmail(
+          recipient.secretKey,
+          envelope,
+          aad: _bytes('tenant:mail-b'),
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+    });
+
+    test('signed tokens verify, serialize, and expire', () {
+      final signer = forge.generateSignatureKeyPair(
+        algorithm: PqSignatureAlgorithm.mlDsa44,
+      );
+      final token = forge.issueToken(
+        signerSecretKey: signer.secretKey,
+        issuer: 'issuer-a',
+        subject: 'user-1',
+        issuedAtMs: 1700000000000,
+        expiresAtMs: 1700000300000,
+        claims: {
+          'roles': ['admin', 'operator'],
+          'tenant': 'county-a',
+        },
+        algorithm: PqSignatureAlgorithm.mlDsa44,
+      );
+      final restored = PqSignedToken.fromJson(token.toJson());
+
+      expect(
+        forge.verifyToken(signer.publicKey, restored, nowMs: 1700000001000),
+        isTrue,
+      );
+      expect(
+        forge.verifyToken(signer.publicKey, restored, nowMs: 1700000300000),
+        isFalse,
+      );
+
+      final tampered = PqSignedToken(
+        issuer: restored.issuer,
+        subject: restored.subject,
+        issuedAtMs: restored.issuedAtMs,
+        expiresAtMs: restored.expiresAtMs,
+        claims: {'tenant': 'county-b'},
+        signatureAlgorithm: restored.signatureAlgorithm,
+        signature: restored.signature,
+      );
+      expect(forge.verifyToken(signer.publicKey, tampered), isFalse);
+    });
+
+    test('text sealing and signing bind text id and AAD', () {
+      final recipient = forge.generateKemKeyPair();
+      final signer = forge.generateSignatureKeyPair();
+      final envelope = forge.sealText(
+        recipient.publicKey,
+        'private note',
+        textId: 'note-1',
+        aad: _bytes('tenant:demo'),
+        profile: PqForgeProfile.compact,
+        signerSecretKey: signer.secretKey,
+        signerKeyId: 'signer-a',
+      );
+      final signature = forge.signText(
+        signerSecretKey: signer.secretKey,
+        text: 'private note',
+        textId: 'note-1',
+      );
+
+      expect(envelope.metadata['recipe'], 'text-seal');
+      expect(
+        forge.openText(
+          recipient.secretKey,
+          envelope,
+          aad: _bytes('tenant:demo'),
+          signerPublicKey: signer.publicKey,
+        ),
+        'private note',
+      );
+      expect(
+        forge.verifyText(
+          signerPublicKey: signer.publicKey,
+          text: 'private note',
+          textId: 'note-1',
+          signature: signature,
+        ),
+        isTrue,
+      );
+      expect(
+        forge.verifyText(
+          signerPublicKey: signer.publicKey,
+          text: 'private note',
+          textId: 'note-2',
+          signature: signature,
+        ),
+        isFalse,
+      );
+      expect(
+        () => forge.openText(
+          recipient.secretKey,
+          envelope,
+          aad: _bytes('tenant:other'),
+          signerPublicKey: signer.publicKey,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+    });
+
+    test('media sealing and signing bind media id, MIME type, and bytes', () {
+      final recipient = forge.generateKemKeyPair();
+      final signer = forge.generateSignatureKeyPair();
+      final media = Uint8List.fromList([0, 1, 2, 3, 4, 5]);
+      final envelope = forge.sealMedia(
+        recipient.publicKey,
+        media,
+        mediaId: 'cover.png',
+        mimeType: 'image/png',
+        aad: _bytes('album:demo'),
+        profile: PqForgeProfile.compact,
+      );
+      final signature = forge.signMedia(
+        signerSecretKey: signer.secretKey,
+        mediaId: 'cover.png',
+        mimeType: 'image/png',
+        mediaBytes: media,
+      );
+
+      expect(envelope.metadata['recipe'], 'media-seal');
+      expect(
+        forge.openMedia(
+          recipient.secretKey,
+          envelope,
+          aad: _bytes('album:demo'),
+        ),
+        media,
+      );
+      expect(
+        forge.verifyMedia(
+          signerPublicKey: signer.publicKey,
+          mediaId: 'cover.png',
+          mimeType: 'image/png',
+          mediaBytes: media,
+          signature: signature,
+        ),
+        isTrue,
+      );
+      expect(
+        forge.verifyMedia(
+          signerPublicKey: signer.publicKey,
+          mediaId: 'cover.png',
+          mimeType: 'image/jpeg',
+          mediaBytes: media,
+          signature: signature,
+        ),
+        isFalse,
+      );
+    });
+
+    test('folder entry encryption binds relative path into AAD', () {
+      final recipient = forge.generateKemKeyPair();
+      final envelope = forge.encryptFolderEntry(
+        recipient.publicKey,
+        _bytes('folder payload'),
+        relativePath: 'docs/report.txt',
+        aad: _bytes('archive:demo'),
+        profile: PqForgeProfile.compact,
+      );
+
+      expect(envelope.metadata['recipe'], 'folder-entry-encryption');
+      expect(envelope.metadata['relativePath'], 'docs/report.txt');
+      expect(
+        forge.decryptFolderEntry(
+          recipient.secretKey,
+          envelope,
+          aad: _bytes('archive:demo'),
+        ),
+        _bytes('folder payload'),
+      );
+      final moved = PqEnvelope.fromJson({
+        ...envelope.toJson(),
+        'metadata': {...envelope.metadata, 'relativePath': 'docs/other.txt'},
+      });
+      expect(
+        () => forge.decryptFolderEntry(
+          recipient.secretKey,
+          moved,
+          aad: _bytes('archive:demo'),
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+    });
+
     test('government and medical records use file/data-at-rest helpers', () {
       final vault = forge.generateKemKeyPair(
         algorithm: PqKemAlgorithm.mlKem1024,

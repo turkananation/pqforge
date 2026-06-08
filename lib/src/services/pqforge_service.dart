@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import '../algorithms/pq_algorithms.dart';
 import '../codecs/pq_envelope.dart';
+import '../hybrid/pq_hybrid_combiner.dart';
 import '../keys/pq_keys.dart';
 import '../primitives/pq_primitives.dart';
 import '../recipes/pq_recipes.dart';
@@ -380,6 +381,405 @@ class PqForge {
     );
   }
 
+  Uint8List signText({
+    required Uint8List signerSecretKey,
+    required String text,
+    required String textId,
+    PqSignatureAlgorithm? algorithm,
+  }) {
+    final textBytes = PqBytes.utf8Bytes(text);
+    return sign(
+      signerSecretKey,
+      PqRecipeMessages.text(
+        textId: textId,
+        encoding: 'utf-8',
+        textBytes: textBytes,
+      ),
+      algorithm: algorithm,
+      context: PqBytes.utf8Bytes('pqforge/text/v1'),
+      preHash: true,
+    );
+  }
+
+  bool verifyText({
+    required Uint8List signerPublicKey,
+    required String text,
+    required String textId,
+    required Uint8List signature,
+    PqSignatureAlgorithm? algorithm,
+  }) {
+    final textBytes = PqBytes.utf8Bytes(text);
+    return verify(
+      signerPublicKey,
+      PqRecipeMessages.text(
+        textId: textId,
+        encoding: 'utf-8',
+        textBytes: textBytes,
+      ),
+      signature,
+      algorithm: algorithm,
+      context: PqBytes.utf8Bytes('pqforge/text/v1'),
+      preHash: true,
+    );
+  }
+
+  Uint8List signMedia({
+    required Uint8List signerSecretKey,
+    required String mediaId,
+    required String mimeType,
+    required Uint8List mediaBytes,
+    PqSignatureAlgorithm? algorithm,
+  }) {
+    return sign(
+      signerSecretKey,
+      PqRecipeMessages.media(
+        mediaId: mediaId,
+        mimeType: mimeType,
+        mediaBytes: mediaBytes,
+      ),
+      algorithm: algorithm,
+      context: PqBytes.utf8Bytes('pqforge/media/v1'),
+      preHash: true,
+    );
+  }
+
+  bool verifyMedia({
+    required Uint8List signerPublicKey,
+    required String mediaId,
+    required String mimeType,
+    required Uint8List mediaBytes,
+    required Uint8List signature,
+    PqSignatureAlgorithm? algorithm,
+  }) {
+    return verify(
+      signerPublicKey,
+      PqRecipeMessages.media(
+        mediaId: mediaId,
+        mimeType: mimeType,
+        mediaBytes: mediaBytes,
+      ),
+      signature,
+      algorithm: algorithm,
+      context: PqBytes.utf8Bytes('pqforge/media/v1'),
+      preHash: true,
+    );
+  }
+
+  Uint8List signWebhook({
+    required Uint8List signerSecretKey,
+    required String eventType,
+    required int timestampMs,
+    required Uint8List payload,
+    PqSignatureAlgorithm? algorithm,
+  }) {
+    return sign(
+      signerSecretKey,
+      PqRecipeMessages.webhook(
+        eventType: eventType,
+        timestampMs: timestampMs,
+        payload: payload,
+      ),
+      algorithm: algorithm,
+      context: PqBytes.utf8Bytes('pqforge/webhook/v1'),
+      preHash: true,
+    );
+  }
+
+  bool verifyWebhook({
+    required Uint8List signerPublicKey,
+    required String eventType,
+    required int timestampMs,
+    required Uint8List payload,
+    required Uint8List signature,
+    PqSignatureAlgorithm? algorithm,
+    int? nowMs,
+    int maxSkewMs = 300000,
+  }) {
+    if (nowMs != null && (nowMs - timestampMs).abs() > maxSkewMs) {
+      return false;
+    }
+    return verify(
+      signerPublicKey,
+      PqRecipeMessages.webhook(
+        eventType: eventType,
+        timestampMs: timestampMs,
+        payload: payload,
+      ),
+      signature,
+      algorithm: algorithm,
+      context: PqBytes.utf8Bytes('pqforge/webhook/v1'),
+      preHash: true,
+    );
+  }
+
+  PqEnvelope sealText(
+    Uint8List recipientPublicKey,
+    String text, {
+    required String textId,
+    Uint8List? aad,
+    Map<String, Object?> metadata = const {},
+    PqForgeProfile profile = PqForgeProfile.maximum,
+    Uint8List? signerSecretKey,
+    PqSignatureAlgorithm? signatureAlgorithm,
+    String? signerKeyId,
+  }) {
+    return encrypt(
+      recipientPublicKey,
+      PqBytes.utf8Bytes(text),
+      profile: profile,
+      aad: PqRecipeMessages.textAad(textId: textId, aad: aad),
+      metadata: {
+        'recipe': 'text-seal',
+        'textId': textId,
+        'encoding': 'utf-8',
+        ...metadata,
+      },
+      signerSecretKey: signerSecretKey,
+      signatureAlgorithm: signatureAlgorithm,
+      signerKeyId: signerKeyId,
+    );
+  }
+
+  String openText(
+    Uint8List recipientSecretKey,
+    PqEnvelope envelope, {
+    Uint8List? aad,
+    Uint8List? signerPublicKey,
+  }) {
+    final textId = envelope.metadata['textId'];
+    if (textId is! String || textId.isEmpty) {
+      throw const PqForgeException(
+        'text envelope metadata must include textId',
+      );
+    }
+    final encoding = envelope.metadata['encoding'] as String? ?? 'utf-8';
+    if (encoding != 'utf-8') {
+      throw PqForgeException('Unsupported text envelope encoding: $encoding');
+    }
+    final plaintext = decrypt(
+      recipientSecretKey,
+      envelope,
+      aad: PqRecipeMessages.textAad(textId: textId, aad: aad),
+      signerPublicKey: signerPublicKey,
+    );
+    return utf8.decode(plaintext);
+  }
+
+  PqEnvelope sealEmail(
+    Uint8List recipientPublicKey,
+    Uint8List emailBytes, {
+    required String messageId,
+    Uint8List? aad,
+    Map<String, Object?> metadata = const {},
+    PqForgeProfile profile = PqForgeProfile.maximum,
+    Uint8List? signerSecretKey,
+    PqSignatureAlgorithm? signatureAlgorithm,
+    String? signerKeyId,
+  }) {
+    return encrypt(
+      recipientPublicKey,
+      emailBytes,
+      profile: profile,
+      aad: PqRecipeMessages.emailAad(messageId: messageId, aad: aad),
+      metadata: {'recipe': 'email-seal', 'messageId': messageId, ...metadata},
+      signerSecretKey: signerSecretKey,
+      signatureAlgorithm: signatureAlgorithm,
+      signerKeyId: signerKeyId,
+    );
+  }
+
+  PqEnvelope sealMedia(
+    Uint8List recipientPublicKey,
+    Uint8List mediaBytes, {
+    required String mediaId,
+    required String mimeType,
+    Uint8List? aad,
+    Map<String, Object?> metadata = const {},
+    PqForgeProfile profile = PqForgeProfile.maximum,
+    Uint8List? signerSecretKey,
+    PqSignatureAlgorithm? signatureAlgorithm,
+    String? signerKeyId,
+  }) {
+    return encrypt(
+      recipientPublicKey,
+      mediaBytes,
+      profile: profile,
+      aad: PqRecipeMessages.mediaAad(
+        mediaId: mediaId,
+        mimeType: mimeType,
+        aad: aad,
+      ),
+      metadata: {
+        'recipe': 'media-seal',
+        'mediaId': mediaId,
+        'mimeType': mimeType,
+        'contentLength': mediaBytes.length,
+        ...metadata,
+      },
+      signerSecretKey: signerSecretKey,
+      signatureAlgorithm: signatureAlgorithm,
+      signerKeyId: signerKeyId,
+    );
+  }
+
+  Uint8List openMedia(
+    Uint8List recipientSecretKey,
+    PqEnvelope envelope, {
+    Uint8List? aad,
+    Uint8List? signerPublicKey,
+  }) {
+    final mediaId = envelope.metadata['mediaId'];
+    final mimeType = envelope.metadata['mimeType'];
+    if (mediaId is! String || mediaId.isEmpty) {
+      throw const PqForgeException(
+        'media envelope metadata must include mediaId',
+      );
+    }
+    if (mimeType is! String || mimeType.isEmpty) {
+      throw const PqForgeException(
+        'media envelope metadata must include mimeType',
+      );
+    }
+    return decrypt(
+      recipientSecretKey,
+      envelope,
+      aad: PqRecipeMessages.mediaAad(
+        mediaId: mediaId,
+        mimeType: mimeType,
+        aad: aad,
+      ),
+      signerPublicKey: signerPublicKey,
+    );
+  }
+
+  Uint8List openEmail(
+    Uint8List recipientSecretKey,
+    PqEnvelope envelope, {
+    Uint8List? aad,
+    Uint8List? signerPublicKey,
+  }) {
+    final messageId = envelope.metadata['messageId'];
+    if (messageId is! String || messageId.isEmpty) {
+      throw const PqForgeException(
+        'email envelope metadata must include messageId',
+      );
+    }
+    return decrypt(
+      recipientSecretKey,
+      envelope,
+      aad: PqRecipeMessages.emailAad(messageId: messageId, aad: aad),
+      signerPublicKey: signerPublicKey,
+    );
+  }
+
+  PqSignedToken issueToken({
+    required Uint8List signerSecretKey,
+    required String issuer,
+    required String subject,
+    required int issuedAtMs,
+    required int expiresAtMs,
+    Map<String, Object?> claims = const {},
+    PqSignatureAlgorithm? algorithm,
+  }) {
+    final sigAlg = algorithm ?? PqSignatureAlgorithm.mlDsa44;
+    final message = PqRecipeMessages.token(
+      issuer: issuer,
+      subject: subject,
+      issuedAtMs: issuedAtMs,
+      expiresAtMs: expiresAtMs,
+      claims: claims,
+    );
+    final signature = sign(
+      signerSecretKey,
+      message,
+      algorithm: sigAlg,
+      context: PqBytes.utf8Bytes('pqforge/signed-token/v1'),
+    );
+    return PqSignedToken(
+      issuer: issuer,
+      subject: subject,
+      issuedAtMs: issuedAtMs,
+      expiresAtMs: expiresAtMs,
+      claims: claims,
+      signatureAlgorithm: sigAlg,
+      signature: signature,
+    );
+  }
+
+  bool verifyToken(
+    Uint8List signerPublicKey,
+    PqSignedToken token, {
+    int? nowMs,
+  }) {
+    if (nowMs != null &&
+        (nowMs < token.issuedAtMs || nowMs >= token.expiresAtMs)) {
+      return false;
+    }
+    return verify(
+      signerPublicKey,
+      token.message(),
+      token.signature,
+      algorithm: token.signatureAlgorithm,
+      context: PqBytes.utf8Bytes('pqforge/signed-token/v1'),
+    );
+  }
+
+  PqEnvelope encryptFolderEntry(
+    Uint8List recipientPublicKey,
+    Uint8List fileBytes, {
+    required String relativePath,
+    Uint8List? aad,
+    Map<String, Object?> metadata = const {},
+    PqForgeProfile profile = PqForgeProfile.maximum,
+    Uint8List? signerSecretKey,
+    PqSignatureAlgorithm? signatureAlgorithm,
+    String? signerKeyId,
+  }) {
+    final fileName = relativePath.split('/').last;
+    return encrypt(
+      recipientPublicKey,
+      fileBytes,
+      profile: profile,
+      aad: PqRecipeMessages.folderEntryAad(
+        relativePath: relativePath,
+        aad: aad,
+      ),
+      metadata: {
+        'recipe': 'folder-entry-encryption',
+        'fileName': fileName,
+        'relativePath': relativePath,
+        'contentLength': fileBytes.length,
+        ...metadata,
+      },
+      signerSecretKey: signerSecretKey,
+      signatureAlgorithm: signatureAlgorithm,
+      signerKeyId: signerKeyId,
+    );
+  }
+
+  Uint8List decryptFolderEntry(
+    Uint8List recipientSecretKey,
+    PqEnvelope envelope, {
+    Uint8List? aad,
+    Uint8List? signerPublicKey,
+  }) {
+    final relativePath = envelope.metadata['relativePath'];
+    if (relativePath is! String || relativePath.isEmpty) {
+      throw const PqForgeException(
+        'folder envelope metadata must include relativePath',
+      );
+    }
+    return decrypt(
+      recipientSecretKey,
+      envelope,
+      aad: PqRecipeMessages.folderEntryAad(
+        relativePath: relativePath,
+        aad: aad,
+      ),
+      signerPublicKey: signerPublicKey,
+    );
+  }
+
   PqEnvelope encryptRecord(
     Uint8List recipientPublicKey,
     Uint8List payload, {
@@ -666,14 +1066,18 @@ class PqForge {
       pqForgeDefaultDeploymentSaltBytes,
     );
     requireLength('transcriptHash', transcriptHash, 32);
-    return PqSymmetricPrimitives.hkdfSha256(
-      ikm: PqBytes.concat([classicalSharedSecret, latticeSharedSecret]),
-      salt: PqBytes.concat([deploymentSalt, transcriptHash]),
+    // Delegates to the profile-agile PqForgeCombiner. The balanced profile
+    // pins SHA-256, keeping this byte-compatible with prior releases while the
+    // combiner owns the canonical classical||post-quantum join and wiping.
+    return const PqForgeCombiner.balanced().combine(
+      classicalSharedSecret: classicalSharedSecret,
+      postQuantumSharedSecret: latticeSharedSecret,
       info: PqBytes.concat([
         PqBytes.utf8Bytes(profile.infoPrefix),
         ?roleContext,
       ]),
-      outputBytes: outputBytes ?? profile.sessionKeyBytes,
+      salt: PqBytes.concat([deploymentSalt, transcriptHash]),
+      length: outputBytes ?? profile.sessionKeyBytes,
     );
   }
 
