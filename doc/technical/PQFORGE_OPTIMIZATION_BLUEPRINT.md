@@ -2,486 +2,538 @@
 
 **From:** Turkana Nation
 
-**Status:** Mandatory Production Engineering Refactoring Mandate
+**Status:** Mandatory Production Engineering Refactoring Mandate — **vetted against source `2026-06-08`**
 
-**Implementation Version:** v.0.1.1
+**Implementation Version:** v.0.1.2 (ruthless vetting pass)
+
 ---
 
-## EXECUTIVE CRISIS CRITIQUE & SYSTEM BOUNDARIES
+## 0. VETTING VERDICT & EVIDENCE LEDGER
 
-A deep review of the `pqforge` repository reveals that while the package is cryptographically clean for small, synchronous memory-bound operations, its current execution paths will fail when subjected to gigabyte-scale inputs or high-concurrency environments on mobile (iOS/Android) and low-power embedded chips.
+This revision is a **ground-truth correction** of the v0.1.1 mandate. The original
+diagnosis was directionally useful in two places (chunked streaming; isolate
+offload) but **factually wrong in its single most expensive prescription** and
+**silent on the worst defect actually in the tree**. Before any engineering
+starts, the team must internalise what the code really does — not what the prose
+imagined.
 
-The engine relies on **monolithic byte-array transfers** and **nested buffer copying**. Ingestion pipelines such as `encryptFileBytes` and `PqEnvelope.toBinary()` allocate short-lived arrays on the managed Dart heap. This design triggers high garbage collection (GC) allocation spikes, memory fragmentation, thread stalls, and out-of-memory (OOM) failures under intense data loads.
+### 0.1 The three corrections that change the whole plan
 
-Furthermore, executing NIST Level 5 primitives (**ML-KEM-1024** and **ML-DSA-87**) synchronously inside single-threaded structures starves the system runtime loop. This document provides the engineering refactoring requirements necessary to convert `pqforge` into an production-grade, zero-copy, streaming post-quantum cryptographic engine.
+1. **There is no FFI bridge to optimise. `pqcrypto` 0.3.1 is 100% pure Dart on
+   PointyCastle.** The v0.1.1 "Native Bridging (FFI) & Marshalling Overhead"
+   section critiques a Dart↔C boundary **that does not exist anywhere in the
+   dependency graph** (`grep -r dart:ffi` over `pqcrypto`, `pqforge`,
+   `pointycastle`, `cryptography` → zero hits). The real lattice bottleneck is
+   the **opposite** of marshalling: ML-KEM-1024 / ML-DSA-87 run as scalar,
+   non-SIMD, pure-Dart NTT arithmetic. FFI is the *cure* the old doc mislabelled
+   as the *disease*. **This inverts Section 3 entirely.**
+
+2. **The worst large-file defect is undiagnosed: signed envelopes ML-DSA-sign
+   the entire ciphertext, not a digest.** `PqForge.encrypt`
+   ([lib/src/services/pqforge_service.dart:159](../../lib/src/services/pqforge_service.dart#L159))
+   feeds `envelopeSigningMessage(unsigned)`
+   ([:1144](../../lib/src/services/pqforge_service.dart#L1144)) — which
+   `lengthPrefixed`-concatenates the full `payload` into a fresh buffer — into
+   `sign(..., preHash: false)`. A signed 1 GB media seal therefore allocates a
+   **second** gigabyte buffer and streams a gigabyte through pure-Dart SHAKE-256.
+   v0.1.1 never mentions this. It is the headline fix.
+
+3. **A faster AEAD engine already exists in-tree but is wired to the wrong path.**
+   `PqForgeCryptographyAeadEngine` + `PqForgeSecureSession` exist, but
+   `PqForge.encrypt` / `encryptFileBytes` / `sealMedia` / `encryptFolderEntry`
+   **hardwire** `PqSymmetricPrimitives.aesGcmEncrypt` → PointyCastle pure-Dart GCM
+   ([pqforge_service.dart:135](../../lib/src/services/pqforge_service.dart#L135)).
+   The file/media/folder paths *never touch the swappable engine*. There is no
+   "fallback to PointyCastle" — the bulk path is **unconditionally** PointyCastle.
+
+### 0.2 Evidence Ledger — every v0.1.1 claim, adjudicated
+
+| # | v0.1.1 Claim | Verdict | Ground truth (file:line) |
+| --- | --- | --- | --- |
+| C1 | `pqcrypto` has FFI marshalling overhead | **FALSE** | `pqcrypto` 0.3.1 is pure Dart on `pointycastle`; zero `dart:ffi` in the tree |
+| C2 | Symmetric ops "drop back to PointyCastle" when native is absent | **FALSE** | Envelope path is *always* PointyCastle ([service:135](../../lib/src/services/pqforge_service.dart#L135)); native engine only reachable via `PqForgeSecureSession` |
+| C3 | `package:cryptography` already uses ARM Neon / Apple crypto ext | **FALSE (today)** | `Cryptography.defaultInstance = BrowserCryptography.defaultInstance` → pure Dart on VM/mobile. HW accel needs `cryptography_flutter` + `FlutterCryptography.enable()` — **neither present** |
+| C4 | CLI uses `final files = await _listFiles(inputDir)` | **FABRICATED** | No `_listFiles`. Real: `listFiles()` ([support:218](../../bin/src/support.dart#L218)) drains a `Stream` into a sorted `List`; loop at [pqc_commands:458](../../bin/src/pqc_commands.dart#L458) |
+| C5 | `lengthPrefixed` "24 allocations" cause the 3 GB blow-up | **MISLEADING** | The 24 are tiny `uint32(4)` headers ([primitives:56](../../lib/src/primitives/pq_primitives.dart#L56)). The real blow-up is **full-payload copies** (see M-series) |
+| C6 | `toBinary()` JSON metadata strains the GC at scale | **TRUE but minor** | `jsonEncode(metadata)` at [envelope:68](../../lib/src/codecs/pq_envelope.dart#L68); negligible vs payload, real only for many tiny folder files |
+| C7 | Chunked per-block-AEAD streaming is required | **TRUE — keep** | No streaming exists; whole-file one-shot GCM only |
+| C8 | Random per-block IVs are unsafe; derive deterministically | **TRUE, wrong reason** | Risk at 1 MB blocks/per-file key is truncation/reorder + the 2³² ceiling, *not* the birthday bound; and `IV ⊕ seq` is a weaker idiom than `salt‖counter` |
+| C9 | mmap + in-place stream cipher for file I/O | **REJECT — unsafe & self-contradictory** | Unauthenticated (contradicts §1), AEAD output > input so in-place is impossible, no crash atomicity, non-portable to iOS |
+| C10 | Apple AMX / crypto-ext SIMD accelerate Kyber/Dilithium math | **FALSE** | AMX is private/undocumented; ARMv8 Crypto Ext accelerates **AES/SHA**, not lattice NTT (that's generic NEON, a different unit) |
+| C11 | `maximum` (1024/87) is the default for big files | **TRUE — strong point** | `encryptFileBytes`/`sealMedia`/`encryptFolderEntry` default `PqForgeProfile.maximum` ([service:327](../../lib/src/services/pqforge_service.dart#L327),[:598](../../lib/src/services/pqforge_service.dart#L598),[:733](../../lib/src/services/pqforge_service.dart#L733)); CLI `--profile` defaults `maximum` ([support:36](../../bin/src/support.dart#L36)) |
+| C12 | ML-KEM-1024 = 4×4 matrix, ~77% more than 768's 3×3 | **HALF-TRUE** | k: 768→3, 1024→4; matrix entries 9→16 = +78% *for the matmul step only*. End-to-end encaps is ~1.3–1.6×, not a flat 77% |
+
+### 0.3 Defects v0.1.1 missed (the real backlog)
+
+| # | Defect | Evidence | Cost on 1 GB |
+| --- | --- | --- | --- |
+| M1 | Signed envelope signs the **whole ciphertext** | [service:159](../../lib/src/services/pqforge_service.dart#L159)+[:1144](../../lib/src/services/pqforge_service.dart#L1144), `preHash:false` | +1 GB buffer + 1 GB through pure-Dart SHAKE |
+| M2 | `Uint8List.fromList(await f.readAsBytes())` everywhere | [pqc_commands:288](../../bin/src/pqc_commands.dart#L288),[:461](../../bin/src/pqc_commands.dart#L461),[:795](../../bin/src/pqc_commands.dart#L795),[:975](../../bin/src/pqc_commands.dart#L975); [support:170](../../bin/src/support.dart#L170) | redundant full-file copy (`readAsBytes` already returns `Uint8List`) |
+| M3 | `PqEnvelope` ctor deep-copies `payload`; signed path builds envelope **twice** | [envelope:23-25](../../lib/src/codecs/pq_envelope.dart#L23) | 2× payload copies in ctor + 1× in `concat` |
+| M4 | Entire pipeline synchronous on caller isolate | [service:113](../../lib/src/services/pqforge_service.dart#L113) | multi-second main-isolate stall → ANR/jank |
+| M5 | One-shot GCM tag ⇒ decrypt also needs whole file in RAM; no streaming verify; 64 GiB AES-GCM ceiling | [service:314](../../lib/src/services/pqforge_service.dart#L314) | OOM on **decrypt** too; >64 GiB impossible |
+
+**Peak resident for a signed 1 GB seal today ≈ 4–5× payload:** input (M2 doubles it) → GCM output → unsigned-envelope copy (M3) → signing-message concat (M1) → signed-envelope copy (M3). The "3 GB for 1 GB" figure in v0.1.1 *under*-counts the signed path and blames the wrong line.
+
+### 0.4 What the code already does well (do not regress)
+
+The defensive copies (M3), `constantTimeEquals`
+([primitives:76](../../lib/src/primitives/pq_primitives.dart#L76)), key
+zeroization on `dispose`/failure
+([secure_session:142](../../lib/src/cipher/pq_secure_session.dart#L142),
+[pointycastle_engine:113](../../lib/src/cipher/pq_pointycastle_aead_engine.dart#L113)),
+and the zero-copy `Uint8List.sublistView` decrypt views
+([secure_session:131](../../lib/src/cipher/pq_secure_session.dart#L131)) are
+**deliberate misuse-resistance**, not waste. The fix is to add a *streaming path*
+that bypasses whole-payload materialisation — **not** to strip safety from the
+existing small-message path.
 
 ---
 
 ## 1. GIGABYTE-SCALE MEMORY MANAGEMENT & CHUNKED AEAD STREAMING
 
-### Deep Critique of the Data Ingestion Path
+### 1.1 The real ingestion path (corrected)
 
-The core runtime vulnerability is centered in the `PqForge.encrypt` method and its serialization layer. When archiving files or streaming media payloads via the CLI or cookbook interfaces, the code expects a flat, contiguous byte slice:
-
-```dart
-// lib/src/services/pqforge_service.dart
-PqEnvelope encrypt(Uint8List recipientPublicKey, Uint8List plaintext, { ... })
+Every bulk entry point funnels into one synchronous method:
 
 ```
-
-To build this envelope, the system executes an encapsulation routine, calls `PqSymmetricPrimitives.aesGcmEncrypt` on the entire payload, and packages the results into a `PqEnvelope` instance. Inside `PqEnvelope.toBinary()`, the fields are parsed via `PqBytes.lengthPrefixed`:
-
-```dart
-// lib/src/primitives/pq_primitives.dart
-static Uint8List lengthPrefixed(Iterable<Uint8List> fields) {
-  final chunks = <Uint8List>[];
-  for (final field in fields) {
-    chunks..add(uint32(field.length))..add(field);
-  }
-  return concat(chunks);
-}
-
+CLI encrypt/-media/-folder ─▶ sealMedia / encryptFolderEntry / encrypt
+                                   └─▶ PqForge.encrypt  (service:113)
+                                         ├─ PqKemPrimitives.encapsulate   (KEM, fixed cost)
+                                         ├─ _kemDemKey  → HKDF-SHA256       (fixed cost)
+                                         ├─ aesGcmEncrypt(WHOLE plaintext)  (PointyCastle, pure Dart)  ← copy #1 (ct)
+                                         ├─ PqEnvelope(...)  payload=copy() (envelope:24)              ← copy #2
+                                         ├─ [signed] envelopeSigningMessage → concat(payload)          ← copy #3
+                                         ├─ [signed] ML-DSA.sign(whole msg, preHash:false)             ← 1 GB hash
+                                         └─ [signed] PqEnvelope(...) again  payload=copy()              ← copy #4
+        writeEnvelope ─▶ toBinary() ─▶ lengthPrefixed ─▶ concat(payload)                               ← copy #5
 ```
 
-This loop performs **24 independent memory allocations** to package the 12 fields of a binary envelope. The underlying `concat` routine re-iterates over the entire structure, copying all bytes into a newly allocated array. For a 1GB media file, this design triggers over 3GB of short-lived allocations, leading to instant OOM errors on standard mobile operating systems.
+The contiguous `Uint8List` requirement is real, but the OOM driver is **payload
+copy multiplicity (M1–M3, M5)**, not the 24 length-prefix headers (C5).
 
-### Zero-Copy Chunk-Based Streaming Design
+### 1.2 Target: bounded-memory streaming AEAD (≤ a few MB resident)
 
-To process infinite data inside a deterministic memory window ($\le 2\text{MB}$), the library must implement a streaming architecture. Because an AEAD verification tag can only protect data that has been fully processed, streaming unauthenticated plaintext is prohibited. The dataset must be structured as a sequence of authenticated blocks.
-
-The refactored file layout replaces the single global payload array with a structured master header containing the KEM-DEM metadata, followed by a sequence of independent cryptographically bound blocks:
+Because an AEAD tag only protects fully-processed data, we keep v0.1.1's correct
+core: a master header followed by a sequence of **independently authenticated
+frames**. This is the proven libsodium `secretstream` / Tink Streaming-AEAD / age
+construction.
 
 ```text
-+---------------------------------------------------------------------------------------------------------+
-|                                    Streamed PqEnvelope Wire Layout                                      |
-+--------------------------+-----------------------+------------------------+-----------------------------+
-| Master Envelope Header   | Block 0 Header        | Block 0 Ciphertext     | Block 0 AEAD Tag            |
-| (KEM Ciphertext + Meta)  | [Length(4B)][Seq(4B)] | (Fixed Size: 1MB chunk)| (16 Bytes standard)         |
-+--------------------------+-----------------------+------------------------+-----------------------------+
-
++==================== pqforge streaming envelope (.pqfs) ====================+
+| MasterHeader: magic"PQFS" | ver | profile | kemAlg | sigAlg              |
+|              | KEM ciphertext | nonceSalt(4B) | frameSize(4B) | meta     |
+|              | headerSig? (ML-DSA over H(header), preHash) ── O(1) in N   |
++---------------------------------------------------------------------------+
+| Frame[i] (i = 0..n-1):  len(4B) | seq(8B) | ciphertext(≤frameSize) | tag(16B) |
+|   key   = per-file DEM key (HKDF, already derived once)                   |
+|   nonce = nonceSalt(4B) ‖ uint64(seq)            (unique under per-file key)|
+|   aad   = H(MasterHeader) ‖ uint64(seq) ‖ uint8(isFinal)                   |
++===========================================================================+
 ```
 
-### Memory Duplication Map & Elimination Strategies
+Why this framing:
 
-1. **Symmetric Engine Input Copies:** `PqSymmetricPrimitives.aesGcmEncrypt` instantiates PointyCastle's `GCMBlockCipher` and calls `processBytes`. PointyCastle creates internal heap arrays unless it is explicitly supplied with destination arrays. The codebase must transition to using shared destination memory views via `Uint8List.view()`.
-2. **Elimination of JSON Metadata Overhead:** The serialization path within `toBinary()` converts the metadata map to a JSON string via `jsonEncode` before packaging. For structured pipelines like folder archiving (`encrypt-folder`), parsing metadata strings for thousands of individual files places significant strain on the Dart garbage collector. Metadata fields must be migrated to a packed binary format written directly to the byte layout.
+- **Per-file fresh DEM key** is already produced by `_kemDemKey`
+  ([service:1160](../../lib/src/services/pqforge_service.dart#L1160)); a 4-byte
+  salt + 8-byte counter nonce is collision-free under it. This fixes C8 *without*
+  the fragile `IV ⊕ seq` idiom — and without invoking the (irrelevant at 1 MB
+  blocks) birthday argument.
+- **`seq` + `isFinal` bound into AAD** make truncation, reordering, duplication,
+  and splicing forgeable-proof. This is the part v0.1.1 got right; keep it.
+- **Header signed over `H(header)` with `preHash:true`** makes signature cost
+  independent of file size (fixes M1).
+
+### 1.3 Reference writer (no FFI, no mmap, reuses existing engine)
+
+Slots onto the existing `PqForgeAeadEngine` contract
+([pq_cipher_suite.dart:104](../../lib/src/cipher/pq_cipher_suite.dart#L104)):
+
+```dart
+/// Streams plaintext from `source` to `sink` as authenticated frames.
+/// Peak heap ≈ 2 × frameSize, independent of file length.
+Future<void> writeStreamingEnvelope({
+  required RandomAccessFile source,
+  required IOSink sink,
+  required PqForgeAeadEngine engine,   // pure-Dart OR cryptography_flutter
+  required Uint8List demKey,           // from _kemDemKey, per file
+  required Uint8List masterHeader,     // already serialized (KEM ct + meta)
+  int frameSize = 1 << 20,             // 1 MiB
+}) async {
+  sink.add(masterHeader);
+  final headerHash = PqBytes.sha256(masterHeader);
+  final nonceSalt = PqBytes.randomBytes(4);
+  final buf = Uint8List(frameSize);              // ONE reused read buffer
+  final total = await source.length();
+  var seq = 0, read = 0;
+
+  while (read < total) {
+    final n = await source.readInto(buf);        // zero extra copy; fills `buf`
+    if (n <= 0) break;
+    final isFinal = (read + n) >= total;
+    final view = Uint8List.sublistView(buf, 0, n); // view, not copy
+    final nonce = Uint8List(12)
+      ..setRange(0, 4, nonceSalt)
+      ..buffer.asByteData().setUint64(4, seq, Endian.big);
+    final aad = Uint8List(headerHash.length + 9)
+      ..setRange(0, headerHash.length, headerHash)
+      ..buffer.asByteData().setUint64(headerHash.length, seq, Endian.big)
+      ..[headerHash.length + 8] = isFinal ? 1 : 0;
+    final body = await engine.seal(             // ciphertext‖tag
+        key: demKey, nonce: nonce, plaintext: view, aad: aad);
+    final frameHdr = Uint8List(12)
+      ..buffer.asByteData().setUint32(0, body.length, Endian.big)
+      ..buffer.asByteData().setUint64(4, seq, Endian.big);
+    sink..add(frameHdr)..add(body);
+    read += n; seq++;
+  }
+  await sink.flush();
+}
+```
+
+Decrypt is the mirror: read 12-byte frame header, read `len` bytes, verify with
+the reconstructed AAD, **release plaintext frame-by-frame** (fixes M5 on the
+decrypt side — the receiver never holds the whole file either).
+
+### 1.4 Eliminate the copies on the small-message path too (cheap wins now)
+
+- **M2:** delete every `Uint8List.fromList(await file.readAsBytes())` →
+  `await file.readAsBytes()` already returns a `Uint8List`. Mechanical, safe.
+- **M1:** change envelope signing to sign `H(headerFields ‖ H(ciphertext))` with
+  `preHash:true`. Backward-incompatible on the wire ⇒ gate behind envelope
+  `version: 2`.
+- **M3:** for the *streaming* path, never build a `PqEnvelope` value object around
+  the payload at all — write header then frames straight to the sink. Keep the
+  value-object + defensive copies only for the legacy small-message API.
 
 ---
 
 ## 2. MULTI-CORE PARALLELISM & DART ISOLATES
 
-### Event Loop Starvation Analysis
+### 2.1 Corrected problem statement
 
-Lattice-based operations feature intensive polynomial matrix math. Performing an ML-KEM-1024 encapsulation or an ML-DSA-87 signature computation requires significant processor cycles.
+The pipeline is fully synchronous (M4): on Flutter, encrypting one large file
+blocks the UI isolate for seconds. That is the real latency bug — *not* a lack of
+N-core fan-out. **Fix the offload before the fan-out.**
 
-Executing these routines synchronously within the main thread stops asynchronous execution handles, drops rendering frames, and creates noticeable latency on mobile devices.
+### 2.2 De-scope the v0.1.1 isolate design
 
-### Zero-Copy Inter-Isolate Communication Pool
+v0.1.1's "raw `Pointer<Uint8>` address passed across isolates as an int" scheme is
+**rejected**: it hands unmanaged memory across isolate boundaries with no
+ownership, no finalizer, and a manual `calloc.free` on a *different* isolate than
+the allocator — a classic use-after-free / double-free generator, and pointless
+because the AEAD path needs no native buffer transport. Use the right tool for
+each axis:
 
-To scale across multiple CPU cores without incurring memory allocation penalties, `pqforge` must use an asynchronous Isolate Worker Pool. Simply passing standard `Uint8List` buffers across Dart isolates introduces a silent allocation penalty: **the Dart runtime deep-copies the entire byte array across isolate memory spaces.**
-
-To achieve true zero-copy parallelism, the architecture must handle binary data streams using one of two precise patterns:
-
-1. **`TransferableTypedData`:** Encapsulates the byte array into a native unmanaged block that can be moved across isolate boundaries via reference passing, neutralizing copy allocations.
-2. **Direct Pointer Passing (`ffi.Pointer<ffi.Uint8>`)**: Allocates memory regions inside the unmanaged C heap, passing the raw pointer address across isolates as a standard integer.
-
-```text
-                    [ Main Orchestrator Isolate ]
-                     (Reads Stream via Chunk Views)
-                                  |
-            +---------------------+---------------------+
-            |                     |                     |
-     (Pointer Pass)         (Pointer Pass)        (Pointer Pass)
-            v                     v                     v
-   [ Isolate Worker 0 ]  [ Isolate Worker 1 ]  [ Isolate Worker 2 ]
-    (Core 0: Encrypt)     (Core 1: Encrypt)     (Core 2: Encrypt)
-            |                     |                     |
-            +---------------------+---------------------+
-                                  |
-                           (Output Queue)
-                                  v
-                       [ Sequential Disk IO ]
-
-```
-
-The code block below provides an architecture for a zero-copy, multi-threaded isolate processing stream using unmanaged native pointers:
+**Axis A — keep the event loop alive (always do this):** wrap the bulk operation
+in `Isolate.run`. One call, structured, auto-disposed:
 
 ```dart
-import 'dart:async';
-import 'dart:ffi' as ffi;
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
-
-class NativeChunkMessage {
-  final int address;
-  final int length;
-  final int sequenceNumber;
-  final bool isLast;
-
-  NativeChunkMessage({
-    required this.address,
-    required this.length,
-    required this.sequenceNumber,
-    required this.isLast,
-  });
-}
-
-/// Dispatched to run completely contained in a background Isolate pool worker
-class IsolateParallelCryptoWorker {
-  final Uint8List symmetricKey;
-  final Uint8List masterNonce;
-
-  IsolateParallelCryptoWorker({required this.symmetricKey, required this.masterNonce});
-
-  void encryptChunkNativeSpace(NativeChunkMessage msg, SendPort resultPort) {
-    final ffi.Pointer<ffi.Uint8> sourcePtr = ffi.Pointer.fromAddress(msg.address);
-    
-    // Nonce Security Invariants: Compute deterministic unique IV for this block index
-    final Uint8List blockNonce = Uint8List.fromList(masterNonce);
-    final ByteData nonceWriter = ByteData.view(blockNonce.buffer);
-    // XOR the trailing 4 bytes of the master nonce with the block sequence counter
-    final int baseCounterValue = nonceWriter.getUint32(8, Endian.big);
-    nonceWriter.setUint32(8, baseCounterValue ^ msg.sequenceNumber, Endian.big);
-
-    // Bind sequence counter to Associated Data to anchor block positioning invariants
-    final Uint8List blockAad = Uint8List(4)..buffer.asByteData().setUint32(0, msg.sequenceNumber, Endian.big);
-
-    // Instantiate a direct view over the native unmanaged memory without executing a data copy
-    final Uint8List plaintextView = sourcePtr.asTypedList(msg.length);
-
-    // Execute low level primitive encryption loop
-    // In practice, this delegates directly to a zero-copy hardware accelerated native implementation
-    final Uint8List ciphertextWithTag = _executeNativeAeadEncrypt(
-      key: symmetricKey,
-      nonce: blockNonce,
-      plaintext: plaintextView,
-      aad: blockAad,
-    );
-
-    // Allocate native unmanaged output target block
-    final ffi.Pointer<ffi.Uint8> outputPtr = calloc<ffi.Uint8>(ciphertextWithTag.length + 8);
-    final Uint8List outputView = outputPtr.asTypedList(ciphertextWithTag.length + 8);
-
-    // Format low-level structure: [Length(4B)][Sequence(4B)][Payload... Tag(16B)]
-    final ByteData headerWriter = ByteData.view(outputView.buffer);
-    headerWriter.setUint32(0, ciphertextWithTag.length, Endian.big);
-    headerWriter.setUint32(4, msg.sequenceNumber, Endian.big);
-    outputView.setRange(8, outputView.length, ciphertextWithTag);
-
-    // Eagerly zero out source buffer to uphold strict memory hygiene standards
-    plaintextView.fillRange(0, plaintextView.length, 0);
-    calloc.free(sourcePtr);
-
-    // Transfer unmanaged address reference back to main orchestrator thread
-    resultPort.send(NativeChunkMessage(
-      address: outputPtr.address,
-      length: outputView.length,
-      sequenceNumber: msg.sequenceNumber,
-      isLast: msg.isLast,
-    ));
-  }
-
-  Uint8List _executeNativeAeadEncrypt({
-    required Uint8List key,
-    required Uint8List nonce,
-    required Uint8List plaintext,
-    required Uint8List aad,
-  }) {
-    // Thin internal routing to underlying cryptographic hardware primitive
-    // Prevents allocation loops by outputting into pre-allocated memory spaces
-    return Uint8List(plaintext.length + 16); // Placeholder layout boundary mapping
-  }
-}
-
+final envelopeBytes = await Isolate.run(() => _encryptFileSync(args));
 ```
 
-### Cryptographic Nonce Security Under Parallelization Loads
+**Axis B — folder concurrency (the common case): one file per isolate, bounded
+pool.** Far simpler than intra-file chunk fan-out, and it sidesteps every
+shared-nonce hazard because each isolate owns a *distinct file with its own DEM
+key*:
 
-When processing a single asset's block segments across concurrent isolates, randomized initialization vector generation (`PqBytes.randomBytes(12)`) is strictly prohibited. The birthdays paradox under high block concurrency bounds introduces a distinct risk of initialization vector reuse collisions.
+```dart
+Future<void> encryptFolderParallel(List<File> files, EncryptArgs base) async {
+  final pool = Semaphore(Platform.numberOfProcessors.clamp(1, 4));
+  await Future.wait(files.map((f) async {
+    await pool.acquire();
+    try {
+      // TransferableTypedData = zero-copy move across the boundary (C-correct,
+      // unlike raw pointer-int passing). Sender loses the bytes; no deep copy.
+      final out = await Isolate.run(() => _encryptOneSync(f.path, base));
+      await File('${f.path}.pqf').writeAsBytes(out);
+    } finally { pool.release(); }
+  }));
+}
+```
 
-The architecture must enforce a deterministic counter-mode derivation approach. The main orchestrator isolate must generate a single **96-bit Cryptographically Secure Master Nonce**. Each isolate worker must calculate its unique block initialization parameter by treatment of the block sequence identifier as a bitwise mask applied directly to the master seed ($IV_{Block} = IV_{Master} \oplus SequenceNumber$). This ensures absolute cryptographic distinctness across the entire operational sequence.
+**Axis C — intra-file chunk fan-out (only if a single file dominates AND the
+cipher is pure-Dart).** If AES runs on AES-NI/ARMv8 (via `cryptography_flutter`,
+§3) a single core already does multiple GB/s and fan-out is wasted parallelism +
+nonce-management risk. Reach for it **last**, and if you do: the orchestrator owns
+the per-file DEM key + `nonceSalt`; workers receive `(seq, frameBytes)` via
+`TransferableTypedData`, return `(seq, body)`; the orchestrator writes frames in
+`seq` order. Counter nonces (§1.2) make this safe; never `PqBytes.randomBytes` per
+worker (the one v0.1.1 instinct worth keeping).
+
+### 2.3 Decision rule
+
+```
+single small file        → synchronous (no isolate; overhead > work)
+single large file        → Axis A (Isolate.run) ; add Axis C only if pure-Dart cipher
+folder / many files      → Axis B (per-file pool)  ← the gigabyte-folder workhorse
+```
 
 ---
 
-## 3. NATIVE BRIDGING (FFI) & HARDWARE ACCELERATION
+## 3. NATIVE ACCELERATION — THE INVERTED SECTION
 
-### Marshalling and Execution Bottlenecks
+> v0.1.1 told you to *remove* FFI marshalling overhead. **There is no FFI.** The
+> task is the reverse: *introduce* native acceleration where today there is
+> none.
 
-The structural composition layer of `pqforge` interfaces with intermediate primitives via two mismatched execution paths:
+### 3.1 Two independent acceleration problems
 
-1. **`pqcrypto` (FFI Overheads):** Every layer transition introduces data allocation marshalling boundaries. Passing keys or signatures involves moving data across the Dart VM managed space and the C-heap boundary via intermediate copy steps, introducing latency penalties during high-throughput execution.
-2. **`pointycastle` (Symmetric Engine Bottlenecks):** When the application runs without the optional `cryptography` native extensions, symmetric block data routing drops back to PointyCastle. Because pure Dart code cannot emit dedicated processor-level vector extensions, symmetric processing operations run multiple times slower compared to optimized native code blocks.
+| Layer | Today | Native path |
+| --- | --- | --- |
+| **Bulk symmetric** (AES-GCM / ChaCha20-Poly1305) | pure-Dart PointyCastle on the envelope path (C2) | `cryptography_flutter` → CryptoKit (iOS/macOS) / `javax.crypto`+Conscrypt (Android) → **AES-NI / ARMv8 AESE/PMULL** |
+| **Lattice** (ML-KEM-1024 / ML-DSA-87) | pure-Dart scalar NTT in `pqcrypto` | FFI to a vetted C lib (PQClean / liboqs / mlkem-native) compiled with **NEON / AVX2** |
 
-### Zero-Copy Native Integration Strategy
+These are decoupled. Do the symmetric one first — it's an afternoon and it
+accelerates the gigabyte payload, which is where the bytes are.
 
-To achieve gigabyte-scale capability, the processing loop must bypass high-level Dart wrappers for data-at-rest routines. The stream architecture must hold allocations strictly within unmanaged memory space (`Pointer<Uint8>`), passing raw addresses directly through native dynamic library hooks (`DynamicLibrary.open`).
+### 3.2 Symmetric acceleration (low effort, high yield) — wire the engine that already exists
 
-```text
-[ Dart Core Execution Loop ]                  [ Hardware Vector Engine ]
-    Native Pointer Mapping    ============>     ARM Neon / Apple AMX
-  (Memory Arena Coordinates)                   (In-Place Matrix Processing)
+The envelope path must stop calling `PqSymmetricPrimitives.aesGcmEncrypt`
+directly and go through the swappable `PqForgeAeadEngine`. Then enable hardware
+backing app-side:
 
+```yaml
+# pubspec.yaml
+dependencies:
+  cryptography_flutter: ^2.3.0   # registers OS-native AES-GCM/ChaCha implementations
 ```
-
-The system execution code block below configures a zero-copy hardware-accelerated FFI execution path that avoids Dart heap interaction:
 
 ```dart
-import 'dart:ffi' as ffi;
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
-
-// Native C function header layouts
-typedef NativeMlKemEncapsC = ffi.Int32 Function(
-  ffi.Pointer<ffi.Uint8> pk,
-  ffi.Pointer<ffi.Uint8> ctOut,
-  ffi.Pointer<ffi.Uint8> ssOut
-);
-
-typedef NativeMlKemEncapsDart = int Function(
-  ffi.Pointer<ffi.Uint8> pk,
-  ffi.Pointer<ffi.Uint8> ctOut,
-  ffi.Pointer<ffi.Uint8> ssOut
-);
-
-class HardwareAcceleratedCryptoEngine {
-  late final ffi.DynamicLibrary _pqcLib;
-  late final NativeMlKemEncapsDart _mlKem1024Encapsulate;
-
-  HardwareAcceleratedCryptoEngine() {
-    // Dynamic library lookup resolution mapping directly to accelerated library layers
-    _pqcLib = Platform.isIOS || Platform.isMacOS
-        ? ffi.DynamicLibrary.process()
-        : ffi.DynamicLibrary.open('liboptimized_pqc.so');
-
-    _mlKem1024Encapsulate = _pqcLib
-        .lookup<ffi.NativeFunction<NativeMlKemEncapsC>>('pqc_m_ml_kem_1024_encaps')
-        .asFunction<NativeMlKemEncapsDart>();
-  }
-
-  void executeZeroCopyEncapsulation(Uint8List rawPublicKey, ffi.Pointer<ffi.Uint8> ctTarget, ffi.Pointer<ffi.Uint8> ssTarget) {
-    // Allocate the public key directly inside native memory spaces
-    final ffi.Pointer<ffi.Uint8> nativePk = calloc<ffi.Uint8>(rawPublicKey.length);
-    nativePk.asTypedList(rawPublicKey.length).setAll(0, rawPublicKey);
-
-    try {
-      final int result = _mlKem1024Encapsulate(nativePk, ctTarget, ssTarget);
-      if (result != 0) {
-        throw Exception('Hardware accelerated mathematical encapsulation processing error: $result');
-      }
-    } finally {
-      // Scrub the allocation buffer area immediately to prevent data leakage
-      nativePk.asTypedList(rawPublicKey.length).fillRange(0, rawPublicKey.length, 0);
-      calloc.free(nativePk);
-    }
-  }
-}
-
+// main() of the host app, before any crypto:
+FlutterCryptography.enable();   // Cryptography.instance = FlutterCryptography()
 ```
 
-### Hardware Instruction Set Optimization Matrix
+With this, `crypto.AesGcm.with256bits()` inside
+[pq_cryptography_aead_engine.dart:20](../../lib/src/cipher/pq_cryptography_aead_engine.dart#L20)
+dispatches to AES-NI/ARMv8 and runs **off the Dart thread**. Pair it with the §1
+streaming writer and the gigabyte path is solved without writing a line of C.
+ChaCha20-Poly1305 remains the right default on CPUs without AES instructions
+(already a suite, [pq_cipher_suite.dart:24](../../lib/src/cipher/pq_cipher_suite.dart#L24)).
 
-By linking the core stream pipelines to native compilation modules, the library directly targets processor-level optimizations:
+### 3.3 Lattice acceleration (higher effort) — FFI to a static C library
 
-* **ARM NEON & ARMv8 Cryptography Extensions:** Maps polynomial math steps straight to SIMD parallel vectors (`VADD`, `VMUL`). Symmetric pipelines execute directly inside hardware-accelerated processing layers using specialized hardware instructions (`AESE`, `AESD`).
-* **Apple Silicon AMX Matrices:** Passes lattice computations directly to specialized coprocessor layers, removing processing overhead from the primary computing units on Apple devices.
+Pure-Dart Kyber/Dilithium is the lattice throughput wall. For embedded targets
+that sign/encapsulate per file in tight folder loops, bind a vetted C
+implementation behind the existing `PqKemPrimitives` / `PqSignaturePrimitives`
+seam (so the Dart API is unchanged):
+
+- **Source:** PQClean or `mlkem-native` / liboqs — ship as a prebuilt static
+  archive per ABI (`arm64-v8a`, `armeabi-v7a`, `x86_64`, Apple `arm64`).
+- **Build:** `-O3 -mcpu=native`/`-march=armv8-a+crypto`; the AVX2/NEON optimised
+  variants exist upstream — *that* is the NEON win, on the NTT, not on AES.
+- **Bridge:** `DynamicLibrary.open` on Android, `DynamicLibrary.process()` on iOS
+  (statically linked into the runner). Marshal keys once into native scratch
+  (`malloc` + `asTypedList().setAll`), call, copy results back, `free`. Keep
+  buffers small — ML-KEM ct is 1568 B, ML-DSA-87 sig is 4627 B
+  ([pq_algorithms.dart:37](../../lib/src/algorithms/pq_algorithms.dart#L37),[:90](../../lib/src/algorithms/pq_algorithms.dart#L90))
+  — so marshalling cost is *noise* (this is why C1's "marshalling overhead" was
+  always a non-issue even hypothetically).
+
+### 3.4 Hardware reality check (corrects C10)
+
+- **ARMv8 Cryptography Extension** (`AESE/AESD/AESMC/PMULL`) → accelerates **AES**
+  and GHASH, i.e. the AEAD layer. Reached via `cryptography_flutter`, §3.2.
+- **Generic NEON SIMD** → accelerates **Kyber/Dilithium NTT** (butterflies,
+  Montgomery reduction). Reached via the C lib, §3.3. *Different execution unit
+  from the crypto extension.*
+- **Apple AMX** → **private, undocumented, not targetable** from a portable static
+  lib. The public Apple path is the NEON units / Accelerate; do not design around
+  AMX.
+- **Poly1305** is a one-time MAC, not "hashing"; no dedicated ARM instruction —
+  it rides NEON `UMULL` 64×64→128. Drop the "Poly1305 hashing instructions"
+  framing.
 
 ---
 
 ## 4. ALGORITHMIC & CRYPTO SURFACE TUNING
 
-### Performance Penalties of the 'Maximum' Profile
+### 4.1 The `maximum`-by-default problem is real and precisely located (C11)
 
-The `maximum` composition profile mandates the use of **ML-KEM-1024** and **ML-DSA-87**. On resource-constrained systems, this parameter choice introduces major runtime penalties:
+Bulk paths default to **ML-KEM-1024 / ML-DSA-87**
+([service:327](../../lib/src/services/pqforge_service.dart#L327),[:598](../../lib/src/services/pqforge_service.dart#L598),[:733](../../lib/src/services/pqforge_service.dart#L733);
+[support:36](../../bin/src/support.dart#L36)). But size the cost correctly:
 
-```text
-[ ML-KEM-768 ]  ---> 3x3 Matrix Multiplication (Default Load Bounds)
-[ ML-KEM-1024]  ---> 4x4 Matrix Multiplication (Induces ~77% Processor Cycle Escalation)
+- KEM/DEM/signature cost is **fixed per file** (~1568 B ct + ~4627 B sig +
+  constant compute), *independent of payload size*. At 1 GB it is **rounding
+  error**. At a folder of 50 000 tiny files it is the **dominant** cost
+  (50 000 × ML-DSA-87 signs + 50 000 × Kyber-1024 encaps, all pure-Dart, all
+  synchronous).
+- So "maximum profile" is a **small-file / folder** problem, *not* a gigabyte
+  problem. Reframe the optimisation accordingly.
 
-```
+### 4.2 Correct the matrix-cost claim (C12)
 
-1. **Memory Payload Footprint:** Key bundles expand significantly. Passing these large keys across communication lines risks memory fragmentation and buffer overflows in low-memory systems.
-2. **Processor Cache Stalls:** ML-DSA-87 verification loops operate on massive matrix fields that exceed standard L1 data cache limits. This forces continuous memory fetching cycles from main system storage, degrading execution efficiency.
+`k`: 512→2, 768→3, 1024→4. Matrix `Â` has `k²` entries → 9 vs 16 = **+78% for the
+matmul step only**. End-to-end encaps/decaps also carries `k`-linear work
+(vector NTTs, CBD sampling) and fixed hashing, so measured 1024-vs-768 is
+typically **~1.3–1.6×**, not a flat 77% applied to everything. ML-DSA-87
+`(k,l)=(8,7)` expands `Â` to ~43 KB > 32 KB L1D — the "exceeds L1" remark is fair,
+but state it as the expanded-matrix working set, and note signing is
+**rejection-sampled ⇒ variable iteration count** (a real latency-jitter source on
+embedded chips, worth flagging that the *compute is non-constant-time in
+iterations* — fine for signing, never gate UI on its worst case).
 
-### Asymmetric Pre-Computation & Key Matrix Caching
+### 4.3 Genuine micro-optimisations (grounded)
 
-To reduce latency during connection initialization, the library must decouple asymmetric key generation from active transaction loops:
-
-```text
- [ Background Pre-Computation Thread ] ---> Generates Ephemeral Key Pools
-                                                       |
-                                                       v
- [ Active Asymmetric Handshake Layer ] <--- Pops Ready Pair Instantly (Zero Latency)
-
-```
-
-* **Ephemeral Pool Queuing:** Maintain a dedicated background queue filled with pre-computed key bundles. When a connection is established, pop a ready instance instantly, removing key-generation overhead from the active handshake pipeline.
-* **Key Expansion Buffering:** When a public key is verified, cache its unpacked Number Theoretic Transform (NTT) polynomial representation in memory. Bypassing redundant expansion computations during repeated connections preserves critical CPU cycles.
-
-### Eliminating Envelope Serialization Penalties
-
-The default `PqEnvelope` implementation relies on multi-pass layout concatenation:
-
-```dart
-// lib/src/codecs/pq_envelope.dart
-return PqBytes.lengthPrefixed([ ... fields ... ]);
-
-```
-
-This requires iterating through fields sequentially to calculate sizes before allocating and copying data.
-
-To optimize this, implement a **Single-Pass Allocation Strategy**. Pre-calculate the exact required size of the binary envelope up front:
-
-$$\text{Size}_{\text{Total}} = 4 + 4 + \text{Len}_{\text{Ciphertext}} + \text{Len}_{\text{Payload}} + \dots$$
-
-Allocate a single target `Uint8List` buffer matching this dimension, and use direct byte offset adjustments to write values into their final locations in a single operation.
-
----
-
-## 5. EMBEDDED & MOBILE FILE I/O BOTTLENECK ELIMINATION
-
-### System-Call Optimization Matrix
-
-The library's default directory processing logic uses an unbuffered file enumeration pattern:
-
-```dart
-// bin/pqforge.dart
-final files = await _listFiles(inputDir);
-for (final file in files) { ... encryptFolderEntry ... }
-
-```
-
-When archives contain thousands of individual items, this loop executes continuous system calls (`open`, `read`, `write`, `close`), causing I/O serialization bottlenecks on low-power storage hardware (e.g., eMMC, flash media).
-
-The system must adopt a structural optimization model:
-
-1. **Sequential Packaging (TAR Stream Pipelining):** Consolidate multiple inputs into a sequential tar-like structure before running encryption loops. This converts random small write patterns into a continuous sequential transfer, maximizing flash storage write efficiency.
-2. **Page Aligned Storage Mapping:** Match block parsing dimensions to standard host memory boundaries (e.g., 4KB or 64KB units). Aligning I/O coordinates prevents redundant storage cycle access.
-
-### High-Throughput Unmanaged Memory Mapped (mmap) Architecture
-
-To maximize file transfers and bypass Dart's high-level I/O processing layers, route data using direct memory-mapped file architectures (`mmap`). This maps disk storage coordinates straight into native memory spaces, allowing the cryptographic engine to process data blocks directly on the file system layers without moving data into the Dart VM heap.
-
-```text
-[ Disk Block System Storage ]
-            |  (Direct Memory-Mapped Kernel Pipeline)
-            v
-[ Native Calloc Arena Pointer ]  <-- Zero interaction with the Dart Managed Heap
-            |  (Direct In-Place Block Cryptographic Transformation)
-            v
-[ Target Disk Outbound Track ]
-
-```
-
-The system execution block below configures a zero-copy native memory-mapped file transfer architecture using direct FFI system calls:
-
-```dart
-import 'dart:ffi' as ffi;
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
-
-// POSIX system mapping signature declarations
-typedef PosixMmapC = ffi.Pointer<ffi.Void> Function(
-  ffi.Pointer<ffi.Void> addr,
-  ffi.Size length,
-  ffi.Int32 prot,
-  ffi.Int32 flags,
-  ffi.Int32 fd,
-  ffi.Int64 offset
-);
-
-typedef PosixMmapDart = ffi.Pointer<ffi.Void> Function(
-  ffi.Pointer<ffi.Void> addr,
-  int length,
-  int prot,
-  int flags,
-  int fd,
-  int offset
-);
-
-typedef PosixMunmapC = ffi.Int32 Function(ffi.Pointer<ffi.Void> addr, ffi.Size length);
-typedef PosixMunmapDart = int Function(ffi.Pointer<ffi.Void> addr, int length);
-
-class MemoryMappedStreamingEngine {
-  late final ffi.DynamicLibrary _libc;
-  late final PosixMmapDart _mmap;
-  late final PosixMunmapDart _munmap;
-
-  MemoryMappedStreamingEngine() {
-    _libc = Platform.isLinux 
-        ? ffi.DynamicLibrary.open('libc.so.6') 
-        : ffi.DynamicLibrary.process();
-    _mmap = _libc.lookupFunction<PosixMmapC, PosixMmapDart>('mmap');
-    _munmap = _libc.lookupFunction<PosixMunmapC, PosixMunmapDart>('munmap');
-  }
-
-  void processFileMmapInPlace(int fileDescriptor, int fileLength, Uint8List key, Uint8List nonce) {
-    const int protRead = 0x1;
-    const int protWrite = 0x2;
-    const int mapShared = 0x01;
-
-    // Map the file descriptor directly into native unmanaged address boundaries
-    final ffi.Pointer<ffi.Void> mappedMemoryArena = _mmap(
-      ffi.Pointer.fromAddress(0),
-      fileLength,
-      protRead | protWrite,
-      mapShared,
-      fileDescriptor,
-      0
-    );
-
-    if (mappedMemoryArena.address == -1) {
-      throw Exception('System virtualization failure: open mmap allocation error.');
-    }
-
-    try {
-      // Cast the unmanaged memory space to an accessible array view
-      final Uint8List nativeDataSlice = mappedMemoryArena.cast<ffi.Uint8>().asTypedList(fileLength);
-
-      // Execute in-place cryptographic operations using native optimization vectors
-      _applyInPlaceStreamCipher(nativeDataSlice, key, nonce);
-
-    } finally {
-      // Flush transformations directly back to disk storage and unmap the pointer space
-      final int releaseStatus = _munmap(mappedMemoryArena, fileLength);
-      if (releaseStatus != 0) {
-        throw Exception('POSIX memory unmapping system error: $releaseStatus');
-      }
-    }
-  }
-
-  void _applyInPlaceStreamCipher(Uint8List dataset, Uint8List key, Uint8List nonce) {
-    // Process block-level cryptographic loop transformations directly on the mapped array
-  }
-}
-
-```
+1. **Profile-by-purpose.** Bulk file/media bytes are protected by the AEAD under
+   a 256-bit key regardless of KEM strength; the KEM only protects that key.
+   Offer `--kem maximum --sig balanced` or default folder mode to a lighter
+   signature unless `--sign` is requested. Decouple payload risk from per-file
+   PQC overhead.
+2. **Reuse the expanded recipient key across a folder.** In `encrypt-folder` the
+   recipient public key is constant across thousands of entries. Expand `Â` /
+   unpack the public key **once** and reuse it for every encapsulation instead of
+   re-deriving per call. This is the legitimate core of v0.1.1's "NTT caching" —
+   bounded to where it actually pays (one recipient, N files), not a speculative
+   global cache.
+3. **Ephemeral KEM/keygen pool** only helps *keygen*-bound flows (hybrid
+   handshakes generating fresh ephemerals), not the recipient-encaps flow.
+   Keep it for the hybrid session layer
+   ([pq_classical_hybrid.dart](../../lib/src/hybrid/pq_classical_hybrid.dart)),
+   not for file encryption where you encapsulate to a *given* PK.
+4. **Single-pass envelope serialization** (valid, scoped): pre-size and write at
+   offsets in `toBinary()` for the **header/small-message** path. For bulk, the
+   real win is §1 — *don't serialize the payload into a buffer at all*. Don't let
+   "one big `Uint8List`" smuggle the whole file back into RAM.
 
 ---
 
-## 6. SYSTEM TRANSITION & CORE REFACTORING MATRIX
+## 5. EMBEDDED & MOBILE FILE I/O
 
-To upgrade `pqforge` into a production-ready, high-performance post-quantum cryptographic engine for resource-constrained systems, refactor the codebase according to this structural matrix:
+### 5.1 Reject the mmap design (C9) — it is unsafe and non-portable
 
-```text
-[ Target: lib/src/codecs/pq_envelope.dart ]
-  -> Action: Replace multi-pass array concatenation loops with direct offset allocation writes.
-  -> Metric: Cuts envelope packaging allocation counts to zero.
+`processFileMmapInPlace` + `_applyInPlaceStreamCipher` must not ship:
 
-[ Target: lib/src/primitives/pq_primitives.dart ]
-  -> Action: Route block operations through native pointer buffers using unmanaged C-heap pools.
-  -> Metric: Completely stops intermediate data copying across the Dart VM boundary.
+1. It is **unauthenticated** in-place stream-ciphering — directly contradicting
+   §1's correct "no unauthenticated streaming" rule.
+2. **AEAD output > input** (per-frame tag + headers). You *cannot* authenticate
+   in place over a region of exactly `fileLength`. The geometry is impossible.
+3. **No crash atomicity:** `MAP_SHARED` in-place mutation destroys plaintext as it
+   goes; power loss mid-run = unrecoverable file, tag never written. For a
+   sealing tool this is data loss masquerading as speed.
+4. **Not portable:** `dlopen("libc.so.6")` is Linux/Android-NDK; iOS forbids it
+   and the mmap symbol/flag surface differs. Wrong primitive for a cross-platform
+   mobile library.
 
-[ Target: lib/src/cipher/pq_secure_session.dart ]
-  -> Action: Migrate to a chunked sequential format using block counter initialization masking.
-  -> Metric: Enables secure data parallelization while maintaining absolute nonce security.
+### 5.2 The actual I/O bug and its portable fix
 
-[ Target: bin/pqforge.dart ]
-  -> Action: Reconstruct file listing loops to utilize sequential block tar packaging layouts.
-  -> Metric: Eliminates redundant storage controller system calls on low-power devices.
+The real cost is **whole-file `readAsBytes` materialisation** (a 1 GB Dart-heap
+allocation), not syscall count. The `directory.list(recursive:true)` enumeration
+([support:218](../../bin/src/support.dart#L218)) is already a `Stream`; the only
+issue is it's eagerly drained to a sorted `List` before any work begins (latency
+- holds every `File`/path for a 100k-file tree).
+
+Concrete, no-FFI fixes:
+
+- **Frame reads** with `RandomAccessFile.readInto(reusedBuffer)` (§1.3) or
+  `file.openRead(start, end)` `Stream<List<int>>`. Peak heap = one frame, not the
+  file. This is the portable equivalent of everything mmap was reaching for.
+- **Pipeline the walk:** consume `directory.list(...)` as a stream feeding the
+  bounded per-file isolate pool (§2.2-B); sort only if deterministic output
+  ordering is a requirement (today it sorts for stable output — make it
+  optional/opt-in for huge trees).
+- **Write with one buffered `IOSink`** per output file; `add()` header then
+  frames; one `flush()`. No per-frame `open/close`.
+- **Optional, orthogonal:** TAR-pack many tiny files into one sequential stream to
+  cut write amplification on eMMC. Useful, but it adds a container format and is
+  independent of the crypto fixes — schedule it after, not in, the core work.
+
+---
+
+## 6. SEQUENCED IMPLEMENTATION PLAN & ACCEPTANCE METRICS
+
+Ordered by **(impact ÷ effort)**, each phase independently shippable and testable.
 
 ```
+PHASE 0 — Truth & guardrails (0.5 day)
+  • Add a 1 GB synthetic-file bench (encrypt+decrypt, signed+unsigned, each profile)
+    capturing peak RSS + wall time. This is the regression gate for every phase.
+  • Acceptance: baseline numbers recorded; CI fails build if peak RSS > 1.5× file size.
 
-By systematically replacing synchronous high-level collection wrappers with asynchronous, zero-copy native pipelines, `pqforge` can process massive data loads efficiently while ensuring robust security and performance stability on resource-constrained hardware targets.
+PHASE 1 — Kill the gratuitous copies (0.5 day, no wire change)
+  • M2: drop every Uint8List.fromList(readAsBytes()).            [pqc_commands, support]
+  • M3: streaming path bypasses PqEnvelope value object.
+  • Acceptance: peak RSS for UNSIGNED 1 GB seal drops from ~3× → ~2× file size.
+
+PHASE 2 — Sign the digest, not the file (1 day, envelope v2)
+  • M1: envelopeSigningMessage → sign H(header ‖ H(ciphertext)), preHash:true.
+        Gate behind envelope version:2; keep v1 verify for back-compat.
+  • Acceptance: signed-seal time becomes ~independent of file size; peak RSS for
+    SIGNED 1 GB seal drops from ~5× → ~2× file size.
+
+PHASE 3 — Streaming AEAD frame format (3–5 days, new .pqfs) ............... CORE
+  • Implement writeStreamingEnvelope / readStreamingEnvelope (§1.3) on the
+    existing PqForgeAeadEngine seam; salt‖counter nonce; seq+isFinal in AAD.
+  • Route CLI encrypt/-media/-folder + sealMedia/encryptFolderEntry through it
+    for inputs over a threshold (e.g. >8 MiB); small inputs keep legacy envelope.
+  • Acceptance: peak RSS ≈ 2 × frameSize (a few MB) for ANY file size, encrypt
+    AND decrypt; a >64 GiB file encrypts/decrypts/round-trips on a 2 GB-RAM device.
+
+PHASE 4 — Wire the fast symmetric engine + offload (1–2 days)
+  • Route envelope/streaming AEAD through PqForgeAeadEngine (not the direct
+    PqSymmetricPrimitives call). Document cryptography_flutter + FlutterCryptography.enable()
+    for host apps. Wrap bulk ops in Isolate.run (Axis A).
+  • Acceptance: main-isolate stall for a 1 GB seal < 16 ms (one frame budget);
+    AES-GCM throughput ≥ 4× the PointyCastle baseline on an AES-NI/ARMv8 device.
+
+PHASE 5 — Folder concurrency (1–2 days)
+  • Bounded per-file isolate pool (Axis B); stream the directory walk into it.
+  • Acceptance: folder of N files scales ~linearly to min(N, cores); no nonce/key
+    sharing across isolates (one DEM key per file, by construction).
+
+PHASE 6 — Algorithmic tuning (2–3 days)
+  • Decouple KEM vs signature profile; reuse expanded recipient PK across a folder;
+    single-pass header serialization.
+  • Acceptance: 50 000-tiny-file folder seal time drops measurably; recipient-PK
+    expansion happens once per folder, verified by counter/trace.
+
+PHASE 7 — (Optional) Lattice FFI (1–2 weeks)
+  • Bind PQClean/liboqs static libs behind PqKemPrimitives/PqSignaturePrimitives;
+    per-ABI prebuilt archives; fall back to pure-Dart pqcrypto when absent.
+  • Acceptance: per-op ML-KEM-1024 encaps / ML-DSA-87 sign ≥ 5× faster than
+    pure-Dart on arm64; identical KATs vs pure-Dart (interop preserved).
+
+PHASE 8 — (Optional) TAR pre-pack for many-small-files write amplification.
+```
+
+### 6.1 Refactor target matrix (corrected from v0.1.1)
+
+```
+[ lib/src/services/pqforge_service.dart ]
+  -> M1: sign H(header‖H(ct)), preHash:true (envelope v2). O(1)-in-N signatures.
+  -> Route bulk through a streaming writer + PqForgeAeadEngine, not direct PointyCastle.
+
+[ lib/src/codecs/pq_envelope.dart ]
+  -> Add .pqfs streaming reader/writer; single-pass header serialization.
+  -> Keep value-object + defensive copies for the SMALL-message path (do not regress).
+
+[ lib/src/cipher/pq_secure_session.dart + the two AEAD engines ]
+  -> Reuse the PqForgeAeadEngine seam as the streaming frame cipher.
+  -> Engine choice (PointyCastle vs cryptography_flutter) becomes the HW-accel lever.
+
+[ bin/src/pqc_commands.dart + bin/src/support.dart ]
+  -> M2: remove Uint8List.fromList(readAsBytes()).
+  -> RandomAccessFile.readInto framing; stream listFiles() into a bounded isolate pool.
+
+[ pubspec.yaml (host app) ]
+  -> Add cryptography_flutter; call FlutterCryptography.enable() at startup.
+```
+
+### 6.2 Rescinded v0.1.1 directives (do **not** implement)
+
+- ❌ "Optimise the pqcrypto FFI marshalling boundary." — no FFI exists (C1).
+- ❌ Raw `Pointer<Uint8>`-address passed across isolates as an int (§2.2 hazard).
+- ❌ `mmap` + in-place unauthenticated stream cipher (C9 / §5.1).
+- ❌ Designing around Apple AMX or "crypto-extension SIMD for lattice math" (C10).
+- ❌ Treating `lengthPrefixed`'s 24 header allocations as the OOM cause (C5).
+
+---
+
+**Bottom line:** the gigabyte path is fixable with **zero C** — Phases 1–5 (kill
+copies → sign the digest → frame-stream → native AES via `cryptography_flutter` →
+per-file isolates) take `pqforge` from ~5× peak RSS and main-isolate stalls to a
+constant few-MB working set with hardware-backed throughput. Native lattice FFI
+(Phase 7) is a real, separate win for folder-of-many-files workloads, but it is an
+*addition* of acceleration, not the removal of a marshalling tax that was never
+there.
