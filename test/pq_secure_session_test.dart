@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:pqforge/pqforge_cryptography.dart';
+import 'package:pqforge/pqforge.dart';
 import 'package:test/test.dart';
 
 final List<PqForgeCipherSuite> _suites = PqForgeCipherSuite.values;

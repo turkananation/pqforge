@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:pqforge/pqforge_cryptography.dart';
+import 'package:pqforge/pqforge.dart';
 
 Future<void> main() async {
   // A 32-byte session key. In practice this comes from PqForgeCombiner over a

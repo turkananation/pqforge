@@ -1,7 +1,7 @@
 /// Ergonomic `package:cryptography` layer over the hybrid combiner (Option B).
 ///
 /// This wrapper is kept in its own entrypoint
-/// (`package:pqforge/pqforge_cryptography.dart`) so that the zero-dependency
+/// (`package:pqforge/pqforge.dart`) so that the zero-dependency
 /// core ([PqForgeCombiner], reachable from `package:pqforge/pqforge.dart`) never
 /// drags `package:cryptography` into an application's import graph unless the
 /// developer opts in.

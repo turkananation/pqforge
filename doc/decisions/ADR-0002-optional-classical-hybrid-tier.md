@@ -17,7 +17,7 @@ pieces, but they do not get a fully runnable "batteries included" flow.
 ## Decision
 
 Add a built-in classical hybrid tier behind
-`package:pqforge/pqforge_cryptography.dart`.
+`package:pqforge/pqforge.dart`.
 
 - `PqForgeHybridKeyAgreement` owns X25519 + ML-KEM session derivation.
 - `PqForgeHybridSigner` owns ML-DSA + Ed25519 dual signatures.

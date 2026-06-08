@@ -1,6 +1,6 @@
 # Hybrid Sessions
 
-Import `package:pqforge/pqforge_cryptography.dart` when the app wants pqforge to
+Import `package:pqforge/pqforge.dart` when the app wants pqforge to
 own the classical side too.
 
 Use:

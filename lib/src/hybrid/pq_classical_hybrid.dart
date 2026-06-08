@@ -1,7 +1,7 @@
 /// Batteries-included classical + post-quantum hybrid helpers.
 ///
 /// This file intentionally depends on `package:cryptography`, so it is exported
-/// only from `package:pqforge/pqforge_cryptography.dart`.
+/// only from `package:pqforge/pqforge.dart`.
 library;
 
 import 'dart:convert';

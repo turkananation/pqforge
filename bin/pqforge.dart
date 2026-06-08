@@ -133,13 +133,13 @@ final class _KeygenCommand extends Command<void> {
 
     stdout.writeln('profile: ${profile.name}');
     for (final name in publicFiles.keys) {
-      stdout.writeln('wrote: ${outDir.child(name).path}');
+      stdout.writeln('created: ${outDir.child(name).path}');
     }
     for (final name in secretFiles.keys) {
       final path = passphrase == null
           ? outDir.child(name).path
           : outDir.child(name.replaceFirst('.json', '.wrapped.json')).path;
-      stdout.writeln('wrote: $path');
+      stdout.writeln('created: $path');
     }
   }
 }

@@ -6,7 +6,7 @@ import 'package:pointycastle/export.dart' as pc;
 // The cryptography entrypoint re-exports the zero-dependency core, so both
 // Option A (PqForgeCombiner / PqHybridProfile) and Option B (the SecretKey
 // extension) are visible from this single import.
-import 'package:pqforge/pqforge_cryptography.dart';
+import 'package:pqforge/pqforge.dart';
 import 'package:test/test.dart';
 
 void main() {

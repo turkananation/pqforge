@@ -4,7 +4,6 @@ import 'package:cryptography/cryptography.dart';
 // The core combiner (Option A) is part of package:pqforge/pqforge.dart; the
 // SecretKey extension (Option B) lives behind the cryptography entrypoint.
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/pqforge_cryptography.dart';
 
 Future<void> main() async {
   // In a real handshake these come from two independent key exchanges:

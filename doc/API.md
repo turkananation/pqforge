@@ -5,7 +5,7 @@
 | Import | What you get | Pulls in `package:cryptography`? |
 | --- | --- | --- |
 | `package:pqforge/pqforge.dart` | The full zero-dependency core: the `PqForge` facade, primitives, codecs, key custody, the hybrid `PqForgeCombiner`, the cipher-suite enums, and the pure-Dart AEAD engine. | No |
-| `package:pqforge/pqforge_cryptography.dart` | Everything above (re-exported) **plus** the `SecretKey` extension, native AEAD engine, `PqForgeSecureSession`, X25519 + ML-KEM agreement, and ML-DSA + Ed25519 hybrid signatures. | Yes |
+| `package:pqforge/pqforge.dart` | Everything above (re-exported) **plus** the `SecretKey` extension, native AEAD engine, `PqForgeSecureSession`, X25519 + ML-KEM agreement, and ML-DSA + Ed25519 hybrid signatures. | Yes |
 
 > Rule of thumb: import `pqforge.dart` unless you specifically want the `cryptography`-package ergonomics, the unified `PqForgeSecureSession`, or the built-in X25519/Ed25519 hybrid tier.
 
@@ -60,7 +60,7 @@ as the classical secret; `postQuantumSecret` is placed second.
 
 ## 2. Built-in classical hybrid tier
 
-The optional `pqforge_cryptography.dart` entrypoint adds batteries-included
+The optional `pqforge.dart` entrypoint adds batteries-included
 classical helpers for CLI/server projects that do not want to supply their own
 classical stack.
 

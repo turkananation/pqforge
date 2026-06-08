@@ -30,7 +30,7 @@ void main(List<String> args) {
     } else {
       file.parent.createSync(recursive: true);
       file.writeAsStringSync(entry.value);
-      stdout.writeln('wrote ${entry.key}');
+      stdout.writeln('created ${entry.key}');
     }
   }
 
