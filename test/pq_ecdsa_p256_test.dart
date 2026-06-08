@@ -115,6 +115,39 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('publicKeyFromPrivate recovers the generated public key', () {
+      final kp = PqEcdsaP256.generateKeyPair();
+      final derived = PqEcdsaP256.publicKeyFromPrivate(kp.secretKey);
+      expect(derived, orderedEquals(kp.publicKey));
+    });
+
+    test('a signature verifies under the derived public key', () {
+      final kp = PqEcdsaP256.generateKeyPair();
+      final derived = PqEcdsaP256.publicKeyFromPrivate(kp.secretKey);
+      final message = _bytes('recovered key path');
+      final sig = PqEcdsaP256.sign(privateKey: kp.secretKey, message: message);
+      expect(
+        PqEcdsaP256.verify(
+          publicKey: derived,
+          message: message,
+          signature: sig,
+        ),
+        isTrue,
+      );
+    });
+
+    test('publicKeyFromPrivate rejects wrong length and zero scalar', () {
+      expect(
+        () => PqEcdsaP256.publicKeyFromPrivate(Uint8List(16)),
+        throwsArgumentError,
+      );
+      // d = 0 is not a valid scalar in [1, n).
+      expect(
+        () => PqEcdsaP256.publicKeyFromPrivate(Uint8List(32)),
+        throwsArgumentError,
+      );
+    });
   });
 }
 

@@ -56,6 +56,40 @@ class PqEcdsaP256 {
     );
   }
 
+  /// Derives the uncompressed SEC1 public key (`0x04 || X || Y`) for the
+  /// 32-byte private scalar [privateKey] as `d · G`.
+  ///
+  /// This is the deterministic companion to [generateKeyPair]: given a stored
+  /// secret key, recover the matching public key without persisting it. Throws
+  /// [ArgumentError] if [privateKey] is the wrong length or not a valid scalar
+  /// in `[1, n)`.
+  static Uint8List publicKeyFromPrivate(Uint8List privateKey) {
+    if (privateKey.length != privateKeyBytes) {
+      throw ArgumentError.value(
+        privateKey.length,
+        'privateKey',
+        'expected $privateKeyBytes bytes',
+      );
+    }
+    final d = _bytesToBigInt(privateKey);
+    if (d < BigInt.one || d >= _domain.n) {
+      throw ArgumentError.value(
+        privateKey,
+        'privateKey',
+        'scalar is not in the range [1, n)',
+      );
+    }
+    final q = _domain.G * d;
+    if (q == null || q.isInfinity) {
+      throw ArgumentError.value(
+        privateKey,
+        'privateKey',
+        'derived point at infinity',
+      );
+    }
+    return q.getEncoded(false);
+  }
+
   /// Signs [message] with [privateKey] (a 32-byte scalar), returning `r || s`.
   ///
   /// Uses RFC 6979 deterministic `k` and emits a canonical low-S signature.

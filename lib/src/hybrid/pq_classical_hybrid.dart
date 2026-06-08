@@ -248,6 +248,25 @@ class PqForgeHybridKeyAgreement {
         : crypto.X25519().newKeyPairFromSeed(seed);
   }
 
+  /// Generates an X25519 key-agreement key pair as raw 32-byte arrays.
+  ///
+  /// A byte-oriented companion to [generateClassicalKeyPair] for callers that
+  /// persist keys as bytes (such as the CLI) rather than holding a live
+  /// `package:cryptography` `SimpleKeyPair`.
+  Future<({Uint8List publicKey, Uint8List secretKey})>
+  generateClassicalKeyPairBytes({Uint8List? seed}) async {
+    final keyPair = await generateClassicalKeyPair(seed: seed);
+    try {
+      final publicKey = await keyPair.extractPublicKey();
+      return (
+        publicKey: Uint8List.fromList(publicKey.bytes),
+        secretKey: Uint8List.fromList(await keyPair.extractPrivateKeyBytes()),
+      );
+    } finally {
+      keyPair.destroy();
+    }
+  }
+
   Future<PqHybridKeyAgreementResult> initiate({
     required crypto.SimplePublicKey serverClassicalPublicKey,
     required Uint8List serverKemPublicKey,
@@ -485,6 +504,48 @@ class PqForgeHybridSigner {
           publicKey: pair.publicKey,
           secretKey: pair.secretKey,
         );
+    }
+  }
+
+  /// Reconstructs a usable [PqClassicalSignatureKeyPair] from a stored 32-byte
+  /// [secretKey] for [classicalAlgorithm], deriving the public key when it is
+  /// not supplied.
+  ///
+  /// This lets callers (such as the CLI) persist only the secret key and still
+  /// sign later: for Ed25519 the public key is recovered from the seed, and for
+  /// ECDSA-P256 it is recomputed as `d · G` via [PqEcdsaP256.publicKeyFromPrivate].
+  /// A supplied [publicKey] is used as-is (and length-checked by the key-pair
+  /// constructor) without re-derivation.
+  Future<PqClassicalSignatureKeyPair> classicalKeyPairFromSecret(
+    Uint8List secretKey, {
+    Uint8List? publicKey,
+  }) async {
+    switch (classicalAlgorithm) {
+      case PqClassicalSignatureAlgorithm.ed25519:
+        final derived = publicKey ?? await _ed25519PublicKeyFromSeed(secretKey);
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ed25519,
+          publicKey: derived,
+          secretKey: secretKey,
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP256:
+        final derived =
+            publicKey ?? PqEcdsaP256.publicKeyFromPrivate(secretKey);
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
+          publicKey: derived,
+          secretKey: secretKey,
+        );
+    }
+  }
+
+  static Future<Uint8List> _ed25519PublicKeyFromSeed(Uint8List seed) async {
+    final keyPair = await crypto.Ed25519().newKeyPairFromSeed(seed);
+    try {
+      final publicKey = await keyPair.extractPublicKey();
+      return Uint8List.fromList(publicKey.bytes);
+    } finally {
+      keyPair.destroy();
     }
   }
 

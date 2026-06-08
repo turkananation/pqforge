@@ -121,34 +121,38 @@ final signature = forge.signArtifact(
 
 | Command | Purpose |
 | --- | --- |
-| `keygen` | Generate public keys and raw or wrapped secret keys |
+| `keygen` | Generate ML-KEM/ML-DSA bundles and optional X25519/Ed25519/ECDSA-P256 keys |
 | `encrypt` / `decrypt` | Encrypt and decrypt a single file |
 | `encrypt-folder` / `decrypt-folder` | Encrypt and decrypt folder trees |
 | `encrypt-text` / `decrypt-text` | Encrypt and decrypt UTF-8 text |
 | `encrypt-media` / `decrypt-media` | Encrypt and decrypt media or PDFs |
 | `sign` / `verify` | Sign and verify documents, text, media, and artifacts |
+| `hybrid-sign` / `hybrid-verify` | ML-DSA + Ed25519/ECDSA-P256 dual signatures |
+| `ecdsa-sign` / `ecdsa-verify` | Standalone ECDSA-P256 signatures (RFC 6979, low-S) |
 
-Read the complete command guide at [doc/CLI.md](doc/CLI.md).
+`pqforge` with no arguments prints a banner and grouped command help; every
+command has `--help` with worked examples. Read the complete command guide at
+[doc/CLI.md](doc/CLI.md).
 
-### Keygen and signers in the library, not yet in the CLI
+### Hybrid and classical signers — now in the CLI
 
-The CLI's `keygen` emits **ML-KEM + ML-DSA** key bundles, and `sign` / `verify`
-cover **pure ML-DSA**. Every other keygen and signer below ships in the library
-API today but is **not yet wired into a CLI command** (a tracked gap):
+`keygen --classical` emits classical keypairs, and the hybrid and standalone
+classical signers are wired into matching commands:
 
-| Capability | Library API | Powered by |
+| Capability | CLI | Library API | Powered by |
+| --- | --- | --- | --- |
+| Hybrid signatures (PQC + Ed25519/ECDSA-P256) | `hybrid-sign` / `hybrid-verify` | `PqForgeHybridSigner()` | 🛡️ ML-DSA + (🤝 Ed25519 \| 🔒 ECDSA-P256) |
+| Standalone ECDSA-P256 sign/verify | `ecdsa-sign` / `ecdsa-verify` | `PqEcdsaP256` | 🔒 ECDSA-P256 (RFC 6979, low-S) |
+| Classical signer keypair (Ed25519 / ECDSA-P256) | `keygen --classical ed25519\|ecdsa-p256` | `PqForgeHybridSigner.generateClassicalKeyPair()` | 🤝 Ed25519 · 🔒 ECDSA-P256 |
+| X25519 key-agreement keypair | `keygen --classical x25519` | `PqForgeHybridKeyAgreement.generateClassicalKeyPair()` | 🤝 X25519 |
+
+Two primitives stay library-only **by design** — they can't be expressed as a
+one-shot CLI command:
+
+| Capability | Library API | Why library-only |
 | --- | --- | --- |
-| Hybrid signatures (PQC + Ed25519) | `PqForgeHybridSigner()` | 🛡️ ML-DSA + 🤝 Ed25519 |
-| Hybrid signatures (PQC + ECDSA-P256) | `PqForgeHybridSigner(classicalAlgorithm: PqClassicalSignatureAlgorithm.ecdsaP256)` | 🛡️ ML-DSA + 🔒 ECDSA-P256 |
-| App-supplied dual signatures | `dualSign` / `dualVerify` | 🛡️ ML-DSA + your classical signature |
-| Standalone ECDSA-P256 sign/verify | `PqEcdsaP256` | 🔒 ECDSA-P256 (RFC 6979, low-S) |
-| X25519 key-agreement keypair | `PqForgeHybridKeyAgreement.generateClassicalKeyPair()` | 🤝 X25519 |
-| Classical signer keypair (Ed25519 / ECDSA-P256) | `PqForgeHybridSigner.generateClassicalKeyPair()` | 🤝 Ed25519 · 🔒 ECDSA-P256 |
-| Hybrid session derivation (raw bytes) | `PqForgeCombiner`, `SecretKey.deriveHybridSecretKey()` | 🛡️ ML-KEM ‖ classical → 🔒 HKDF |
-
-So today the CLI is a **pure-PQC** file/text/media/document tool; the hybrid and
-classical signers are API-only until matching `keygen --classical` and
-`hybrid-sign` / `hybrid-verify` commands land.
+| App-supplied dual signatures | `dualSign` / `dualVerify` | `dualVerify` takes a classical-verifier **callback**, so a bring-your-own scheme can't be passed on a command line. Use `hybrid-sign` for the built-in Ed25519/ECDSA-P256 schemes. |
+| Hybrid session derivation (raw bytes) | `PqForgeCombiner`, `SecretKey.deriveHybridSecretKey()` | Interactive, multi-party key agreement; the raw classical ‖ ML-KEM join is a building block, not a workflow. |
 
 ## Profiles
 

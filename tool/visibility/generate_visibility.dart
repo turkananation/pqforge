@@ -71,7 +71,8 @@ Map<String, String> _generateOutputs(JsonMap manifest) {
     'site/index.html': _siteIndex(manifest),
     'site/404.html': _siteNotFound(manifest),
     'site/styles.css': _siteCss(),
-    'site/assets/pqforge-protocol.png': _protocolSvg(),
+    // site/assets/pqforge-protocol.png is a committed static binary asset, not a
+    // generated file. It is intentionally not produced here.
     'site/favicon.svg': _faviconSvg(),
     'site/sitemap.xml': _sitemap(manifest),
   };
@@ -859,64 +860,6 @@ footer {
   .topbar { align-items: flex-start; flex-direction: column; }
   h1 { font-size: 42px; }
 }
-''';
-}
-
-String _protocolSvg() {
-  return r'''
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" role="img" aria-labelledby="title desc">
-  <title id="title">pqforge protocol pipeline</title>
-  <desc id="desc">Payload recipes flow into post-quantum envelopes, signatures, wrapped keys, and CLI/server outputs.</desc>
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0b1d2f"/>
-      <stop offset=".55" stop-color="#102947"/>
-      <stop offset="1" stop-color="#1f2534"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#52e0d5"/>
-      <stop offset="1" stop-color="#f5c35b"/>
-    </linearGradient>
-  </defs>
-  <rect width="900" height="700" fill="url(#bg)"/>
-  <g opacity=".2" stroke="#d8f8ff" stroke-width="1">
-    <path d="M80 90h740M80 180h740M80 270h740M80 360h740M80 450h740M80 540h740M80 630h740"/>
-    <path d="M120 60v600M240 60v600M360 60v600M480 60v600M600 60v600M720 60v600"/>
-  </g>
-  <g fill="#06111d" stroke="url(#accent)" stroke-width="3">
-    <rect x="70" y="84" width="250" height="96" rx="14"/>
-    <rect x="70" y="234" width="250" height="96" rx="14"/>
-    <rect x="70" y="384" width="250" height="96" rx="14"/>
-    <rect x="580" y="126" width="250" height="96" rx="14"/>
-    <rect x="580" y="276" width="250" height="96" rx="14"/>
-    <rect x="580" y="426" width="250" height="96" rx="14"/>
-    <circle cx="450" cy="340" r="118" fill="#07111d"/>
-  </g>
-  <g fill="#f7fbff" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700">
-    <text x="94" y="124">Files + folders</text>
-    <text x="94" y="274">Text + media</text>
-    <text x="94" y="424">Webhooks + tokens</text>
-    <text x="610" y="166">PqEnvelope</text>
-    <text x="610" y="316">ML-DSA proofs</text>
-    <text x="610" y="466">CLI + servers</text>
-    <text x="384" y="324">ML-KEM</text>
-    <text x="382" y="364">AEAD</text>
-  </g>
-  <g stroke="#52e0d5" stroke-width="5" stroke-linecap="round" fill="none">
-    <path d="M320 132c74 0 80 92 156 92"/>
-    <path d="M320 282c66 0 72 58 104 82"/>
-    <path d="M320 432c72 0 80-78 142-88"/>
-    <path d="M536 268c48-48 82-94 144-94"/>
-    <path d="M558 342h120"/>
-    <path d="M536 412c42 36 82 74 144 74"/>
-  </g>
-  <g fill="#f5c35b">
-    <circle cx="450" cy="340" r="9"/>
-    <circle cx="680" cy="174" r="9"/>
-    <circle cx="680" cy="342" r="9"/>
-    <circle cx="680" cy="486" r="9"/>
-  </g>
-</svg>
 ''';
 }
 

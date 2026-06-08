@@ -191,6 +191,82 @@ void main() {
       },
     );
   });
+
+  group('classical key persistence helpers', () {
+    test('classicalKeyPairFromSecret recovers an Ed25519 signer', () async {
+      const profile = PqForgeProfile.compact;
+      final pqc = PqForge(profile: profile).generateSignatureKeyPair();
+      const signer = PqForgeHybridSigner(profile: profile);
+      final original = await signer.generateClassicalKeyPair();
+
+      final recovered = await signer.classicalKeyPairFromSecret(
+        original.secretKey,
+      );
+      expect(recovered.algorithm, PqClassicalSignatureAlgorithm.ed25519);
+      expect(recovered.publicKey, orderedEquals(original.publicKey));
+
+      final message = _bytes('signed from a stored secret');
+      final signature = await signer.sign(
+        pqcSecretKey: pqc.secretKey,
+        classicalKeyPair: recovered,
+        message: message,
+      );
+      expect(
+        await signer.verify(
+          pqcPublicKey: pqc.publicKey,
+          classicalPublicKey: original.publicKey,
+          message: message,
+          signature: signature,
+        ),
+        isTrue,
+      );
+    });
+
+    test('classicalKeyPairFromSecret recovers an ECDSA-P256 signer', () async {
+      const profile = PqForgeProfile.compact;
+      final pqc = PqForge(profile: profile).generateSignatureKeyPair();
+      const signer = PqForgeHybridSigner(
+        profile: profile,
+        classicalAlgorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
+      );
+      final original = await signer.generateClassicalKeyPair();
+
+      final recovered = await signer.classicalKeyPairFromSecret(
+        original.secretKey,
+      );
+      expect(recovered.algorithm, PqClassicalSignatureAlgorithm.ecdsaP256);
+      expect(recovered.publicKey, orderedEquals(original.publicKey));
+
+      final message = _bytes('ecdsa from a stored secret');
+      final signature = await signer.sign(
+        pqcSecretKey: pqc.secretKey,
+        classicalKeyPair: recovered,
+        message: message,
+      );
+      expect(
+        await signer.verify(
+          pqcPublicKey: pqc.publicKey,
+          classicalPublicKey: original.publicKey,
+          message: message,
+          signature: signature,
+        ),
+        isTrue,
+      );
+    });
+
+    test('generateClassicalKeyPairBytes yields 32-byte X25519 keys', () async {
+      const agreement = PqForgeHybridKeyAgreement();
+      final seed = Uint8List.fromList(List<int>.filled(32, 3));
+      final a = await agreement.generateClassicalKeyPairBytes(seed: seed);
+      final b = await agreement.generateClassicalKeyPairBytes(seed: seed);
+
+      expect(a.publicKey, hasLength(32));
+      expect(a.secretKey, hasLength(32));
+      // Seeded generation is deterministic.
+      expect(a.publicKey, orderedEquals(b.publicKey));
+      expect(a.secretKey, orderedEquals(b.secretKey));
+    });
+  });
 }
 
 Uint8List _bytes(String value) => Uint8List.fromList(utf8.encode(value));
