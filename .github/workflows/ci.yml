@@ -43,9 +43,15 @@ jobs:
         run: dart test
 
       - name: Run examples
+        shell: bash
         run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          printf 'pqforge file example\n' > "$tmp/input.txt"
+
           dart run example/pqforge_example.dart
-          dart run example/file_encryption_example.dart
+          dart run example/file_encryption_example.dart "$tmp/input.txt" "$tmp/output.pqf" "$tmp/wrapped-key.json"
           dart run example/hybrid_combiner_example.dart
           dart run example/secure_session_example.dart
           dart run example/hybrid_key_agreement_example.dart

@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - develop
-      - feat/hybrid-combiner-secure-session
     paths:
       - "tool/visibility/**"
       - "site/**"
