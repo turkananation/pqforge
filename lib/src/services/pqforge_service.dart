@@ -142,25 +142,41 @@ class PqForge {
         ? signatureAlgorithm
         : (signatureAlgorithm ?? selected.signature);
 
-    final unsigned = PqEnvelope(
+    if (signerSecretKey == null) {
+      return PqEnvelope(
+        profile: selected,
+        kemAlgorithm: selected.kem,
+        signatureAlgorithm: effectiveSignatureAlgorithm,
+        kemCiphertext: encapsulated.ciphertext,
+        nonce: nonce,
+        payload: payload,
+        aadHash: aadHash,
+        signerKeyId: signerKeyId,
+        metadata: metadata,
+      );
+    }
+
+    // Phase 2 (M1): sign a 32-byte digest of the header plus a single SHA-256 of
+    // the payload — never the whole payload concatenated into a fresh buffer.
+    // The signature's cost and memory are independent of payload size, and the
+    // envelope is built exactly once (also fixes the M3 double-build).
+    final digest = _envelopeSigningDigest(
       profile: selected,
       kemAlgorithm: selected.kem,
       signatureAlgorithm: effectiveSignatureAlgorithm,
-      kemCiphertext: encapsulated.ciphertext,
       nonce: nonce,
+      kemCiphertext: encapsulated.ciphertext,
       payload: payload,
       aadHash: aadHash,
       signerKeyId: signerKeyId,
       metadata: metadata,
     );
-
-    if (signerSecretKey == null) return unsigned;
-
     final signature = sign(
       signerSecretKey,
-      envelopeSigningMessage(unsigned),
+      digest,
       algorithm: effectiveSignatureAlgorithm,
-      context: PqBytes.utf8Bytes('pqforge/envelope-signature/v1'),
+      context: _envelopeSignatureContext,
+      preHash: true,
     );
     return PqEnvelope(
       profile: selected,
@@ -293,7 +309,8 @@ class PqForge {
         envelopeSigningMessage(envelope),
         envelope.signature!,
         algorithm: envelope.signatureAlgorithm,
-        context: PqBytes.utf8Bytes('pqforge/envelope-signature/v1'),
+        context: _envelopeSignatureContext,
+        preHash: true,
       );
       if (!ok) {
         throw const PqForgeException(
@@ -1141,36 +1158,79 @@ class PqForge {
     );
   }
 
-  Uint8List envelopeSigningMessage(PqEnvelope envelope) {
-    return PqBytes.lengthPrefixed([
+  /// The 32-byte digest fed to ML-DSA sign/verify (`preHash:true`) for an
+  /// envelope's signature: `SHA-256(headerFields ‖ SHA-256(payload))`. The
+  /// payload is hashed in one streaming pass, so neither the digest nor the
+  /// signature scales with payload size (the M1 fix). The header binds every
+  /// envelope field except the signature itself.
+  Uint8List envelopeSigningMessage(PqEnvelope envelope) =>
+      _envelopeSigningDigest(
+        profile: envelope.profile,
+        kemAlgorithm: envelope.kemAlgorithm,
+        signatureAlgorithm: envelope.signatureAlgorithm,
+        nonce: envelope.nonce,
+        kemCiphertext: envelope.kemCiphertext,
+        payload: envelope.payload,
+        aadHash: envelope.aadHash,
+        signerKeyId: envelope.signerKeyId,
+        metadata: envelope.metadata,
+      );
+
+  Uint8List _envelopeSigningDigest({
+    required PqForgeProfile profile,
+    required PqKemAlgorithm kemAlgorithm,
+    required PqSignatureAlgorithm? signatureAlgorithm,
+    required Uint8List nonce,
+    required Uint8List kemCiphertext,
+    required Uint8List payload,
+    required Uint8List? aadHash,
+    required String? signerKeyId,
+    required Map<String, Object?> metadata,
+  }) {
+    final header = PqBytes.lengthPrefixed([
       PqBytes.utf8Bytes('pqforge/envelope-signing-message/v1'),
-      PqBytes.uint32(envelope.version),
-      PqBytes.utf8Bytes(envelope.profile.name),
-      PqBytes.utf8Bytes(envelope.kemAlgorithm.id),
-      PqBytes.utf8Bytes(envelope.signatureAlgorithm?.id ?? ''),
-      envelope.nonce,
-      envelope.kemCiphertext,
-      envelope.payload,
-      envelope.aadHash ?? Uint8List(0),
-      PqBytes.utf8Bytes(envelope.signerKeyId ?? ''),
-      PqRecipeMessages.metadata(envelope.metadata),
+      PqBytes.uint32(pqForgeEnvelopeVersion),
+      PqBytes.utf8Bytes(profile.name),
+      PqBytes.utf8Bytes(kemAlgorithm.id),
+      PqBytes.utf8Bytes(signatureAlgorithm?.id ?? ''),
+      nonce,
+      kemCiphertext,
+      aadHash ?? Uint8List(0),
+      PqBytes.utf8Bytes(signerKeyId ?? ''),
+      PqRecipeMessages.metadata(metadata),
     ]);
+    final payloadHash = PqBytes.sha256(payload);
+    return PqBytes.sha256(PqBytes.concat([header, payloadHash]));
+  }
+
+  Uint8List get _envelopeSignatureContext =>
+      PqBytes.utf8Bytes('pqforge/envelope-signature/v1');
+
+  /// Derives the per-message DEM key from a KEM shared secret and ciphertext.
+  ///
+  /// Exposed so the streaming `.pqfs` path derives a byte-identical key to the
+  /// one-shot envelope path (both feed [_kemDemKey] / this method), keeping the
+  /// two formats interoperable at the key-schedule level.
+  static Uint8List deriveDemKey(
+    PqForgeProfile profile,
+    Uint8List sharedSecret,
+    Uint8List kemCiphertext,
+  ) {
+    return PqSymmetricPrimitives.hkdfSha256(
+      ikm: sharedSecret,
+      salt: kemCiphertext,
+      info: PqBytes.utf8Bytes(
+        'pqforge/kem-dem/${profile.name}/${profile.kem.id}/v1',
+      ),
+      outputBytes: profile.sessionKeyBytes,
+    );
   }
 
   Uint8List _kemDemKey(
     PqForgeProfile selected,
     Uint8List sharedSecret,
     Uint8List ciphertext,
-  ) {
-    return PqSymmetricPrimitives.hkdfSha256(
-      ikm: sharedSecret,
-      salt: ciphertext,
-      info: PqBytes.utf8Bytes(
-        'pqforge/kem-dem/${selected.name}/${selected.kem.id}/v1',
-      ),
-      outputBytes: selected.sessionKeyBytes,
-    );
-  }
+  ) => deriveDemKey(selected, sharedSecret, ciphertext);
 
   Uint8List _wrappedKeyAad(String kind, String algorithmId, String? keyId) {
     return PqBytes.lengthPrefixed([

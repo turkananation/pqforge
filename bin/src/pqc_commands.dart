@@ -4,11 +4,12 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
-import 'package:pqforge/pqforge.dart';
+import 'package:pqforge/pqforge_io.dart';
 
 import 'console.dart';
 import 'support.dart';
@@ -285,21 +286,48 @@ final class EncryptCommand extends Command<void> {
     final profile = profileFrom(results);
     final signer = await optionalSignerSecret(results, passphrase);
 
-    final plaintext = Uint8List.fromList(await input.readAsBytes());
     final fileName = input.uri.pathSegments.last;
     final aad = PqRecipeMessages.fileAad(
       fileName: fileName,
       aad: optionalAad(results),
     );
+    final length = await input.length();
+    final metadata = <String, Object?>{
+      'recipe': 'file-encryption',
+      'fileName': fileName,
+      'contentLength': length,
+    };
+
+    if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
+      // Large file: stream it frame-by-frame so peak memory stays a few MB
+      // regardless of size (Phase 3). The container is self-describing, so the
+      // matching decrypt auto-detects it.
+      final stats = await PqForgeStreamCipher().encryptFile(
+        recipientPublicKey: recipient.bytes,
+        input: input,
+        output: output,
+        profile: profile,
+        aad: aad,
+        metadata: metadata,
+        signerSecretKey: signer?.bytes,
+        signerKeyId: signerKeyId(results, signer),
+      );
+      console.success(
+        'Encrypted to streaming ${profile.name} envelope'
+        '${signer == null ? '' : ' (signed)'} — ${stats.frameCount} frames',
+      );
+      console.created(output.path);
+      return;
+    }
+
+    // readAsBytes already returns a fresh Uint8List; the prior fromList was a
+    // redundant full-file copy (defect M2). PqForge.encrypt copies defensively.
+    final plaintext = await input.readAsBytes();
     final envelope = PqForge(profile: profile).encrypt(
       recipient.bytes,
       plaintext,
       aad: aad,
-      metadata: {
-        'recipe': 'file-encryption',
-        'fileName': fileName,
-        'contentLength': plaintext.length,
-      },
+      metadata: metadata,
       profile: profile,
       signerSecretKey: signer?.bytes,
       signerKeyId: signerKeyId(results, signer),
@@ -368,20 +396,32 @@ final class DecryptCommand extends Command<void> {
       passphrase: passphrase,
     );
     requireKind(recipient, PqKeyKind.kemSecret);
-    final envelope = await readEnvelope(File(results['in'] as String));
+    final input = File(results['in'] as String);
+    final output = File(results['out'] as String);
     final signer = await optionalPublicKey(
       results['signer-public'] as String?,
       PqKeyKind.signaturePublic,
     );
 
-    final fileName = envelope.metadata['fileName'];
-    if (fileName is! String || fileName.isEmpty) {
-      throw const PqForgeException(
-        'File envelope metadata must include fileName.',
+    if (await PqForgeStreamCipher.isStreamingFile(input)) {
+      await PqForgeStreamCipher().decryptFile(
+        recipientSecretKey: recipient.bytes,
+        input: input,
+        output: output,
+        signerPublicKey: signer?.bytes,
+        aadResolver: (header) => PqRecipeMessages.fileAad(
+          fileName: _requiredMeta(header.metadata, 'fileName', 'File'),
+          aad: optionalAad(results),
+        ),
       );
+      console.success('Decrypted (streaming)');
+      console.created(output.path);
+      return;
     }
+
+    final envelope = await readEnvelope(input);
     final aad = PqRecipeMessages.fileAad(
-      fileName: fileName,
+      fileName: _requiredMeta(envelope.metadata, 'fileName', 'File'),
       aad: optionalAad(results),
     );
     final plaintext = PqForge(profile: envelope.profile).decrypt(
@@ -390,12 +430,19 @@ final class DecryptCommand extends Command<void> {
       aad: aad,
       signerPublicKey: signer?.bytes,
     );
-    final output = File(results['out'] as String);
     await output.parent.create(recursive: true);
     await output.writeAsBytes(plaintext);
     console.success('Decrypted');
     console.created(output.path);
   }
+}
+
+String _requiredMeta(Map<String, Object?> metadata, String key, String label) {
+  final value = metadata[key];
+  if (value is! String || value.isEmpty) {
+    throw PqForgeException('$label envelope metadata must include $key.');
+  }
+  return value;
 }
 
 /// `encrypt-folder` — encrypt every regular file under a folder tree.
@@ -425,6 +472,11 @@ final class EncryptFolderCommand extends Command<void> {
         'aad',
         valueHelp: 'string',
         help: 'Optional global associated data bound to every folder entry.',
+      )
+      ..addOption(
+        'concurrency',
+        valueHelp: 'n',
+        help: 'Max files encrypted in parallel (default: CPU count, max 8).',
       );
     addPassphraseOptions(argParser);
   }
@@ -452,31 +504,94 @@ final class EncryptFolderCommand extends Command<void> {
     final profile = profileFrom(results);
     final signer = await optionalSignerSecret(results, passphrase);
     final aad = optionalAad(results);
-    final forge = PqForge(profile: profile);
-    var count = 0;
+    final keyId = signerKeyId(results, signer);
+    final concurrency = concurrencyFrom(results);
 
+    // Axis B: one file per background isolate, gated by a semaphore. Each file
+    // gets its own DEM key by construction, so there is no shared-nonce hazard.
     final files = await listFiles(inputDir);
-    for (final file in files) {
-      final relativePath = safeRelativePath(inputDir, file);
-      final plaintext = Uint8List.fromList(await file.readAsBytes());
-      final envelope = forge.encryptFolderEntry(
-        recipient.bytes,
-        plaintext,
-        relativePath: relativePath,
-        aad: aad,
-        profile: profile,
-        signerSecretKey: signer?.bytes,
-        signerKeyId: signerKeyId(results, signer),
-      );
-      await writeEnvelope(
-        File(joinPath(outputDir.path, '$relativePath.pqf')),
-        envelope,
-      );
-      count += 1;
-    }
-    console.success('Encrypted $count file(s) to ${profile.name} envelopes');
+    final pool = Semaphore(concurrency);
+    await Future.wait(
+      files.map((file) async {
+        final relativePath = safeRelativePath(inputDir, file);
+        await pool.acquire();
+        try {
+          await _encryptFolderEntryInIsolate(
+            recipientPublicKey: recipient.bytes,
+            profileName: profile.name,
+            inputPath: file.path,
+            outputPath: joinPath(outputDir.path, '$relativePath.pqf'),
+            relativePath: relativePath,
+            aad: aad,
+            signerSecretKey: signer?.bytes,
+            signerKeyId: keyId,
+          );
+        } finally {
+          pool.release();
+        }
+      }),
+    );
+    console.success(
+      'Encrypted ${files.length} file(s) to ${profile.name} envelopes '
+      '(concurrency $concurrency)',
+    );
     console.detail('output', outputDir.path);
   }
+}
+
+/// Encrypts one folder entry on a background isolate (Axis B). Large entries are
+/// streamed (`.pqfs`), small ones use a one-shot envelope; both carry the same
+/// folder-entry AAD and metadata so [_decryptFolderEntryInIsolate] auto-routes.
+Future<void> _encryptFolderEntryInIsolate({
+  required Uint8List recipientPublicKey,
+  required String profileName,
+  required String inputPath,
+  required String outputPath,
+  required String relativePath,
+  required Uint8List? aad,
+  required Uint8List? signerSecretKey,
+  required String? signerKeyId,
+}) {
+  return Isolate.run(() async {
+    final profile = PqForgeProfile.byName(profileName);
+    final input = File(inputPath);
+    final output = File(outputPath);
+    final length = await input.length();
+
+    if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
+      await PqForgeStreamCipher().encryptFile(
+        recipientPublicKey: recipientPublicKey,
+        input: input,
+        output: output,
+        profile: profile,
+        aad: PqRecipeMessages.folderEntryAad(
+          relativePath: relativePath,
+          aad: aad,
+        ),
+        metadata: {
+          'recipe': 'folder-entry-encryption',
+          'fileName': relativePath.split('/').last,
+          'relativePath': relativePath,
+          'contentLength': length,
+        },
+        signerSecretKey: signerSecretKey,
+        signerKeyId: signerKeyId,
+      );
+      return;
+    }
+
+    final envelope = PqForge(profile: profile).encryptFolderEntry(
+      recipientPublicKey,
+      await input.readAsBytes(),
+      relativePath: relativePath,
+      aad: aad,
+      profile: profile,
+      signerSecretKey: signerSecretKey,
+      signerKeyId: signerKeyId,
+    );
+    await output.parent.create(recursive: true);
+    await output.writeAsBytes(envelope.toBinary());
+  });
 }
 
 /// `decrypt-folder` — decrypt a tree produced by encrypt-folder.
@@ -510,6 +625,11 @@ final class DecryptFolderCommand extends Command<void> {
         'signer-public',
         valueHelp: 'file',
         help: 'ML-DSA public key JSON, required for signed envelopes.',
+      )
+      ..addOption(
+        'concurrency',
+        valueHelp: 'n',
+        help: 'Max files decrypted in parallel (default: CPU count, max 8).',
       );
     addPassphraseOptions(argParser);
   }
@@ -544,32 +664,84 @@ final class DecryptFolderCommand extends Command<void> {
       PqKeyKind.signaturePublic,
     );
     final aad = optionalAad(results);
-    var count = 0;
+    final concurrency = concurrencyFrom(results);
 
-    final files = (await listFiles(
-      inputDir,
-    )).where((file) => file.path.endsWith('.pqf'));
-    for (final file in files) {
-      final envelope = await readEnvelope(file);
-      final relativePath = envelope.metadata['relativePath'];
-      if (relativePath is! String) {
-        throw PqForgeException('${file.path} has no relativePath metadata.');
-      }
-      requireSafeRelativePath(relativePath);
-      final plaintext = PqForge(profile: envelope.profile).decryptFolderEntry(
-        recipient.bytes,
-        envelope,
-        aad: aad,
-        signerPublicKey: signer?.bytes,
-      );
-      final output = File(joinPath(outputDir.path, relativePath));
-      await output.parent.create(recursive: true);
-      await output.writeAsBytes(plaintext);
-      count += 1;
-    }
-    console.success('Decrypted $count file(s)');
+    final files = (await listFiles(inputDir))
+        .where((file) => file.path.endsWith('.pqf'))
+        .toList();
+    final pool = Semaphore(concurrency);
+    await Future.wait(
+      files.map((file) async {
+        await pool.acquire();
+        try {
+          await _decryptFolderEntryInIsolate(
+            recipientSecretKey: recipient.bytes,
+            inputPath: file.path,
+            outputDirPath: outputDir.path,
+            aad: aad,
+            signerPublicKey: signer?.bytes,
+          );
+        } finally {
+          pool.release();
+        }
+      }),
+    );
+    console.success(
+      'Decrypted ${files.length} file(s) (concurrency $concurrency)',
+    );
     console.detail('output', outputDir.path);
   }
+}
+
+/// Decrypts one folder entry on a background isolate, auto-routing between the
+/// streaming (`.pqfs`) and one-shot envelope formats. The relative path comes
+/// from the (header-bound) metadata and is re-validated against path traversal.
+Future<void> _decryptFolderEntryInIsolate({
+  required Uint8List recipientSecretKey,
+  required String inputPath,
+  required String outputDirPath,
+  required Uint8List? aad,
+  required Uint8List? signerPublicKey,
+}) {
+  return Isolate.run(() async {
+    final input = File(inputPath);
+    if (await PqForgeStreamCipher.isStreamingFile(input)) {
+      final header = await PqForgeStreamCipher().readHeader(input);
+      final relativePath = _folderRelativePath(header.metadata, input.path);
+      await PqForgeStreamCipher().decryptFile(
+        recipientSecretKey: recipientSecretKey,
+        input: input,
+        output: File(joinPath(outputDirPath, relativePath)),
+        signerPublicKey: signerPublicKey,
+        aadResolver: (_) => PqRecipeMessages.folderEntryAad(
+          relativePath: relativePath,
+          aad: aad,
+        ),
+      );
+      return;
+    }
+
+    final envelope = await readEnvelope(input);
+    final relativePath = _folderRelativePath(envelope.metadata, input.path);
+    final plaintext = PqForge(profile: envelope.profile).decryptFolderEntry(
+      recipientSecretKey,
+      envelope,
+      aad: aad,
+      signerPublicKey: signerPublicKey,
+    );
+    final output = File(joinPath(outputDirPath, relativePath));
+    await output.parent.create(recursive: true);
+    await output.writeAsBytes(plaintext);
+  });
+}
+
+String _folderRelativePath(Map<String, Object?> metadata, String sourcePath) {
+  final relativePath = metadata['relativePath'];
+  if (relativePath is! String || relativePath.isEmpty) {
+    throw PqForgeException('$sourcePath has no relativePath metadata.');
+  }
+  requireSafeRelativePath(relativePath);
+  return relativePath;
 }
 
 /// `encrypt-text` — encrypt UTF-8 text, binding a text id into AAD.
@@ -792,7 +964,40 @@ final class EncryptMediaCommand extends Command<void> {
         results['mime-type'] as String? ?? guessMimeType(input.path);
     final profile = profileFrom(results);
     final signer = await optionalSignerSecret(results, passphrase);
-    final bytes = Uint8List.fromList(await input.readAsBytes());
+    final output = File(results['out'] as String);
+    final aad = PqRecipeMessages.mediaAad(
+      mediaId: mediaId,
+      mimeType: mimeType,
+      aad: optionalAad(results),
+    );
+    final length = await input.length();
+    final metadata = <String, Object?>{
+      'recipe': 'media-seal',
+      'mediaId': mediaId,
+      'mimeType': mimeType,
+      'contentLength': length,
+    };
+
+    if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
+      final stats = await PqForgeStreamCipher().encryptFile(
+        recipientPublicKey: recipient.bytes,
+        input: input,
+        output: output,
+        profile: profile,
+        aad: aad,
+        metadata: metadata,
+        signerSecretKey: signer?.bytes,
+        signerKeyId: signerKeyId(results, signer),
+      );
+      console.success(
+        'Encrypted media (id: $mediaId, $mimeType) to streaming envelope'
+        '${signer == null ? '' : ' (signed)'} — ${stats.frameCount} frames',
+      );
+      console.created(output.path);
+      return;
+    }
+
+    final bytes = await input.readAsBytes(); // M2: no redundant full-file copy
     final envelope = PqForge(profile: profile).sealMedia(
       recipient.bytes,
       bytes,
@@ -803,7 +1008,6 @@ final class EncryptMediaCommand extends Command<void> {
       signerSecretKey: signer?.bytes,
       signerKeyId: signerKeyId(results, signer),
     );
-    final output = File(results['out'] as String);
     await writeEnvelope(output, envelope);
     console.success('Encrypted media (id: $mediaId, $mimeType)');
     console.created(output.path);
@@ -867,18 +1071,37 @@ final class DecryptMediaCommand extends Command<void> {
       passphrase: passphrase,
     );
     requireKind(recipient, PqKeyKind.kemSecret);
-    final envelope = await readEnvelope(File(results['in'] as String));
+    final input = File(results['in'] as String);
+    final output = File(results['out'] as String);
     final signer = await optionalPublicKey(
       results['signer-public'] as String?,
       PqKeyKind.signaturePublic,
     );
+
+    if (await PqForgeStreamCipher.isStreamingFile(input)) {
+      await PqForgeStreamCipher().decryptFile(
+        recipientSecretKey: recipient.bytes,
+        input: input,
+        output: output,
+        signerPublicKey: signer?.bytes,
+        aadResolver: (header) => PqRecipeMessages.mediaAad(
+          mediaId: _requiredMeta(header.metadata, 'mediaId', 'media'),
+          mimeType: _requiredMeta(header.metadata, 'mimeType', 'media'),
+          aad: optionalAad(results),
+        ),
+      );
+      console.success('Decrypted media (streaming)');
+      console.created(output.path);
+      return;
+    }
+
+    final envelope = await readEnvelope(input);
     final media = PqForge(profile: envelope.profile).openMedia(
       recipient.bytes,
       envelope,
       aad: optionalAad(results),
       signerPublicKey: signer?.bytes,
     );
-    final output = File(results['out'] as String);
     await output.parent.create(recursive: true);
     await output.writeAsBytes(media);
     console.success('Decrypted media');
@@ -972,7 +1195,7 @@ final class SignCommand extends Command<void> {
     );
     requireKind(signer, PqKeyKind.signatureSecret);
     final input = File(results['in'] as String);
-    final bytes = Uint8List.fromList(await input.readAsBytes());
+    final bytes = await input.readAsBytes(); // M2: no redundant full-file copy
     final algorithm = PqSignatureAlgorithm.byId(signer.algorithmId);
     final forge = PqForge(profile: profileForSignature(algorithm));
     final kind = results['kind'] as String;
@@ -1125,7 +1348,7 @@ final class VerifyCommand extends Command<void> {
     final signer = await readKey(results['signer-public'] as String);
     requireKind(signer, PqKeyKind.signaturePublic);
     final input = File(results['in'] as String);
-    final bytes = Uint8List.fromList(await input.readAsBytes());
+    final bytes = await input.readAsBytes(); // M2: no redundant full-file copy
     final sigJson = await readJsonMap(File(results['signature'] as String));
     final algorithm = PqSignatureAlgorithm.byId(
       sigJson['signatureAlgorithm'] as String,

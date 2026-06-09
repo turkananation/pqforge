@@ -1,0 +1,12 @@
+# Test runner configuration.
+#
+# The `benchmark` tag marks the heavy, memory-tracked I/O baselines in
+# test/benchmark_io_test.dart. They are slow (pure-Dart AES-GCM runs at
+# ~1 MiB/s) and are additionally gated behind the PQFORGE_BENCH=1 environment
+# variable, so a plain `dart test` runs only the fast budget-gate unit tests.
+#
+# Run the full baseline with:
+#   PQFORGE_BENCH=1 dart test -t benchmark
+tags:
+  benchmark:
+    timeout: 30m

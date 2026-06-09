@@ -5,6 +5,7 @@
 /// throws [PqForgeException] on misuse; commands own all styled output.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -167,7 +168,9 @@ Future<void> writeJson(File file, Map<String, Object?> json) async {
 }
 
 Future<PqEnvelope> readEnvelope(File file) async =>
-    PqEnvelope.fromBinary(Uint8List.fromList(await file.readAsBytes()));
+    // readAsBytes already yields a Uint8List; fromBinary takes zero-copy views
+    // over it, so the prior fromList wrapper was a redundant copy (M2).
+    PqEnvelope.fromBinary(await file.readAsBytes());
 
 Future<void> writeEnvelope(File file, PqEnvelope envelope) async {
   await file.parent.create(recursive: true);
@@ -225,6 +228,47 @@ Future<List<File>> listFiles(Directory directory) async {
   }
   files.sort((a, b) => a.path.compareTo(b.path));
   return files;
+}
+
+// --- bounded concurrency ----------------------------------------------------
+
+/// A counting semaphore that bounds how many async tasks run at once.
+///
+/// Folder commands run one file per background isolate (Axis B) gated by this,
+/// so at most [_permits] isolates exist at any moment regardless of tree size.
+/// Every [acquire] must be paired with exactly one [release].
+class Semaphore {
+  Semaphore(this._permits)
+    : assert(_permits > 0, 'permits must be positive');
+
+  int _permits;
+  final _waiters = <Completer<void>>[];
+
+  Future<void> acquire() {
+    if (_permits > 0) {
+      _permits--;
+      return Future<void>.value();
+    }
+    final completer = Completer<void>();
+    _waiters.add(completer);
+    return completer.future;
+  }
+
+  void release() {
+    if (_waiters.isNotEmpty) {
+      _waiters.removeAt(0).complete();
+    } else {
+      _permits++;
+    }
+  }
+}
+
+/// Resolves the folder-processing concurrency: an explicit `--concurrency`,
+/// else the CPU count capped at 8. Always at least 1.
+int concurrencyFrom(ArgResults results) {
+  final explicit = int.tryParse((results['concurrency'] as String?) ?? '');
+  final value = explicit ?? Platform.numberOfProcessors.clamp(1, 8);
+  return value < 1 ? 1 : value;
 }
 
 String safeRelativePath(Directory root, File file) {

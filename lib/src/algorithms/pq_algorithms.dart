@@ -4,6 +4,12 @@ library;
 import 'dart:typed_data';
 
 const pqForgeEnvelopeMagic = 'PQF1';
+
+/// Envelope format version. Signatures are computed over a pre-hashed digest —
+/// `SHA-256(headerFields ‖ SHA-256(payload))` signed with `preHash:true` — so
+/// signing cost and memory are independent of payload size (defect M1). The
+/// library is pre-release, so there is no prior wire format to interoperate
+/// with.
 const pqForgeEnvelopeVersion = 1;
 const pqForgeInfoPrefix = 'pqcrypto universal-pqc-framework v1';
 const pqForgeDefaultAeadNonceBytes = 12;
