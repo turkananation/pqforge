@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../algorithms/pq_algorithms.dart';
+import '../algorithms/pq_fips.dart';
 import '../codecs/pq_envelope.dart';
 import '../hybrid/pq_hybrid_combiner.dart';
 import '../keys/pq_keys.dart';
@@ -827,22 +828,40 @@ class PqForge {
     );
   }
 
+  /// Wraps an exported key under a passphrase: KDF → AES-256-GCM with the key
+  /// identity bound into the AAD.
+  ///
+  /// [kdf] selects the password KDF: [PqKdf.argon2id] (default — the stronger
+  /// choice) or [PqKdf.pbkdf2HmacSha256] (the FIPS-approved one, required when
+  /// [PqFipsMode] is enabled). [iterations]/[memoryPowerOf2]/[lanes] are
+  /// Argon2id parameters; [pbkdf2Iterations] is the PBKDF2 cost.
   PqWrappedKey wrapKeyWithPassphrase(
     PqExportedKey key,
     String passphrase, {
+    String kdf = PqKdf.argon2id,
     int iterations = 2,
     int memoryPowerOf2 = 16,
     int lanes = 4,
+    int pbkdf2Iterations = 600000,
   }) {
+    PqFipsMode.requireApprovedKdf(kdf);
     final salt = PqBytes.randomBytes(16);
     final nonce = PqBytes.randomBytes(pqForgeDefaultAeadNonceBytes);
-    final wrappingKey = PqSymmetricPrimitives.argon2id(
-      password: passphrase,
-      salt: salt,
-      iterations: iterations,
-      memoryPowerOf2: memoryPowerOf2,
-      lanes: lanes,
-    );
+    final wrappingKey = switch (kdf) {
+      PqKdf.argon2id => PqSymmetricPrimitives.argon2id(
+        password: passphrase,
+        salt: salt,
+        iterations: iterations,
+        memoryPowerOf2: memoryPowerOf2,
+        lanes: lanes,
+      ),
+      PqKdf.pbkdf2HmacSha256 => PqSymmetricPrimitives.pbkdf2Sha256(
+        password: passphrase,
+        salt: salt,
+        iterations: pbkdf2Iterations,
+      ),
+      _ => throw PqForgeException('Unsupported key-wrap KDF: $kdf'),
+    };
     final aad = _wrappedKeyAad(key.kind, key.algorithmId, key.keyId);
     final ciphertext = PqSymmetricPrimitives.aesGcmEncrypt(
       key: wrappingKey,
@@ -851,7 +870,7 @@ class PqForge {
       aad: aad,
     );
     return PqWrappedKey(
-      kdf: 'argon2id',
+      kdf: kdf,
       aead: 'aes-256-gcm',
       salt: salt,
       nonce: nonce,
@@ -859,7 +878,7 @@ class PqForge {
       keyKind: key.kind,
       algorithmId: key.algorithmId,
       keyId: key.keyId,
-      iterations: iterations,
+      iterations: kdf == PqKdf.pbkdf2HmacSha256 ? pbkdf2Iterations : iterations,
       memoryPowerOf2: memoryPowerOf2,
       lanes: lanes,
     );
@@ -869,13 +888,22 @@ class PqForge {
     PqWrappedKey wrapped,
     String passphrase,
   ) {
-    final wrappingKey = PqSymmetricPrimitives.argon2id(
-      password: passphrase,
-      salt: wrapped.salt,
-      iterations: wrapped.iterations,
-      memoryPowerOf2: wrapped.memoryPowerOf2,
-      lanes: wrapped.lanes,
-    );
+    PqFipsMode.requireApprovedKdf(wrapped.kdf);
+    final wrappingKey = switch (wrapped.kdf) {
+      PqKdf.argon2id => PqSymmetricPrimitives.argon2id(
+        password: passphrase,
+        salt: wrapped.salt,
+        iterations: wrapped.iterations,
+        memoryPowerOf2: wrapped.memoryPowerOf2,
+        lanes: wrapped.lanes,
+      ),
+      PqKdf.pbkdf2HmacSha256 => PqSymmetricPrimitives.pbkdf2Sha256(
+        password: passphrase,
+        salt: wrapped.salt,
+        iterations: wrapped.iterations,
+      ),
+      _ => throw PqForgeException('Unsupported key-wrap KDF: ${wrapped.kdf}'),
+    };
     final aad = _wrappedKeyAad(
       wrapped.keyKind,
       wrapped.algorithmId,

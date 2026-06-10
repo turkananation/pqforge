@@ -13,10 +13,11 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../algorithms/pq_algorithms.dart';
+import '../algorithms/pq_fips.dart';
 import '../cipher/pq_cipher_suite.dart';
 import '../cipher/pq_cryptography_aead_engine.dart';
 import '../cipher/pq_pointycastle_aead_engine.dart';
-import '../codecs/pq_envelope.dart';
+import '../codecs/pq_streaming_envelope.dart';
 import '../primitives/pq_primitives.dart';
 import 'pqforge_service.dart';
 
@@ -37,21 +38,30 @@ class PqStreamingStats {
 
 /// Encrypts and decrypts files in bounded memory using the `.pqfs` streaming
 /// envelope. Construct once and reuse; the [engine] is the hardware-acceleration
-/// lever (swap in a `package:cryptography` engine without touching this code).
+/// lever.
+///
+/// The default engine is the `package:cryptography` backend: measured ~10×
+/// faster than PointyCastle even as pure Dart, and it dispatches to OS-native
+/// hardware AEAD when a Flutter host has called `FlutterCryptography.enable()`
+/// (root isolate). The wire format is engine-independent — files sealed by one
+/// engine open under the other.
 class PqForgeStreamCipher {
   PqForgeStreamCipher({PqForgeAeadEngine? engine})
     : engine =
           engine ??
-          const PqForgePointyCastleAeadEngine(PqForgeCipherSuite.aes256Gcm);
+          PqForgeCryptographyAeadEngine(PqForgeCipherSuite.aes256Gcm) {
+    PqFipsMode.requireApprovedSuite(this.engine.cipherSuite);
+  }
 
   /// Builds a cipher backed by [provider] — the hardware-acceleration lever.
   ///
-  /// * [PqForgeEngineProvider.pureDart] (default) — PointyCastle; works on every
-  ///   target and inside background isolates.
-  /// * [PqForgeEngineProvider.nativeCryptography] — `package:cryptography`, which
-  ///   dispatches to AES-NI/ARMv8 when a Flutter host has called
-  ///   `FlutterCryptography.enable()`. Note: its platform-channel calls run on
-  ///   the root isolate, so use this engine *without* an [Isolate.run] offload.
+  /// * [PqForgeEngineProvider.nativeCryptography] (the default) —
+  ///   `package:cryptography`: ~10× faster than PointyCastle even as pure Dart,
+  ///   and it dispatches to AES-NI/ARMv8 hardware when a Flutter host has called
+  ///   `FlutterCryptography.enable()` (root isolate; fresh isolates fall back to
+  ///   its pure-Dart implementation automatically).
+  /// * [PqForgeEngineProvider.pureDart] — PointyCastle; the conservative
+  ///   reference backend.
   factory PqForgeStreamCipher.forProvider(
     PqForgeEngineProvider provider, {
     PqForgeCipherSuite cipherSuite = PqForgeCipherSuite.aes256Gcm,
@@ -61,9 +71,8 @@ class PqForgeStreamCipher {
         PqForgeEngineProvider.pureDart => PqForgePointyCastleAeadEngine(
           cipherSuite,
         ),
-        PqForgeEngineProvider.nativeCryptography => PqForgeCryptographyAeadEngine(
-          cipherSuite,
-        ),
+        PqForgeEngineProvider.nativeCryptography =>
+          PqForgeCryptographyAeadEngine(cipherSuite),
       },
     );
   }
@@ -94,11 +103,15 @@ class PqForgeStreamCipher {
   }
 
   /// Runs [encryptFile] on a background isolate so the calling (UI) isolate is
-  /// never blocked by the synchronous pure-Dart cipher — the Axis A offload.
+  /// never blocked — the Axis A offload.
   ///
-  /// The pure-Dart engine is used inside the isolate (the native engine's
-  /// platform channels are unavailable off the root isolate). Arguments are
-  /// passed as sendable primitives (paths, key bytes, profile).
+  /// The engine is constructed *inside* the worker isolate from
+  /// [engineProvider]. Both providers are safe there: on a plain Dart VM the
+  /// `cryptography` backend is its (fast) pure-Dart implementation, and on
+  /// Flutter a fresh isolate never sees `FlutterCryptography`'s root-isolate
+  /// registration, so it also falls back to pure Dart rather than touching
+  /// platform channels. Arguments are sendable primitives (paths, key bytes,
+  /// profile).
   static Future<PqStreamingStats> encryptFileInBackground({
     required Uint8List recipientPublicKey,
     required String inputPath,
@@ -110,9 +123,11 @@ class PqForgeStreamCipher {
     PqSignatureAlgorithm? signatureAlgorithm,
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
+    PqForgeEngineProvider engineProvider =
+        PqForgeEngineProvider.nativeCryptography,
   }) {
     return Isolate.run(
-      () => PqForgeStreamCipher().encryptFile(
+      () => PqForgeStreamCipher.forProvider(engineProvider).encryptFile(
         recipientPublicKey: recipientPublicKey,
         input: File(inputPath),
         output: File(outputPath),
@@ -137,9 +152,11 @@ class PqForgeStreamCipher {
     required String outputPath,
     Uint8List? signerPublicKey,
     Uint8List? aad,
+    PqForgeEngineProvider engineProvider =
+        PqForgeEngineProvider.nativeCryptography,
   }) {
     return Isolate.run(
-      () => PqForgeStreamCipher().decryptFile(
+      () => PqForgeStreamCipher.forProvider(engineProvider).decryptFile(
         recipientSecretKey: recipientSecretKey,
         input: File(inputPath),
         output: File(outputPath),
@@ -166,6 +183,126 @@ class PqForgeStreamCipher {
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
   }) async {
+    final context = _prepareEncrypt(
+      recipientPublicKey: recipientPublicKey,
+      profile: profile,
+      aad: aad,
+      metadata: metadata,
+      signerSecretKey: signerSecretKey,
+      signatureAlgorithm: signatureAlgorithm,
+      signerKeyId: signerKeyId,
+      frameSize: frameSize,
+    );
+    final source = await input.open();
+    try {
+      return await _writeContainer(context, output, (writer) async {
+        final total = await source.length();
+        if (total == 0) {
+          // An empty input still gets one (empty) final frame so the reader
+          // sees a terminator rather than a truncated stream.
+          await writer.add(Uint8List(0), isFinal: true);
+          return;
+        }
+        final buffer = Uint8List(frameSize);
+        var read = 0;
+        while (read < total) {
+          final n = await source.readInto(buffer);
+          if (n <= 0) break;
+          read += n;
+          await writer.add(
+            Uint8List.sublistView(buffer, 0, n),
+            isFinal: read >= total,
+          );
+        }
+      });
+    } finally {
+      await source.close();
+    }
+  }
+
+  /// Streams arbitrary plaintext [source] bytes into a `.pqfs` container at
+  /// [output] — same container, framing, and signing as [encryptFile], but the
+  /// input never has to exist as a file. This is what lets `pack` seal a whole
+  /// folder without ever spooling plaintext to disk.
+  ///
+  /// The total length need not be known up front: a one-frame lookahead decides
+  /// which frame is final. Peak memory ≈ 2 × [frameSize].
+  Future<PqStreamingStats> encryptStream({
+    required Uint8List recipientPublicKey,
+    required Stream<List<int>> source,
+    required File output,
+    required PqForgeProfile profile,
+    Uint8List? aad,
+    Map<String, Object?> metadata = const {},
+    Uint8List? signerSecretKey,
+    PqSignatureAlgorithm? signatureAlgorithm,
+    String? signerKeyId,
+    int frameSize = PqStreamingEnvelope.defaultFrameSize,
+  }) async {
+    final context = _prepareEncrypt(
+      recipientPublicKey: recipientPublicKey,
+      profile: profile,
+      aad: aad,
+      metadata: metadata,
+      signerSecretKey: signerSecretKey,
+      signatureAlgorithm: signatureAlgorithm,
+      signerKeyId: signerKeyId,
+      frameSize: frameSize,
+    );
+    return _writeContainer(context, output, (writer) async {
+      final frame = Uint8List(frameSize);
+      var filled = 0;
+      Uint8List? readyFrame; // full frame held until finality is known
+      await for (final chunk in source) {
+        var offset = 0;
+        while (offset < chunk.length) {
+          final n = (frameSize - filled) < (chunk.length - offset)
+              ? frameSize - filled
+              : chunk.length - offset;
+          frame.setRange(filled, filled + n, chunk, offset);
+          filled += n;
+          offset += n;
+          if (filled == frameSize) {
+            if (readyFrame != null) {
+              await writer.add(readyFrame, isFinal: false);
+            }
+            readyFrame = Uint8List.fromList(frame);
+            filled = 0;
+          }
+        }
+      }
+      if (readyFrame != null) {
+        if (filled == 0) {
+          await writer.add(readyFrame, isFinal: true);
+        } else {
+          await writer.add(readyFrame, isFinal: false);
+          await writer.add(
+            Uint8List.sublistView(frame, 0, filled),
+            isFinal: true,
+          );
+        }
+      } else {
+        // Covers both a short (<1 frame) stream and a fully empty one.
+        await writer.add(
+          Uint8List.sublistView(frame, 0, filled),
+          isFinal: true,
+        );
+      }
+    });
+  }
+
+  /// KEM-encapsulates, derives the DEM key, and serializes + signs the header —
+  /// the shared prologue of [encryptFile] and [encryptStream].
+  _EncryptContext _prepareEncrypt({
+    required Uint8List recipientPublicKey,
+    required PqForgeProfile profile,
+    required Uint8List? aad,
+    required Map<String, Object?> metadata,
+    required Uint8List? signerSecretKey,
+    required PqSignatureAlgorithm? signatureAlgorithm,
+    required String? signerKeyId,
+    required int frameSize,
+  }) {
     final signatureAlg = signerSecretKey == null
         ? signatureAlgorithm
         : (signatureAlgorithm ?? profile.signature);
@@ -190,7 +327,6 @@ class PqForgeStreamCipher {
       signerKeyId: signerKeyId,
     );
     final headerCore = PqStreamingEnvelope.serializeHeaderCore(header);
-    final headerHash = PqBytes.sha256(headerCore);
     final signature = signerSecretKey == null
         ? Uint8List(0)
         : PqSignaturePrimitives.sign(
@@ -200,66 +336,50 @@ class PqForgeStreamCipher {
             context: PqStreamingEnvelope.signatureContext(),
             preHash: true,
           );
+    return _EncryptContext(
+      demKey: demKey,
+      nonceSalt: header.nonceSalt,
+      headerCore: headerCore,
+      headerHash: PqBytes.sha256(headerCore),
+      signature: signature,
+      signed: signerSecretKey != null,
+    );
+  }
 
+  /// Opens [output], writes the container header, runs [body] with a
+  /// [_FrameWriter], and returns the stats. Deletes the partial output if
+  /// anything fails.
+  Future<PqStreamingStats> _writeContainer(
+    _EncryptContext context,
+    File output,
+    Future<void> Function(_FrameWriter writer) body,
+  ) async {
     await output.parent.create(recursive: true);
-    final source = await input.open();
     final sink = await output.open(mode: FileMode.write);
     var success = false;
-    var containerBytes = 0;
-    var plaintextBytes = 0;
-    var frameCount = 0;
     try {
-      final containerHeader = _buildContainerHeader(headerCore, signature);
+      final containerHeader = _buildContainerHeader(
+        context.headerCore,
+        context.signature,
+      );
       await sink.writeFrom(containerHeader);
-      containerBytes += containerHeader.length;
-
-      final total = await source.length();
-      final buffer = Uint8List(frameSize);
-      var seq = 0;
-      var read = 0;
-      if (total == 0) {
-        // An empty input still gets one (empty) final frame so the reader sees a
-        // terminator rather than a truncated stream.
-        containerBytes += await _writeFrame(
-          sink: sink,
-          demKey: demKey,
-          headerHash: headerHash,
-          nonceSalt: header.nonceSalt,
-          seq: 0,
-          isFinal: true,
-          plaintext: Uint8List(0),
-        );
-        frameCount = 1;
-      } else {
-        while (read < total) {
-          final n = await source.readInto(buffer);
-          if (n <= 0) break;
-          final isFinal = (read + n) >= total;
-          containerBytes += await _writeFrame(
-            sink: sink,
-            demKey: demKey,
-            headerHash: headerHash,
-            nonceSalt: header.nonceSalt,
-            seq: seq,
-            isFinal: isFinal,
-            plaintext: Uint8List.sublistView(buffer, 0, n),
-          );
-          plaintextBytes += n;
-          read += n;
-          seq++;
-          frameCount++;
-        }
-      }
+      final writer = _FrameWriter(
+        engine: engine,
+        sink: sink,
+        demKey: context.demKey,
+        headerHash: context.headerHash,
+        nonceSalt: context.nonceSalt,
+      );
+      await body(writer);
       await sink.flush();
       success = true;
       return PqStreamingStats(
-        plaintextBytes: plaintextBytes,
-        containerBytes: containerBytes,
-        frameCount: frameCount,
-        signed: signerSecretKey != null,
+        plaintextBytes: writer.plaintextBytes,
+        containerBytes: containerHeader.length + writer.bytesWritten,
+        frameCount: writer.frameCount,
+        signed: context.signed,
       );
     } finally {
-      await source.close();
       await sink.close();
       if (!success) await _deleteQuietly(output);
     }
@@ -290,9 +410,45 @@ class PqForgeStreamCipher {
     Uint8List? Function(PqStreamingHeader header)? aadResolver,
   }) async {
     await output.parent.create(recursive: true);
-    final source = await input.open();
     final sink = await output.open(mode: FileMode.write);
+    PqStreamingHeader? header;
     var success = false;
+    try {
+      final frames = decryptStream(
+        recipientSecretKey: recipientSecretKey,
+        input: input,
+        signerPublicKey: signerPublicKey,
+        aadResolver: aadResolver,
+        onHeader: (h) => header = h,
+      );
+      await for (final plaintext in frames) {
+        if (plaintext.isNotEmpty) await sink.writeFrom(plaintext);
+      }
+      await sink.flush();
+      success = true;
+      return header!;
+    } finally {
+      await sink.close();
+      if (!success) await _deleteQuietly(output);
+    }
+  }
+
+  /// Streams the authenticated plaintext of a `.pqfs` [input], one frame at a
+  /// time, without materializing it anywhere — the consumer decides what to do
+  /// with each frame (write it, parse it, forward it).
+  ///
+  /// Every frame is verified (tag + position + finality) **before** it is
+  /// yielded, so a consumer only ever sees authentic bytes; truncation is
+  /// detected at the end of the stream. [onHeader] fires once after the header
+  /// (and its signature, when present) has been verified.
+  Stream<Uint8List> decryptStream({
+    required Uint8List recipientSecretKey,
+    required File input,
+    Uint8List? signerPublicKey,
+    Uint8List? Function(PqStreamingHeader header)? aadResolver,
+    void Function(PqStreamingHeader header)? onHeader,
+  }) async* {
+    final source = await input.open();
     try {
       final container = await _readContainerHeader(source);
       final header = container.header;
@@ -329,6 +485,7 @@ class PqForgeStreamCipher {
           throw const PqForgeException('AAD hash mismatch');
         }
       }
+      onHeader?.call(header);
 
       final sharedSecret = PqKemPrimitives.decapsulate(
         header.kemAlgorithm,
@@ -378,51 +535,18 @@ class PqForgeStreamCipher {
           isFinal: parsed.isFinal,
           body: body,
         );
-        if (plaintext.isNotEmpty) await sink.writeFrom(plaintext);
         if (parsed.isFinal) sawFinal = true;
         expectedSeq++;
+        yield plaintext;
       }
       if (!sawFinal) {
         throw const PqForgeException(
           'Truncated streaming envelope: missing final frame',
         );
       }
-      await sink.flush();
-      success = true;
-      return header;
     } finally {
       await source.close();
-      await sink.close();
-      if (!success) await _deleteQuietly(output);
     }
-  }
-
-  Future<int> _writeFrame({
-    required RandomAccessFile sink,
-    required Uint8List demKey,
-    required Uint8List headerHash,
-    required Uint8List nonceSalt,
-    required int seq,
-    required bool isFinal,
-    required Uint8List plaintext,
-  }) async {
-    final body = await PqStreamingEnvelope.sealFrameBody(
-      engine: engine,
-      demKey: demKey,
-      headerHash: headerHash,
-      nonceSalt: nonceSalt,
-      seq: seq,
-      isFinal: isFinal,
-      plaintext: plaintext,
-    );
-    final frameHeader = PqStreamingEnvelope.buildFrameHeader(
-      bodyLen: body.length,
-      seq: seq,
-      isFinal: isFinal,
-    );
-    await sink.writeFrom(frameHeader);
-    await sink.writeFrom(body);
-    return frameHeader.length + body.length;
   }
 
   Uint8List _buildContainerHeader(Uint8List headerCore, Uint8List signature) {
@@ -454,11 +578,23 @@ class PqForgeStreamCipher {
         'Unsupported streaming envelope version: $version',
       );
     }
-    final headerCore = await _readExactly(
-      source,
-      _readUint32(await _readExactly(source, 4)),
-    );
+    // Validate untrusted lengths BEFORE allocating: a malicious container can
+    // claim up to 4 GiB here and would otherwise force the allocation attempt.
+    final headerCoreLen = _readUint32(await _readExactly(source, 4));
+    if (headerCoreLen <= 0 ||
+        headerCoreLen > PqStreamingEnvelope.maxHeaderCoreBytes) {
+      throw PqForgeException('Invalid streaming header length: $headerCoreLen');
+    }
+    final headerCore = await _readExactly(source, headerCoreLen);
     final signatureLen = _readUint32(await _readExactly(source, 4));
+    final maxSignature = PqSignatureAlgorithm.values
+        .map((algorithm) => algorithm.signatureBytes)
+        .reduce((a, b) => a > b ? a : b);
+    if (signatureLen > maxSignature) {
+      throw PqForgeException(
+        'Invalid streaming signature length: $signatureLen',
+      );
+    }
     final signature = signatureLen == 0
         ? null
         : await _readExactly(source, signatureLen);
@@ -468,6 +604,70 @@ class PqForgeStreamCipher {
       signature: signature,
       headerHash: PqBytes.sha256(headerCore),
     );
+  }
+}
+
+/// The per-container crypto state shared by the file and stream encrypt paths.
+class _EncryptContext {
+  _EncryptContext({
+    required this.demKey,
+    required this.nonceSalt,
+    required this.headerCore,
+    required this.headerHash,
+    required this.signature,
+    required this.signed,
+  });
+
+  final Uint8List demKey;
+  final Uint8List nonceSalt;
+  final Uint8List headerCore;
+  final Uint8List headerHash;
+  final Uint8List signature;
+  final bool signed;
+}
+
+/// Seals plaintext frames in order and writes them to the container sink,
+/// tracking the stats the public API reports.
+class _FrameWriter {
+  _FrameWriter({
+    required this.engine,
+    required this.sink,
+    required this.demKey,
+    required this.headerHash,
+    required this.nonceSalt,
+  });
+
+  final PqForgeAeadEngine engine;
+  final RandomAccessFile sink;
+  final Uint8List demKey;
+  final Uint8List headerHash;
+  final Uint8List nonceSalt;
+
+  int _seq = 0;
+  int plaintextBytes = 0;
+  int bytesWritten = 0;
+  int get frameCount => _seq;
+
+  Future<void> add(Uint8List plaintext, {required bool isFinal}) async {
+    final body = await PqStreamingEnvelope.sealFrameBody(
+      engine: engine,
+      demKey: demKey,
+      headerHash: headerHash,
+      nonceSalt: nonceSalt,
+      seq: _seq,
+      isFinal: isFinal,
+      plaintext: plaintext,
+    );
+    final frameHeader = PqStreamingEnvelope.buildFrameHeader(
+      bodyLen: body.length,
+      seq: _seq,
+      isFinal: isFinal,
+    );
+    await sink.writeFrom(frameHeader);
+    await sink.writeFrom(body);
+    plaintextBytes += plaintext.length;
+    bytesWritten += frameHeader.length + body.length;
+    _seq++;
   }
 }
 

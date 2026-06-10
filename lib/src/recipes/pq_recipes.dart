@@ -352,6 +352,13 @@ class PqRecipeMessages {
     ]);
   }
 
+  static Uint8List folderPackAad({Uint8List? aad}) {
+    return PqBytes.lengthPrefixed([
+      domain('pqforge/folder-pack/v1'),
+      aad ?? Uint8List(0),
+    ]);
+  }
+
   static Uint8List emailAad({required String messageId, Uint8List? aad}) {
     return PqBytes.lengthPrefixed([
       domain('pqforge/email-seal/v1'),

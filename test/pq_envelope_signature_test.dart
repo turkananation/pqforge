@@ -26,7 +26,10 @@ void main() {
       expect(envelope.version, pqForgeEnvelopeVersion);
       expect(envelope.isSigned, isTrue);
       // ML-DSA-44 signatures are fixed-size regardless of payload length.
-      expect(envelope.signature, hasLength(PqSignatureAlgorithm.mlDsa44.signatureBytes));
+      expect(
+        envelope.signature,
+        hasLength(PqSignatureAlgorithm.mlDsa44.signatureBytes),
+      );
 
       // On-disk envelopes must still verify + decrypt after serialization.
       final restored = PqEnvelope.fromBinary(envelope.toBinary());
@@ -44,10 +47,7 @@ void main() {
       final recipient = forge.generateKemKeyPair();
       final envelope = forge.encrypt(recipient.publicKey, message);
       expect(envelope.isSigned, isFalse);
-      expect(
-        forge.decrypt(recipient.secretKey, envelope),
-        message,
-      );
+      expect(forge.decrypt(recipient.secretKey, envelope), message);
     });
 
     test('a wrong signer key fails verification', () {

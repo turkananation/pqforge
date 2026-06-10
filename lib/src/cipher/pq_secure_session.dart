@@ -3,6 +3,7 @@ library;
 
 import 'dart:typed_data';
 
+import '../algorithms/pq_fips.dart';
 import '../primitives/pq_primitives.dart';
 import 'pq_cipher_suite.dart';
 import 'pq_cryptography_aead_engine.dart';
@@ -52,6 +53,7 @@ final class PqForgeSecureSession {
     this.engineProvider = PqForgeEngineProvider.pureDart,
   }) : _secretKey = Uint8List.fromList(secretKey),
        _engine = _resolveEngine(cipherSuite, engineProvider) {
+    PqFipsMode.requireApprovedSuite(cipherSuite);
     cipherSuite.requireKey(_secretKey);
   }
 

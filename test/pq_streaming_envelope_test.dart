@@ -61,6 +61,48 @@ void main() {
     }
   });
 
+  group('encryptStream (unknown-length source)', () {
+    // Exactly the frame-boundary cases where the one-frame lookahead must
+    // decide finality correctly: empty, sub-frame, exact multiples, and spills.
+    for (final size in const [0, 1, 1023, 1024, 1025, 2048, 4096, 10000]) {
+      test('$size bytes from a chunked stream round-trips', () async {
+        final original = payload(size);
+        // Feed awkward chunk sizes so frame fills straddle chunk boundaries.
+        Stream<List<int>> chunks() async* {
+          var offset = 0;
+          var step = 1;
+          while (offset < original.length) {
+            final n = (offset + step) > original.length
+                ? original.length - offset
+                : step;
+            yield Uint8List.sublistView(original, offset, offset + n);
+            offset += n;
+            step = (step * 3 + 1) % 700 + 1;
+          }
+        }
+
+        final enc = File('${dir.path}/s_$size.pqf');
+        final dec = File('${dir.path}/s_$size.out');
+        final stats = await cipher.encryptStream(
+          recipientPublicKey: keys.kemKeyPair.publicKey,
+          source: chunks(),
+          output: enc,
+          profile: PqForgeProfile.compact,
+          frameSize: frameSize,
+        );
+        expect(stats.plaintextBytes, size);
+
+        // A stream-written container must open under the file reader.
+        await cipher.decryptFile(
+          recipientSecretKey: keys.kemKeyPair.secretKey,
+          input: enc,
+          output: dec,
+        );
+        expect(dec.readAsBytesSync(), original);
+      });
+    }
+  });
+
   group('signatures and associated data', () {
     test('signed streaming round-trips and rejects the wrong signer', () async {
       final original = payload(5000);
@@ -200,6 +242,121 @@ void main() {
       bytes[20] ^= 0xFF; // inside headerCore (KEM ciphertext / metadata region)
       enc.writeAsBytesSync(bytes);
       await expectDecryptFails();
+    });
+  });
+
+  group('round-trip across every profile', () {
+    // F6: compact is covered by the size sweep; pin balanced and maximum too,
+    // proving the key schedule and framing hold for every parameter set.
+    for (final profile in [PqForgeProfile.balanced, PqForgeProfile.maximum]) {
+      test(profile.name, () async {
+        final profileForge = PqForge(profile: profile);
+        final profileKeys = profileForge.generateKeys(profile: profile);
+        final original = payload(5000);
+        final src = input('${profile.name}.bin', original);
+        final enc = File('${dir.path}/${profile.name}.pqf');
+        final dec = File('${dir.path}/${profile.name}.out');
+
+        await cipher.encryptFile(
+          recipientPublicKey: profileKeys.kemKeyPair.publicKey,
+          input: src,
+          output: enc,
+          profile: profile,
+          frameSize: frameSize,
+          signerSecretKey: profileKeys.signatureKeyPair.secretKey,
+        );
+        await cipher.decryptFile(
+          recipientSecretKey: profileKeys.kemKeyPair.secretKey,
+          input: enc,
+          output: dec,
+          signerPublicKey: profileKeys.signatureKeyPair.publicKey,
+        );
+        expect(dec.readAsBytesSync(), original);
+      });
+    }
+  });
+
+  group('hostile container hardening', () {
+    test(
+      'a huge claimed header length is rejected before allocation',
+      () async {
+        // Hand-craft a container whose headerCoreLen claims ~4 GiB. The reader
+        // must reject it from the length field alone (F3) — never allocate it.
+        final evil = BytesBuilder(copy: false)
+          ..add(PqBytes.utf8Bytes(PqStreamingEnvelope.magic))
+          ..add(PqBytes.uint32(PqStreamingEnvelope.formatVersion))
+          ..add(PqBytes.uint32(0xFFFFFFF0)) // headerCoreLen
+          ..add(Uint8List(64));
+        final file = File('${dir.path}/evil_header.pqf')
+          ..writeAsBytesSync(evil.toBytes());
+
+        await expectLater(
+          cipher.decryptFile(
+            recipientSecretKey: keys.kemKeyPair.secretKey,
+            input: file,
+            output: File('${dir.path}/evil_header.out'),
+          ),
+          throwsA(
+            isA<PqForgeException>().having(
+              (e) => e.message,
+              'message',
+              contains('Invalid streaming header length'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('an oversized claimed signature length is rejected', () async {
+      // Valid magic/version + plausible-length header bytes, then a signature
+      // length far beyond any ML-DSA signature.
+      final headerCore = Uint8List(32);
+      final evil = BytesBuilder(copy: false)
+        ..add(PqBytes.utf8Bytes(PqStreamingEnvelope.magic))
+        ..add(PqBytes.uint32(PqStreamingEnvelope.formatVersion))
+        ..add(PqBytes.uint32(headerCore.length))
+        ..add(headerCore)
+        ..add(PqBytes.uint32(0x7FFFFFFF)); // signatureLen
+      final file = File('${dir.path}/evil_sig.pqf')
+        ..writeAsBytesSync(evil.toBytes());
+
+      await expectLater(
+        cipher.decryptFile(
+          recipientSecretKey: keys.kemKeyPair.secretKey,
+          input: file,
+          output: File('${dir.path}/evil_sig.out'),
+        ),
+        throwsA(
+          isA<PqForgeException>().having(
+            (e) => e.message,
+            'message',
+            contains('Invalid streaming signature length'),
+          ),
+        ),
+      );
+    });
+
+    test('frameNonce enforces the 2^32 per-key invocation bound', () {
+      final salt = Uint8List(PqStreamingEnvelope.nonceSaltBytes);
+      // The last valid sequence number, then one past the NIST bound (F5).
+      expect(
+        PqStreamingEnvelope.frameNonce(
+          salt,
+          PqStreamingEnvelope.maxFrameCount - 1,
+        ),
+        hasLength(12),
+      );
+      expect(
+        () => PqStreamingEnvelope.frameNonce(
+          salt,
+          PqStreamingEnvelope.maxFrameCount,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+      expect(
+        () => PqStreamingEnvelope.frameNonce(salt, -1),
+        throwsA(isA<PqForgeException>()),
+      );
     });
   });
 

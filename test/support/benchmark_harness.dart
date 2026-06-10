@@ -105,7 +105,8 @@ class MeasuredRun {
 
   /// Peak minus baseline, floored at zero — the resident growth attributable to
   /// the workload.
-  int get deltaBytes => peakBytes - baselineBytes < 0 ? 0 : peakBytes - baselineBytes;
+  int get deltaBytes =>
+      peakBytes - baselineBytes < 0 ? 0 : peakBytes - baselineBytes;
 }
 
 /// Lets pending I/O flush and the heap quiesce before a baseline RSS reading.
@@ -347,7 +348,8 @@ class BenchmarkReport {
     }
     final widths = List<int>.generate(
       rows.first.length,
-      (col) => rows.map((row) => row[col].length).reduce((a, b) => a > b ? a : b),
+      (col) =>
+          rows.map((row) => row[col].length).reduce((a, b) => a > b ? a : b),
     );
     final buffer = StringBuffer();
     for (var i = 0; i < rows.length; i++) {

@@ -74,32 +74,38 @@ void main() {
       expect(verdict.ok, isTrue);
     });
 
-    test('a bounded streaming-style peak passes regardless of payload size', () {
-      // 1 GiB payload, but only a 2 MiB resident frame buffer grows the heap.
-      final verdict = budget.evaluate(
-        peakRssBytes: 150 * bytesPerMiB + 2 * bytesPerMiB,
-        baselineRssBytes: 150 * bytesPerMiB,
-        payloadBytes: 1024 * bytesPerMiB,
-      );
-      expect(verdict.ok, isTrue);
-      expect(verdict.amplificationFactor, lessThan(0.01));
-    });
+    test(
+      'a bounded streaming-style peak passes regardless of payload size',
+      () {
+        // 1 GiB payload, but only a 2 MiB resident frame buffer grows the heap.
+        final verdict = budget.evaluate(
+          peakRssBytes: 150 * bytesPerMiB + 2 * bytesPerMiB,
+          baselineRssBytes: 150 * bytesPerMiB,
+          payloadBytes: 1024 * bytesPerMiB,
+        );
+        expect(verdict.ok, isTrue);
+        expect(verdict.amplificationFactor, lessThan(0.01));
+      },
+    );
 
-    test('absolute peak gate is informational below 256 MiB, active at GiB scale', () {
-      final small = budget.evaluate(
-        peakRssBytes: 200 * bytesPerMiB,
-        baselineRssBytes: 150 * bytesPerMiB,
-        payloadBytes: 8 * bytesPerMiB,
-      );
-      expect(small.absoluteGateApplicable, isFalse);
+    test(
+      'absolute peak gate is informational below 256 MiB, active at GiB scale',
+      () {
+        final small = budget.evaluate(
+          peakRssBytes: 200 * bytesPerMiB,
+          baselineRssBytes: 150 * bytesPerMiB,
+          payloadBytes: 8 * bytesPerMiB,
+        );
+        expect(small.absoluteGateApplicable, isFalse);
 
-      final large = budget.evaluate(
-        peakRssBytes: 1600 * bytesPerMiB,
-        baselineRssBytes: 150 * bytesPerMiB,
-        payloadBytes: 1024 * bytesPerMiB,
-      );
-      expect(large.absoluteGateApplicable, isTrue);
-    });
+        final large = budget.evaluate(
+          peakRssBytes: 1600 * bytesPerMiB,
+          baselineRssBytes: 150 * bytesPerMiB,
+          payloadBytes: 1024 * bytesPerMiB,
+        );
+        expect(large.absoluteGateApplicable, isTrue);
+      },
+    );
 
     test('rejects a non-positive payload', () {
       expect(
@@ -128,6 +134,11 @@ void _heavyBaselineGroup() {
           .where((name) => name.isNotEmpty)
           .toList();
   final enforce = Platform.environment['PQFORGE_BENCH_ENFORCE'] == '1';
+  // 'oneshot' (default) measures the legacy PqForge.encrypt path; 'streaming'
+  // measures the bounded-memory .pqfs path (Phase 3) so amplification should
+  // stay flat and small as payload size grows.
+  final streaming = Platform.environment['PQFORGE_BENCH_MODE'] == 'streaming';
+  final mode = streaming ? 'streaming' : 'oneshot';
 
   group(
     'synthetic I/O baseline (heavy)',
@@ -155,17 +166,20 @@ void _heavyBaselineGroup() {
         );
         payloadChecksum = _generatePayloadFile(inputPath, payloadBytes);
         stdout.writeln(
-          '[pqforge bench] profiles=$profileNames enforce=$enforce '
+          '[pqforge bench] mode=$mode profiles=$profileNames enforce=$enforce '
           'host=${Platform.numberOfProcessors} cores',
         );
       });
 
       tearDownAll(() {
         stdout
-          ..writeln('\n=== pqforge Phase 0 baseline (payload '
-              '${formatMiB(payloadBytes)}) ===')
+          ..writeln(
+            '\n=== pqforge $mode benchmark (payload '
+            '${formatMiB(payloadBytes)}) ===',
+          )
           ..writeln(report.table());
-        final reportPath = Platform.environment['PQFORGE_BENCH_REPORT'] ??
+        final reportPath =
+            Platform.environment['PQFORGE_BENCH_REPORT'] ??
             '${Directory.systemTemp.path}/pqforge_benchmark_baseline.json';
         final file = report.writeJson(reportPath);
         stdout.writeln('JSON report written to ${file.path}\n');
@@ -175,96 +189,113 @@ void _heavyBaselineGroup() {
       for (final profileName in profileNames) {
         for (final signed in const [false, true]) {
           final cellName = '$profileName / ${signed ? 'signed' : 'unsigned'}';
-          test(
-            cellName,
-            () async {
-              final keys = keysFor(profileName);
-              final envPath =
-                  '${tempDir.path}/$profileName-${signed ? 'signed' : 'unsigned'}.pqf';
+          test(cellName, () async {
+            final keys = keysFor(profileName);
+            final envPath =
+                '${tempDir.path}/$profileName-${signed ? 'signed' : 'unsigned'}.pqf';
 
-              // ---- encrypt ----
-              late Map<String, Object?> encInfo;
-              final encRun = await measure(() async {
-                encInfo = await _encryptInIsolate(
-                  profileName: profileName,
-                  inputPath: inputPath,
-                  envPath: envPath,
-                  recipientPublicKey: keys.kemKeyPair.publicKey,
-                  signerSecretKey: keys.signatureKeyPair.secretKey,
-                  signed: signed,
-                );
-              });
-              final encResult = BenchmarkResult(
-                operation: 'encrypt',
-                profileName: profileName,
-                signed: signed,
+            // ---- encrypt ----
+            late Map<String, Object?> encInfo;
+            final encRun = await measure(() async {
+              encInfo = streaming
+                  ? await _encryptStreamingInIsolate(
+                      profileName: profileName,
+                      inputPath: inputPath,
+                      envPath: envPath,
+                      recipientPublicKey: keys.kemKeyPair.publicKey,
+                      signerSecretKey: keys.signatureKeyPair.secretKey,
+                      signed: signed,
+                    )
+                  : await _encryptInIsolate(
+                      profileName: profileName,
+                      inputPath: inputPath,
+                      envPath: envPath,
+                      recipientPublicKey: keys.kemKeyPair.publicKey,
+                      signerSecretKey: keys.signatureKeyPair.secretKey,
+                      signed: signed,
+                    );
+            });
+            final encResult = BenchmarkResult(
+              operation: 'encrypt',
+              profileName: profileName,
+              signed: signed,
+              payloadBytes: payloadBytes,
+              run: encRun,
+              verdict: budget.evaluate(
+                peakRssBytes: encRun.peakBytes,
+                baselineRssBytes: encRun.baselineBytes,
                 payloadBytes: payloadBytes,
-                run: encRun,
-                verdict: budget.evaluate(
-                  peakRssBytes: encRun.peakBytes,
-                  baselineRssBytes: encRun.baselineBytes,
-                  payloadBytes: payloadBytes,
-                ),
-                detail: encInfo,
-              );
-              report.add(encResult);
-              _printCell(encResult);
+              ),
+              detail: encInfo,
+            );
+            report.add(encResult);
+            _printCell(encResult);
 
-              // ---- decrypt ----
-              late Map<String, Object?> decInfo;
-              final decRun = await measure(() async {
-                decInfo = await _decryptInIsolate(
-                  profileName: profileName,
-                  envPath: envPath,
-                  recipientSecretKey: keys.kemKeyPair.secretKey,
-                  signerPublicKey: keys.signatureKeyPair.publicKey,
-                  signed: signed,
-                );
-              });
-              final decResult = BenchmarkResult(
-                operation: 'decrypt',
-                profileName: profileName,
-                signed: signed,
+            // ---- decrypt ----
+            final outputPath = '$envPath.out';
+            late Map<String, Object?> decInfo;
+            final decRun = await measure(() async {
+              decInfo = streaming
+                  ? await _decryptStreamingInIsolate(
+                      envPath: envPath,
+                      outputPath: outputPath,
+                      recipientSecretKey: keys.kemKeyPair.secretKey,
+                      signerPublicKey: keys.signatureKeyPair.publicKey,
+                      signed: signed,
+                    )
+                  : await _decryptInIsolate(
+                      profileName: profileName,
+                      envPath: envPath,
+                      recipientSecretKey: keys.kemKeyPair.secretKey,
+                      signerPublicKey: keys.signatureKeyPair.publicKey,
+                      signed: signed,
+                    );
+            });
+            final decResult = BenchmarkResult(
+              operation: 'decrypt',
+              profileName: profileName,
+              signed: signed,
+              payloadBytes: payloadBytes,
+              run: decRun,
+              verdict: budget.evaluate(
+                peakRssBytes: decRun.peakBytes,
+                baselineRssBytes: decRun.baselineBytes,
                 payloadBytes: payloadBytes,
-                run: decRun,
-                verdict: budget.evaluate(
-                  peakRssBytes: decRun.peakBytes,
-                  baselineRssBytes: decRun.baselineBytes,
-                  payloadBytes: payloadBytes,
-                ),
-                detail: decInfo,
-              );
-              report.add(decResult);
-              _printCell(decResult);
+              ),
+              detail: decInfo,
+            );
+            report.add(decResult);
+            _printCell(decResult);
 
-              // ---- correctness: full round-trip ----
+            // ---- correctness: full round-trip ----
+            expect(
+              decInfo['plaintextBytes'],
+              payloadBytes,
+              reason: 'decrypted length must equal the original payload',
+            );
+            expect(
+              decInfo['checksum'],
+              payloadChecksum,
+              reason: 'decrypted bytes must match the original (round-trip)',
+            );
+
+            // Bound disk use across cells on large runs.
+            for (final path in [envPath, outputPath]) {
+              final file = File(path);
+              if (file.existsSync()) file.deleteSync();
+            }
+
+            if (enforce) {
               expect(
-                decInfo['plaintextBytes'],
-                payloadBytes,
-                reason: 'decrypted length must equal the original payload',
+                encResult.verdict.ok && decResult.verdict.ok,
+                isTrue,
+                reason:
+                    'PQFORGE_BENCH_ENFORCE=1 and a memory budget was '
+                    'exceeded:\n  encrypt: ${encResult.verdict.describe()}'
+                    '\n  decrypt: ${decResult.verdict.describe()}',
               );
-              expect(
-                decInfo['checksum'],
-                payloadChecksum,
-                reason: 'decrypted bytes must match the original (round-trip)',
-              );
-
-              // Bound disk use across cells on large runs.
-              final envFile = File(envPath);
-              if (envFile.existsSync()) envFile.deleteSync();
-
-              if (enforce) {
-                expect(
-                  encResult.verdict.ok && decResult.verdict.ok,
-                  isTrue,
-                  reason: 'PQFORGE_BENCH_ENFORCE=1 and a memory budget was '
-                      'exceeded:\n  encrypt: ${encResult.verdict.describe()}'
-                      '\n  decrypt: ${decResult.verdict.describe()}',
-                );
-              }
-            },
-            timeout: Timeout(Duration(seconds: 120 + payloadMiB * 20)),
-          );
+            }
+          }, timeout: Timeout(Duration(seconds: 120 + payloadMiB * 20)));
         }
       }
     },
@@ -385,4 +416,81 @@ Future<Map<String, Object?>> _decryptInIsolate({
       'checksum': fnv1a32(plaintext),
     };
   });
+}
+
+/// Streaming (`.pqfs`) encrypt in a worker isolate (Phase 3). Peak heap is a
+/// small multiple of the frame size regardless of payload length, so the
+/// measured amplification should stay flat as the payload grows.
+Future<Map<String, Object?>> _encryptStreamingInIsolate({
+  required String profileName,
+  required String inputPath,
+  required String envPath,
+  required Uint8List recipientPublicKey,
+  required Uint8List signerSecretKey,
+  required bool signed,
+}) {
+  return Isolate.run(() async {
+    final profile = PqForgeProfile.byName(profileName);
+    final stopwatch = Stopwatch()..start();
+    final stats = await PqForgeStreamCipher().encryptFile(
+      recipientPublicKey: recipientPublicKey,
+      input: File(inputPath),
+      output: File(envPath),
+      profile: profile,
+      signerSecretKey: signed ? signerSecretKey : null,
+    );
+    return <String, Object?>{
+      'encryptMs': stopwatch.elapsedMilliseconds,
+      'frames': stats.frameCount,
+      'envelopeBytes': stats.containerBytes,
+    };
+  });
+}
+
+/// Streaming decrypt in a worker isolate. The recovered plaintext is written to
+/// [outputPath] and checksummed with a bounded, chunked read (never the whole
+/// file in memory), so the decrypt measurement itself stays bounded.
+Future<Map<String, Object?>> _decryptStreamingInIsolate({
+  required String envPath,
+  required String outputPath,
+  required Uint8List recipientSecretKey,
+  required Uint8List signerPublicKey,
+  required bool signed,
+}) {
+  return Isolate.run(() async {
+    final stopwatch = Stopwatch()..start();
+    await PqForgeStreamCipher().decryptFile(
+      recipientSecretKey: recipientSecretKey,
+      input: File(envPath),
+      output: File(outputPath),
+      signerPublicKey: signed ? signerPublicKey : null,
+    );
+    final decryptMs = stopwatch.elapsedMilliseconds;
+    return <String, Object?>{
+      'decryptMs': decryptMs,
+      'plaintextBytes': File(outputPath).lengthSync(),
+      'checksum': _fnv1aFile(outputPath),
+    };
+  });
+}
+
+/// FNV-1a over a file read in 4 MiB chunks — bounded memory, so it can run
+/// inside the measured streaming-decrypt region without inflating peak RSS.
+int _fnv1aFile(String path) {
+  final handle = File(path).openSync();
+  const chunkBytes = 4 * bytesPerMiB;
+  final buffer = Uint8List(chunkBytes);
+  var hash = 0x811C9DC5;
+  try {
+    while (true) {
+      final n = handle.readIntoSync(buffer);
+      if (n <= 0) break;
+      for (var i = 0; i < n; i++) {
+        hash = ((hash ^ buffer[i]) * 0x01000193) & 0xFFFFFFFF;
+      }
+    }
+  } finally {
+    handle.closeSync();
+  }
+  return hash;
 }

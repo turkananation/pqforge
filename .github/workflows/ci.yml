@@ -12,6 +12,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  memory-gate:
+    name: Streaming memory regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: dart pub get
+
+      # Fails the build if the bounded-memory streaming path regresses past
+      # 1.5x payload amplification (peakRSS - baseline) / payload. 64 MiB keeps
+      # the VM baseline noise well under the gate while finishing in ~1 minute.
+      - name: Enforce streaming peak-RSS gate
+        run: >-
+          PQFORGE_BENCH=1 PQFORGE_BENCH_MODE=streaming PQFORGE_BENCH_MB=64
+          PQFORGE_BENCH_PROFILES=maximum PQFORGE_BENCH_ENFORCE=1
+          dart test -t benchmark test/benchmark_io_test.dart
+
   verify:
     name: Analyze, test, examples, and package dry run
     runs-on: ubuntu-latest

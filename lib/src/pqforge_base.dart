@@ -1,4 +1,6 @@
 export 'algorithms/pq_algorithms.dart';
+export 'algorithms/pq_fips.dart';
+export 'algorithms/pq_lattice_provider.dart';
 export 'cipher/pq_cipher_suite.dart';
 export 'cipher/pq_pointycastle_aead_engine.dart';
 export 'codecs/pq_envelope.dart';

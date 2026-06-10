@@ -162,6 +162,25 @@ class PqForgeProfile {
       _ => throw PqForgeException('Unsupported pqforge profile: $name'),
     };
   }
+
+  /// Resolves [name] to a built-in profile, or reconstructs a custom profile
+  /// (e.g. a decoupled `--kem`/`--sig` composition) from the algorithms a
+  /// serialized envelope carries alongside the name.
+  static PqForgeProfile resolve(
+    String name,
+    PqKemAlgorithm kem,
+    PqSignatureAlgorithm? signature,
+  ) {
+    try {
+      return byName(name);
+    } on PqForgeException {
+      return PqForgeProfile(
+        name: name,
+        kem: kem,
+        signature: signature ?? PqSignatureAlgorithm.mlDsa65,
+      );
+    }
+  }
 }
 
 class PqForgeException implements Exception {
