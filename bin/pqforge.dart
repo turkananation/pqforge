@@ -32,6 +32,7 @@ const Map<String, List<String>> _groups = {
     'encrypt-media',
     'decrypt-media',
   ],
+  'Folder archive (pack)': ['pack', 'unpack'],
   'Sign / verify · post-quantum': ['sign', 'verify'],
   'Hybrid & classical': [
     'hybrid-sign',
@@ -109,6 +110,8 @@ final class PqForgeRunner extends CommandRunner<void> {
     addCommand(DecryptTextCommand());
     addCommand(EncryptMediaCommand());
     addCommand(DecryptMediaCommand());
+    addCommand(PackCommand());
+    addCommand(UnpackCommand());
     addCommand(SignCommand());
     addCommand(VerifyCommand());
     addCommand(HybridSignCommand());

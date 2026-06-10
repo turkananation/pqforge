@@ -4,6 +4,12 @@ library;
 import 'dart:typed_data';
 
 const pqForgeEnvelopeMagic = 'PQF1';
+
+/// Envelope format version. Signatures are computed over a pre-hashed digest —
+/// `SHA-256(headerFields ‖ SHA-256(payload))` signed with `preHash:true` — so
+/// signing cost and memory are independent of payload size (defect M1). The
+/// library is pre-release, so there is no prior wire format to interoperate
+/// with.
 const pqForgeEnvelopeVersion = 1;
 const pqForgeInfoPrefix = 'pqcrypto universal-pqc-framework v1';
 const pqForgeDefaultAeadNonceBytes = 12;
@@ -155,6 +161,25 @@ class PqForgeProfile {
       'maximum' => maximum,
       _ => throw PqForgeException('Unsupported pqforge profile: $name'),
     };
+  }
+
+  /// Resolves [name] to a built-in profile, or reconstructs a custom profile
+  /// (e.g. a decoupled `--kem`/`--sig` composition) from the algorithms a
+  /// serialized envelope carries alongside the name.
+  static PqForgeProfile resolve(
+    String name,
+    PqKemAlgorithm kem,
+    PqSignatureAlgorithm? signature,
+  ) {
+    try {
+      return byName(name);
+    } on PqForgeException {
+      return PqForgeProfile(
+        name: name,
+        kem: kem,
+        signature: signature ?? PqSignatureAlgorithm.mlDsa65,
+      );
+    }
   }
 }
 

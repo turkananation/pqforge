@@ -83,7 +83,7 @@ class PqEnvelope {
   }
 
   static PqEnvelope fromBinary(Uint8List data) {
-    final fields = _decodeLengthPrefixed(data);
+    final fields = PqBytes.decodeLengthPrefixed(data);
     if (fields.length != 12) {
       throw PqForgeException('Invalid envelope field count: ${fields.length}');
     }
@@ -98,7 +98,7 @@ class PqEnvelope {
     final kem = PqKemAlgorithm.byId(utf8.decode(fields[3]));
     final sigId = utf8.decode(fields[4]);
     final sigAlg = sigId.isEmpty ? null : PqSignatureAlgorithm.byId(sigId);
-    final profile = _profileByName(profileName, kem, sigAlg);
+    final profile = PqForgeProfile.resolve(profileName, kem, sigAlg);
     final aadHash = fields[8].isEmpty ? null : fields[8];
     final signerKeyIdText = utf8.decode(fields[9]);
     final signerKeyId = signerKeyIdText.isEmpty ? null : signerKeyIdText;
@@ -146,7 +146,11 @@ class PqEnvelope {
     final sigId = json['signatureAlgorithm'] as String?;
     final kem = PqKemAlgorithm.byId(json['kemAlgorithm'] as String);
     final sigAlg = sigId == null ? null : PqSignatureAlgorithm.byId(sigId);
-    final profile = _profileByName(json['profile'] as String, kem, sigAlg);
+    final profile = PqForgeProfile.resolve(
+      json['profile'] as String,
+      kem,
+      sigAlg,
+    );
     return PqEnvelope(
       version: json['version'] as int? ?? pqForgeEnvelopeVersion,
       profile: profile,
@@ -169,38 +173,7 @@ class PqEnvelope {
   }
 }
 
-PqForgeProfile _profileByName(
-  String name,
-  PqKemAlgorithm kem,
-  PqSignatureAlgorithm? signature,
-) {
-  try {
-    return PqForgeProfile.byName(name);
-  } on PqForgeException {
-    return PqForgeProfile(
-      name: name,
-      kem: kem,
-      signature: signature ?? PqSignatureAlgorithm.mlDsa65,
-    );
-  }
-}
-
-List<Uint8List> _decodeLengthPrefixed(Uint8List data) {
-  final fields = <Uint8List>[];
-  var offset = 0;
-  while (offset < data.length) {
-    if (offset + 4 > data.length) {
-      throw const PqForgeException('Truncated envelope field length');
-    }
-    final length = data.buffer
-        .asByteData(data.offsetInBytes + offset, 4)
-        .getUint32(0, Endian.big);
-    offset += 4;
-    if (offset + length > data.length) {
-      throw const PqForgeException('Truncated envelope field body');
-    }
-    fields.add(Uint8List.sublistView(data, offset, offset + length));
-    offset += length;
-  }
-  return fields;
-}
+// The `.pqfs` streaming codec (PqStreamingHeader / PqStreamingEnvelope) lives
+// in pq_streaming_envelope.dart, exported via `package:pqforge/pqforge_io.dart`
+// — its uint64 frame counters don't compile to dart2js, so it stays out of the
+// web-safe core umbrella this file belongs to.

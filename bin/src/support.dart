@@ -5,6 +5,7 @@
 /// throws [PqForgeException] on misuse; commands own all styled output.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -37,6 +38,24 @@ void addEnvelopeOptions(ArgParser parser, {required bool includeProfile}) {
       valueHelp: 'name',
     );
   }
+  if (includeProfile) {
+    parser
+      ..addOption(
+        'kem',
+        allowed: const ['compact', 'balanced', 'maximum'],
+        help: 'Override just the ML-KEM strength (defaults to --profile).',
+        valueHelp: 'name',
+      )
+      ..addOption(
+        'sig',
+        allowed: const ['compact', 'balanced', 'maximum'],
+        help:
+            'Override just the ML-DSA signature strength (defaults to '
+            '--profile). Lets bulk payloads keep a strong KEM with a lighter '
+            'signature.',
+        valueHelp: 'name',
+      );
+  }
   parser
     ..addOption(
       'signer-secret',
@@ -49,6 +68,27 @@ void addEnvelopeOptions(ArgParser parser, {required bool includeProfile}) {
       valueHelp: 'id',
     );
 }
+
+/// Adds the AEAD engine selector shared by the bulk encrypt/decrypt commands.
+void addEngineOption(ArgParser parser) {
+  parser.addOption(
+    'engine',
+    allowed: const ['cryptography', 'pure-dart'],
+    defaultsTo: 'cryptography',
+    help:
+        'Bulk AEAD engine. "cryptography" is ~10x faster and hardware-backed '
+        'where available; "pure-dart" is the PointyCastle reference. Outputs '
+        'are byte-compatible either way.',
+    valueHelp: 'name',
+  );
+}
+
+/// Resolves `--engine` into an engine provider (default: the fast one).
+PqForgeEngineProvider engineFrom(ArgResults results) =>
+    switch (results['engine'] as String? ?? 'cryptography') {
+      'pure-dart' => PqForgeEngineProvider.pureDart,
+      _ => PqForgeEngineProvider.nativeCryptography,
+    };
 
 /// Adds the mutually exclusive passphrase sources used to wrap/unwrap secrets.
 void addPassphraseOptions(ArgParser parser) {
@@ -167,7 +207,9 @@ Future<void> writeJson(File file, Map<String, Object?> json) async {
 }
 
 Future<PqEnvelope> readEnvelope(File file) async =>
-    PqEnvelope.fromBinary(Uint8List.fromList(await file.readAsBytes()));
+    // readAsBytes already yields a Uint8List; fromBinary takes zero-copy views
+    // over it, so the prior fromList wrapper was a redundant copy (M2).
+    PqEnvelope.fromBinary(await file.readAsBytes());
 
 Future<void> writeEnvelope(File file, PqEnvelope envelope) async {
   await file.parent.create(recursive: true);
@@ -178,6 +220,28 @@ Future<void> writeEnvelope(File file, PqEnvelope envelope) async {
 
 PqForgeProfile profileFrom(ArgResults results) =>
     PqForgeProfile.byName(results['profile'] as String);
+
+/// Resolves the effective composition profile from `--profile` plus the
+/// optional independent `--kem` / `--sig` overrides (Phase 6). When either is
+/// set, a custom profile is built so a strong KEM can pair with a lighter
+/// signature (the bulk payload is AEAD-protected regardless of KEM strength).
+/// The custom name round-trips: readers reconstruct an equivalent profile from
+/// the stored kem/sig ids.
+PqForgeProfile resolveProfile(ArgResults results) {
+  final base = PqForgeProfile.byName(results['profile'] as String);
+  final kemName = results['kem'] as String?;
+  final sigName = results['sig'] as String?;
+  if (kemName == null && sigName == null) return base;
+  final kem = kemName == null ? base.kem : PqForgeProfile.byName(kemName).kem;
+  final signature = sigName == null
+      ? base.signature
+      : PqForgeProfile.byName(sigName).signature;
+  return PqForgeProfile(
+    name: 'custom-${kem.id}-${signature.id}',
+    kem: kem,
+    signature: signature,
+  );
+}
 
 Uint8List? optionalAad(ArgResults results) {
   final aad = results['aad'] as String?;
@@ -225,6 +289,46 @@ Future<List<File>> listFiles(Directory directory) async {
   }
   files.sort((a, b) => a.path.compareTo(b.path));
   return files;
+}
+
+// --- bounded concurrency ----------------------------------------------------
+
+/// A counting semaphore that bounds how many async tasks run at once.
+///
+/// Folder commands run one file per background isolate (Axis B) gated by this,
+/// so at most [_permits] isolates exist at any moment regardless of tree size.
+/// Every [acquire] must be paired with exactly one [release].
+class Semaphore {
+  Semaphore(this._permits) : assert(_permits > 0, 'permits must be positive');
+
+  int _permits;
+  final _waiters = <Completer<void>>[];
+
+  Future<void> acquire() {
+    if (_permits > 0) {
+      _permits--;
+      return Future<void>.value();
+    }
+    final completer = Completer<void>();
+    _waiters.add(completer);
+    return completer.future;
+  }
+
+  void release() {
+    if (_waiters.isNotEmpty) {
+      _waiters.removeAt(0).complete();
+    } else {
+      _permits++;
+    }
+  }
+}
+
+/// Resolves the folder-processing concurrency: an explicit `--concurrency`,
+/// else the CPU count capped at 8. Always at least 1.
+int concurrencyFrom(ArgResults results) {
+  final explicit = int.tryParse((results['concurrency'] as String?) ?? '');
+  final value = explicit ?? Platform.numberOfProcessors.clamp(1, 8);
+  return value < 1 ? 1 : value;
 }
 
 String safeRelativePath(Directory root, File file) {

@@ -6,12 +6,37 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
-import 'package:pqcrypto/pqcrypto.dart';
 
 import '../algorithms/pq_algorithms.dart';
+import '../algorithms/pq_lattice_provider.dart';
 import '../keys/pq_keys.dart';
 
 final _secureRandom = Random.secure();
+
+Uint8List _platformRandomBytes(int length) {
+  final bytes = Uint8List(length);
+  for (var i = 0; i < length; i++) {
+    bytes[i] = _secureRandom.nextInt(256);
+  }
+  return bytes;
+}
+
+/// Process-wide source of cryptographic randomness.
+///
+/// Defaults to the platform CSPRNG (`Random.secure()`). FIPS 140-3 deployments
+/// can point [generator] at a validated module's DRBG so every nonce, salt, and
+/// seed pqforge draws comes from inside the module boundary:
+///
+/// ```dart
+/// PqRandom.generator = myValidatedModule.randomBytes;
+/// ```
+abstract final class PqRandom {
+  /// The active generator. Must return exactly the requested number of bytes.
+  static Uint8List Function(int length) generator = _platformRandomBytes;
+
+  /// Restores the platform CSPRNG default.
+  static void useDefault() => generator = _platformRandomBytes;
+}
 
 class PqBytes {
   const PqBytes._();
@@ -20,9 +45,11 @@ class PqBytes {
     if (length < 0) {
       throw ArgumentError.value(length, 'length', 'must be non-negative');
     }
-    final bytes = Uint8List(length);
-    for (var i = 0; i < length; i++) {
-      bytes[i] = _secureRandom.nextInt(256);
+    final bytes = PqRandom.generator(length);
+    if (bytes.length != length) {
+      throw StateError(
+        'PqRandom.generator returned ${bytes.length} bytes; expected $length',
+      );
     }
     return bytes;
   }
@@ -61,6 +88,28 @@ class PqBytes {
         ..add(field);
     }
     return concat(chunks);
+  }
+
+  /// Inverse of [lengthPrefixed]: splits `len‖field` records back into
+  /// zero-copy views over [data]. Throws [PqForgeException] on truncation.
+  static List<Uint8List> decodeLengthPrefixed(Uint8List data) {
+    final fields = <Uint8List>[];
+    var offset = 0;
+    while (offset < data.length) {
+      if (offset + 4 > data.length) {
+        throw const PqForgeException('Truncated envelope field length');
+      }
+      final length = data.buffer
+          .asByteData(data.offsetInBytes + offset, 4)
+          .getUint32(0, Endian.big);
+      offset += 4;
+      if (offset + length > data.length) {
+        throw const PqForgeException('Truncated envelope field body');
+      }
+      fields.add(Uint8List.sublistView(data, offset, offset + length));
+      offset += length;
+    }
+    return fields;
   }
 
   static Uint8List sha256(Uint8List data) => pc.SHA256Digest().process(data);
@@ -117,7 +166,10 @@ class PqKemPrimitives {
     if (seed != null && seed.length != 32 && seed.length != 64) {
       throw ArgumentError.value(seed.length, 'seed', 'expected 32 or 64 bytes');
     }
-    final (publicKey, secretKey) = _kem(algorithm).generateKeyPair(seed);
+    final (publicKey, secretKey) = PqLattice.provider.kemGenerateKeyPair(
+      algorithm,
+      seed: seed,
+    );
     return PqKeyPair(publicKey: publicKey, secretKey: secretKey);
   }
 
@@ -128,9 +180,11 @@ class PqKemPrimitives {
   }) {
     requireLength('publicKey', publicKey, algorithm.publicKeyBytes);
     if (nonce != null) requireLength('nonce', nonce, 32);
-    final (ciphertext, sharedSecret) = _kem(
+    final (ciphertext, sharedSecret) = PqLattice.provider.kemEncapsulate(
       algorithm,
-    ).encapsulate(publicKey, nonce);
+      publicKey,
+      nonce: nonce,
+    );
     return PqKemEncapsulation(
       algorithm: algorithm,
       ciphertext: ciphertext,
@@ -145,21 +199,17 @@ class PqKemPrimitives {
   ) {
     requireLength('secretKey', secretKey, algorithm.secretKeyBytes);
     requireLength('ciphertext', ciphertext, algorithm.ciphertextBytes);
-    return _kem(algorithm).decapsulate(secretKey, ciphertext);
+    return PqLattice.provider.kemDecapsulate(algorithm, secretKey, ciphertext);
   }
-
-  static KyberKem _kem(PqKemAlgorithm algorithm) => switch (algorithm) {
-    PqKemAlgorithm.mlKem512 => PqcKem.kyber512,
-    PqKemAlgorithm.mlKem768 => PqcKem.kyber768,
-    PqKemAlgorithm.mlKem1024 => PqcKem.kyber1024,
-  };
 }
 
 class PqSignaturePrimitives {
   const PqSignaturePrimitives._();
 
   static PqKeyPair generateKeyPair(PqSignatureAlgorithm algorithm) {
-    final (publicKey, secretKey) = MlDsa.generateKeyPair(_params(algorithm));
+    final (publicKey, secretKey) = PqLattice.provider.dsaGenerateKeyPair(
+      algorithm,
+    );
     return PqKeyPair(publicKey: publicKey, secretKey: secretKey);
   }
 
@@ -168,8 +218,8 @@ class PqSignaturePrimitives {
     Uint8List seed,
   ) {
     requireLength('seed', seed, 32);
-    final (publicKey, secretKey) = MlDsa.generateKeyPairSeeded(
-      _params(algorithm),
+    final (publicKey, secretKey) = PqLattice.provider.dsaGenerateKeyPairSeeded(
+      algorithm,
       seed,
     );
     return PqKeyPair(publicKey: publicKey, secretKey: secretKey);
@@ -184,10 +234,13 @@ class PqSignaturePrimitives {
   }) {
     requireLength('secretKey', secretKey, algorithm.secretKeyBytes);
     requireDsaContext(context);
-    final params = _params(algorithm);
-    return preHash
-        ? MlDsa.hashSign(secretKey, message, params, ctx: context)
-        : MlDsa.sign(secretKey, message, params, ctx: context);
+    return PqLattice.provider.dsaSign(
+      algorithm,
+      secretKey,
+      message,
+      context: context,
+      preHash: preHash,
+    );
   }
 
   static bool verify(
@@ -203,18 +256,14 @@ class PqSignaturePrimitives {
         (context?.length ?? 0) > 255) {
       return false;
     }
-    final params = _params(algorithm);
-    return preHash
-        ? MlDsa.hashVerify(publicKey, message, signature, params, ctx: context)
-        : MlDsa.verify(publicKey, message, signature, params, ctx: context);
-  }
-
-  static DilithiumParams _params(PqSignatureAlgorithm algorithm) {
-    return switch (algorithm) {
-      PqSignatureAlgorithm.mlDsa44 => DilithiumParams.mlDsa44,
-      PqSignatureAlgorithm.mlDsa65 => DilithiumParams.mlDsa65,
-      PqSignatureAlgorithm.mlDsa87 => DilithiumParams.mlDsa87,
-    };
+    return PqLattice.provider.dsaVerify(
+      algorithm,
+      publicKey,
+      message,
+      signature,
+      context: context,
+      preHash: preHash,
+    );
   }
 }
 
@@ -295,5 +344,22 @@ class PqSymmetricPrimitives {
     );
     final generator = pc.Argon2BytesGenerator()..init(params);
     return generator.process(Uint8List.fromList(utf8.encode(password)));
+  }
+
+  /// PBKDF2-HMAC-SHA256 (NIST SP 800-132) — the FIPS-approved password KDF,
+  /// offered alongside Argon2id for deployments that require it.
+  ///
+  /// [iterations] defaults to the OWASP-recommended 600 000 for HMAC-SHA256;
+  /// lower it only in tests.
+  static Uint8List pbkdf2Sha256({
+    required String password,
+    required Uint8List salt,
+    int outputBytes = pqForgeDefaultSessionKeyBytes,
+    int iterations = 600000,
+  }) {
+    RangeError.checkValueInInterval(iterations, 1, 1 << 31, 'iterations');
+    final derivator = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA256Digest(), 64))
+      ..init(pc.Pbkdf2Parameters(salt, iterations, outputBytes));
+    return derivator.process(Uint8List.fromList(utf8.encode(password)));
   }
 }
