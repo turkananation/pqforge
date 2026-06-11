@@ -16,6 +16,12 @@ const pqForgeDefaultAeadNonceBytes = 12;
 const pqForgeDefaultSessionKeyBytes = 32;
 const pqForgeDefaultDeploymentSaltBytes = 32;
 
+/// Metadata key whose presence marks an envelope/container as hybrid
+/// (ML-KEM + classical) KEM-DEM. The canonical constant lives here so both
+/// the sync service (which must reject hybrid inputs with a clear error) and
+/// the async/streaming hybrid paths share it without an import cycle.
+const pqForgeHybridKexMetadataKey = 'hybridKex';
+
 /// ML-KEM parameter sets supported by pqforge.
 enum PqKemAlgorithm {
   mlKem512(

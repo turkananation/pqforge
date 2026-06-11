@@ -122,6 +122,12 @@ class PqForge {
     String? signerKeyId,
   }) {
     final selected = profile ?? this.profile;
+    if (metadata.containsKey(pqForgeHybridKexMetadataKey)) {
+      throw const PqForgeException(
+        'metadata already contains a hybridKex entry; it is reserved for the '
+        'hybrid KEM-DEM marker (use encryptAsync for hybrid envelopes)',
+      );
+    }
     final encapsulated = PqKemPrimitives.encapsulate(
       selected.kem,
       recipientPublicKey,
@@ -132,23 +138,54 @@ class PqForge {
       encapsulated.ciphertext,
     );
     final nonce = PqBytes.randomBytes(pqForgeDefaultAeadNonceBytes);
-    final aadHash = aad == null ? null : PqBytes.sha256(aad);
     final payload = PqSymmetricPrimitives.aesGcmEncrypt(
       key: key,
       nonce: nonce,
       plaintext: plaintext,
       aad: aad ?? encapsulated.ciphertext,
     );
+    return assembleSealedEnvelope(
+      profile: selected,
+      kemCiphertext: encapsulated.ciphertext,
+      nonce: nonce,
+      payload: payload,
+      aad: aad,
+      metadata: metadata,
+      signerSecretKey: signerSecretKey,
+      signatureAlgorithm: signatureAlgorithm,
+      signerKeyId: signerKeyId,
+    );
+  }
+
+  /// Assembles — and, when [signerSecretKey] is set, signs — an envelope from
+  /// an already-sealed [payload] (the DEM stage's `ciphertext‖tag`).
+  ///
+  /// This is the shared tail of [encrypt] and of the engine-aware/hybrid async
+  /// paths, which run the AEAD themselves (on a different engine or with a
+  /// hybrid-derived key) and only need the canonical envelope construction and
+  /// signing rules applied.
+  PqEnvelope assembleSealedEnvelope({
+    required PqForgeProfile profile,
+    required Uint8List kemCiphertext,
+    required Uint8List nonce,
+    required Uint8List payload,
+    Uint8List? aad,
+    Map<String, Object?> metadata = const {},
+    Uint8List? signerSecretKey,
+    PqSignatureAlgorithm? signatureAlgorithm,
+    String? signerKeyId,
+  }) {
+    final aadHash = aad == null ? null : PqBytes.sha256(aad);
     final effectiveSignatureAlgorithm = signerSecretKey == null
         ? signatureAlgorithm
-        : (signatureAlgorithm ?? selected.signature);
+        : (signatureAlgorithm ?? profile.signature);
 
     if (signerSecretKey == null) {
       return PqEnvelope(
-        profile: selected,
-        kemAlgorithm: selected.kem,
+        profile: profile,
+        kemAlgorithm: profile.kem,
         signatureAlgorithm: effectiveSignatureAlgorithm,
-        kemCiphertext: encapsulated.ciphertext,
+        kemCiphertext: kemCiphertext,
         nonce: nonce,
         payload: payload,
         aadHash: aadHash,
@@ -162,11 +199,11 @@ class PqForge {
     // The signature's cost and memory are independent of payload size, and the
     // envelope is built exactly once (also fixes the M3 double-build).
     final digest = _envelopeSigningDigest(
-      profile: selected,
-      kemAlgorithm: selected.kem,
+      profile: profile,
+      kemAlgorithm: profile.kem,
       signatureAlgorithm: effectiveSignatureAlgorithm,
       nonce: nonce,
-      kemCiphertext: encapsulated.ciphertext,
+      kemCiphertext: kemCiphertext,
       payload: payload,
       aadHash: aadHash,
       signerKeyId: signerKeyId,
@@ -180,10 +217,10 @@ class PqForge {
       preHash: true,
     );
     return PqEnvelope(
-      profile: selected,
-      kemAlgorithm: selected.kem,
+      profile: profile,
+      kemAlgorithm: profile.kem,
       signatureAlgorithm: effectiveSignatureAlgorithm,
-      kemCiphertext: encapsulated.ciphertext,
+      kemCiphertext: kemCiphertext,
       nonce: nonce,
       payload: payload,
       aadHash: aadHash,
@@ -298,27 +335,15 @@ class PqForge {
     Uint8List? aad,
     Uint8List? signerPublicKey,
   }) {
-    _validateEnvelopeAad(envelope, aad);
-    if (envelope.signature != null) {
-      if (signerPublicKey == null) {
-        throw const PqForgeException(
-          'signerPublicKey is required for signed envelope',
-        );
-      }
-      final ok = verify(
-        signerPublicKey,
-        envelopeSigningMessage(envelope),
-        envelope.signature!,
-        algorithm: envelope.signatureAlgorithm,
-        context: _envelopeSignatureContext,
-        preHash: true,
+    if (envelope.metadata.containsKey(pqForgeHybridKexMetadataKey)) {
+      // Without this guard a hybrid envelope would fail deep in the AEAD with
+      // an opaque tag error (the KEM-only key cannot match).
+      throw const PqForgeException(
+        'This envelope uses hybrid ML-KEM + X25519 encryption; use '
+        'decryptAsync with the recipient X25519 secret key',
       );
-      if (!ok) {
-        throw const PqForgeException(
-          'ML-DSA envelope signature verification failed',
-        );
-      }
     }
+    verifyEnvelopeForOpen(envelope, aad: aad, signerPublicKey: signerPublicKey);
     final sharedSecret = PqKemPrimitives.decapsulate(
       envelope.kemAlgorithm,
       recipientSecretKey,
@@ -335,6 +360,39 @@ class PqForge {
       ciphertext: envelope.payload,
       aad: aad ?? envelope.kemCiphertext,
     );
+  }
+
+  /// Runs every check [decrypt] performs before the AEAD open: the AAD
+  /// commitment and, when the envelope is signed, the ML-DSA signature.
+  ///
+  /// Custom DEM paths (the engine-aware and hybrid async openers) call this
+  /// first, then derive their key and open the payload themselves. Throws
+  /// [PqForgeException] on any mismatch.
+  void verifyEnvelopeForOpen(
+    PqEnvelope envelope, {
+    Uint8List? aad,
+    Uint8List? signerPublicKey,
+  }) {
+    _validateEnvelopeAad(envelope, aad);
+    if (envelope.signature == null) return;
+    if (signerPublicKey == null) {
+      throw const PqForgeException(
+        'signerPublicKey is required for signed envelope',
+      );
+    }
+    final ok = verify(
+      signerPublicKey,
+      envelopeSigningMessage(envelope),
+      envelope.signature!,
+      algorithm: envelope.signatureAlgorithm,
+      context: _envelopeSignatureContext,
+      preHash: true,
+    );
+    if (!ok) {
+      throw const PqForgeException(
+        'ML-DSA envelope signature verification failed',
+      );
+    }
   }
 
   PqEnvelope encryptFileBytes(

@@ -16,9 +16,9 @@ import '../algorithms/pq_algorithms.dart';
 import '../algorithms/pq_fips.dart';
 import '../cipher/pq_cipher_suite.dart';
 import '../cipher/pq_cryptography_aead_engine.dart';
-import '../cipher/pq_pointycastle_aead_engine.dart';
 import '../codecs/pq_streaming_envelope.dart';
 import '../primitives/pq_primitives.dart';
+import 'pqforge_async_service.dart';
 import 'pqforge_service.dart';
 
 /// Outcome of a streaming encrypt/decrypt: byte and frame counts for logging.
@@ -67,13 +67,7 @@ class PqForgeStreamCipher {
     PqForgeCipherSuite cipherSuite = PqForgeCipherSuite.aes256Gcm,
   }) {
     return PqForgeStreamCipher(
-      engine: switch (provider) {
-        PqForgeEngineProvider.pureDart => PqForgePointyCastleAeadEngine(
-          cipherSuite,
-        ),
-        PqForgeEngineProvider.nativeCryptography =>
-          PqForgeCryptographyAeadEngine(cipherSuite),
-      },
+      engine: aeadEngineForProvider(provider, cipherSuite: cipherSuite),
     );
   }
 
@@ -117,6 +111,7 @@ class PqForgeStreamCipher {
     required String inputPath,
     required String outputPath,
     required PqForgeProfile profile,
+    Uint8List? recipientKexPublicKey,
     Uint8List? aad,
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
@@ -129,6 +124,7 @@ class PqForgeStreamCipher {
     return Isolate.run(
       () => PqForgeStreamCipher.forProvider(engineProvider).encryptFile(
         recipientPublicKey: recipientPublicKey,
+        recipientKexPublicKey: recipientKexPublicKey,
         input: File(inputPath),
         output: File(outputPath),
         profile: profile,
@@ -150,6 +146,7 @@ class PqForgeStreamCipher {
     required Uint8List recipientSecretKey,
     required String inputPath,
     required String outputPath,
+    Uint8List? recipientKexSecretKey,
     Uint8List? signerPublicKey,
     Uint8List? aad,
     PqForgeEngineProvider engineProvider =
@@ -158,6 +155,7 @@ class PqForgeStreamCipher {
     return Isolate.run(
       () => PqForgeStreamCipher.forProvider(engineProvider).decryptFile(
         recipientSecretKey: recipientSecretKey,
+        recipientKexSecretKey: recipientKexSecretKey,
         input: File(inputPath),
         output: File(outputPath),
         signerPublicKey: signerPublicKey,
@@ -169,13 +167,17 @@ class PqForgeStreamCipher {
   /// Streams [input] into a `.pqfs` container at [output].
   ///
   /// When [signerSecretKey] is supplied the header (never the payload) is signed
-  /// with `preHash:true`, so signing is O(1) in file size. On failure the partial
-  /// [output] is removed.
+  /// with `preHash:true`, so signing is O(1) in file size. When
+  /// [recipientKexPublicKey] (a raw 32-byte X25519 public key) is supplied the
+  /// container is **hybrid**: the DEM key combines the ML-KEM shared secret
+  /// with an ephemeral X25519 exchange (see [PqHybridKemDem]). On failure the
+  /// partial [output] is removed.
   Future<PqStreamingStats> encryptFile({
     required Uint8List recipientPublicKey,
     required File input,
     required File output,
     required PqForgeProfile profile,
+    Uint8List? recipientKexPublicKey,
     Uint8List? aad,
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
@@ -183,8 +185,9 @@ class PqForgeStreamCipher {
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
   }) async {
-    final context = _prepareEncrypt(
+    final context = await _prepareEncrypt(
       recipientPublicKey: recipientPublicKey,
+      recipientKexPublicKey: recipientKexPublicKey,
       profile: profile,
       aad: aad,
       metadata: metadata,
@@ -232,6 +235,7 @@ class PqForgeStreamCipher {
     required Stream<List<int>> source,
     required File output,
     required PqForgeProfile profile,
+    Uint8List? recipientKexPublicKey,
     Uint8List? aad,
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
@@ -239,8 +243,9 @@ class PqForgeStreamCipher {
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
   }) async {
-    final context = _prepareEncrypt(
+    final context = await _prepareEncrypt(
       recipientPublicKey: recipientPublicKey,
+      recipientKexPublicKey: recipientKexPublicKey,
       profile: profile,
       aad: aad,
       metadata: metadata,
@@ -292,9 +297,12 @@ class PqForgeStreamCipher {
   }
 
   /// KEM-encapsulates, derives the DEM key, and serializes + signs the header —
-  /// the shared prologue of [encryptFile] and [encryptStream].
-  _EncryptContext _prepareEncrypt({
+  /// the shared prologue of [encryptFile] and [encryptStream]. With a
+  /// [recipientKexPublicKey] the DEM key is the hybrid combination and the
+  /// header metadata carries the self-describing `hybridKex` marker.
+  Future<_EncryptContext> _prepareEncrypt({
     required Uint8List recipientPublicKey,
+    required Uint8List? recipientKexPublicKey,
     required PqForgeProfile profile,
     required Uint8List? aad,
     required Map<String, Object?> metadata,
@@ -302,19 +310,38 @@ class PqForgeStreamCipher {
     required PqSignatureAlgorithm? signatureAlgorithm,
     required String? signerKeyId,
     required int frameSize,
-  }) {
+  }) async {
     final signatureAlg = signerSecretKey == null
         ? signatureAlgorithm
         : (signatureAlgorithm ?? profile.signature);
+    if (PqHybridKemDem.isHybrid(metadata)) {
+      throw const PqForgeException(
+        'metadata already contains a hybridKex entry; it is reserved for the '
+        'hybrid KEM-DEM marker',
+      );
+    }
     final encapsulated = PqKemPrimitives.encapsulate(
       profile.kem,
       recipientPublicKey,
     );
-    final demKey = PqForge.deriveDemKey(
-      profile,
-      encapsulated.sharedSecret,
-      encapsulated.ciphertext,
-    );
+    final Uint8List demKey;
+    var effectiveMetadata = metadata;
+    if (recipientKexPublicKey == null) {
+      demKey = PqForge.deriveDemKey(
+        profile,
+        encapsulated.sharedSecret,
+        encapsulated.ciphertext,
+      );
+    } else {
+      final hybrid = await PqHybridKemDem.encapsulate(
+        profile: profile,
+        kemSharedSecret: encapsulated.sharedSecret,
+        kemCiphertext: encapsulated.ciphertext,
+        recipientKexPublicKey: recipientKexPublicKey,
+      );
+      demKey = hybrid.demKey;
+      effectiveMetadata = {...metadata, ...hybrid.metadataEntry};
+    }
     final header = PqStreamingHeader(
       profile: profile,
       kemAlgorithm: profile.kem,
@@ -323,7 +350,7 @@ class PqForgeStreamCipher {
       nonceSalt: PqBytes.randomBytes(PqStreamingEnvelope.nonceSaltBytes),
       frameSize: frameSize,
       aadHash: aad == null ? null : PqBytes.sha256(aad),
-      metadata: metadata,
+      metadata: effectiveMetadata,
       signerKeyId: signerKeyId,
     );
     final headerCore = PqStreamingEnvelope.serializeHeaderCore(header);
@@ -406,6 +433,7 @@ class PqForgeStreamCipher {
     required Uint8List recipientSecretKey,
     required File input,
     required File output,
+    Uint8List? recipientKexSecretKey,
     Uint8List? signerPublicKey,
     Uint8List? Function(PqStreamingHeader header)? aadResolver,
   }) async {
@@ -416,6 +444,7 @@ class PqForgeStreamCipher {
     try {
       final frames = decryptStream(
         recipientSecretKey: recipientSecretKey,
+        recipientKexSecretKey: recipientKexSecretKey,
         input: input,
         signerPublicKey: signerPublicKey,
         aadResolver: aadResolver,
@@ -441,9 +470,15 @@ class PqForgeStreamCipher {
   /// yielded, so a consumer only ever sees authentic bytes; truncation is
   /// detected at the end of the stream. [onHeader] fires once after the header
   /// (and its signature, when present) has been verified.
+  ///
+  /// Hybrid containers (those whose header metadata carries the `hybridKex`
+  /// marker) require [recipientKexSecretKey] — the raw 32-byte X25519 secret
+  /// matching the public key the sender encrypted to; a missing key fails
+  /// before any frame is read. The key is ignored for non-hybrid containers.
   Stream<Uint8List> decryptStream({
     required Uint8List recipientSecretKey,
     required File input,
+    Uint8List? recipientKexSecretKey,
     Uint8List? signerPublicKey,
     Uint8List? Function(PqStreamingHeader header)? aadResolver,
     void Function(PqStreamingHeader header)? onHeader,
@@ -492,11 +527,28 @@ class PqForgeStreamCipher {
         recipientSecretKey,
         header.kemCiphertext,
       );
-      final demKey = PqForge.deriveDemKey(
-        header.profile,
-        sharedSecret,
-        header.kemCiphertext,
-      );
+      final Uint8List demKey;
+      if (PqHybridKemDem.isHybrid(header.metadata)) {
+        if (recipientKexSecretKey == null) {
+          throw const PqForgeException(
+            'This container uses hybrid ML-KEM + X25519 encryption; the '
+            'recipient X25519 secret key is required to decrypt it',
+          );
+        }
+        demKey = await PqHybridKemDem.demKeyForOpen(
+          profile: header.profile,
+          kemSharedSecret: sharedSecret,
+          kemCiphertext: header.kemCiphertext,
+          metadata: header.metadata,
+          recipientKexSecretKey: recipientKexSecretKey,
+        );
+      } else {
+        demKey = PqForge.deriveDemKey(
+          header.profile,
+          sharedSecret,
+          header.kemCiphertext,
+        );
+      }
 
       final maxBody = header.frameSize + engine.cipherSuite.tagLength;
       var expectedSeq = 0;

@@ -267,6 +267,36 @@ class PqForgeHybridKeyAgreement {
     }
   }
 
+  /// X25519 ECDH between a raw 32-byte [secretKey] (ours) and a raw 32-byte
+  /// [remotePublicKey] (theirs), returning the 32-byte shared secret.
+  ///
+  /// The byte-oriented companion to [initiate]/[accept] for callers that
+  /// persist keys as raw bytes (the CLI, the hybrid KEM-DEM file paths). The
+  /// caller owns the returned buffer and should wipe it once consumed.
+  static Future<Uint8List> x25519SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) async {
+    requireLength('secretKey', secretKey, 32);
+    requireLength('remotePublicKey', remotePublicKey, 32);
+    final x25519 = crypto.X25519();
+    // An X25519 secret key IS its seed, so the full key pair (and the public
+    // key package:cryptography insists on) is reconstructible from it.
+    final keyPair = await x25519.newKeyPairFromSeed(secretKey);
+    try {
+      final shared = await x25519.sharedSecretKey(
+        keyPair: keyPair,
+        remotePublicKey: crypto.SimplePublicKey(
+          remotePublicKey,
+          type: crypto.KeyPairType.x25519,
+        ),
+      );
+      return Uint8List.fromList(await shared.extractBytes());
+    } finally {
+      keyPair.destroy();
+    }
+  }
+
   Future<PqHybridKeyAgreementResult> initiate({
     required crypto.SimplePublicKey serverClassicalPublicKey,
     required Uint8List serverKemPublicKey,

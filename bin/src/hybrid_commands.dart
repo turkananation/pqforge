@@ -104,9 +104,8 @@ final class HybridSignCommand extends Command<void> {
       classicalSecret.bytes,
     );
 
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
+    // readAsBytes already returns a fresh Uint8List (M2: no redundant copy).
+    final message = await File(results['in'] as String).readAsBytes();
     final context = optionalContext(results);
     final policy = _policyFrom(results['policy'] as String);
 
@@ -210,9 +209,7 @@ final class HybridVerifyCommand extends Command<void> {
       profile: profileForSignature(signature.pqcAlgorithm),
       classicalAlgorithm: signature.classicalAlgorithm,
     );
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
+    final message = await File(results['in'] as String).readAsBytes();
     final context = optionalContext(results) ?? _storedContext(sigJson);
 
     final ok = await signer.verify(
@@ -290,9 +287,7 @@ final class EcdsaSignCommand extends Command<void> {
     requireKind(secret, classicalSignatureSecretKind);
     requireEcdsaKey(secret);
 
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
+    final message = await File(results['in'] as String).readAsBytes();
     final signature = PqEcdsaP256.sign(
       privateKey: secret.bytes,
       message: message,
@@ -351,9 +346,7 @@ final class EcdsaVerifyCommand extends Command<void> {
     requireKind(public, classicalSignaturePublicKind);
     requireEcdsaKey(public);
 
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
+    final message = await File(results['in'] as String).readAsBytes();
     final sigJson = await readJsonMap(File(results['signature'] as String));
     final signature = base64Decode(sigJson['signature'] as String);
 

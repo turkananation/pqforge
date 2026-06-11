@@ -1,3 +1,36 @@
+## Unreleased — hybrid encryption & engine-aware one-shot path
+
+- Added hybrid (ML-KEM + X25519) KEM-DEM encryption end to end. The DEM key is
+  the IETF concatenate-then-KDF combination of the ML-KEM shared secret and an
+  ephemeral X25519 exchange (`PqHybridKemDem`); the self-describing `hybridKex`
+  metadata marker is KDF-bound (tamper ⇒ first AEAD tag check fails), needs no
+  container format change, and is shared verbatim by the one-shot and `.pqfs`
+  streaming paths.
+- Added `PqForge.encryptAsync`/`decryptAsync`: one-shot envelope encryption on
+  any `PqForgeAeadEngine` (default `package:cryptography`, ~10× PointyCastle)
+  with optional hybrid keys — closing the gap where sub-8 MiB files ignored
+  `--engine` and were pinned to the ~0.9 MiB/s pure-Dart AEAD. Outputs remain
+  byte-compatible with the sync paths; sync `decrypt` now rejects hybrid
+  envelopes with a descriptive error instead of an opaque tag failure.
+- `keygen` now generates the full hybrid keyset by default — ML-KEM + ML-DSA
+  plus X25519 (hybrid encryption) and Ed25519/ECDSA-P256 (hybrid signing),
+  concurrently — so hybrid workflows work out of the box. `--classical`
+  narrows the set; new `--no-classical` keeps the old PQC-only behavior.
+- All ten bulk CLI commands accept `--hybrid`/`--recipient-x25519-public`
+  (encrypt side) and auto-detect hybrid inputs on the decrypt side, finding
+  the conventional `<key-id>.x25519.secret[.wrapped].json` next to
+  `--recipient-secret` (override: `--recipient-x25519-secret`).
+- Every encrypt/decrypt now prints the combination in effect — e.g.
+  `suite ML-KEM-1024 + X25519 → HKDF-SHA-512 → AES-256-GCM`, plus `engine` and
+  `signature` lines — and the new `pqforge inspect` command describes any
+  `.pqf`/`.pqfs`/key/signature file (format, profile, suite, metadata) without
+  decrypting it.
+- Removed the four remaining redundant full-file copies in the hybrid/ECDSA
+  CLI commands; unified the engine provider→instance mapping in
+  `aeadEngineForProvider`.
+- Audit record + open-recommendation tracker:
+  `doc/technical/PERFORMANCE_AUDIT_AND_HYBRID_CLI.md`.
+
 ## Unreleased — performance & memory
 
 - Added a bounded-memory streaming envelope (`.pqfs`) for gigabyte-scale files: a
