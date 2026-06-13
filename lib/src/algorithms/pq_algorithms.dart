@@ -16,6 +16,49 @@ const pqForgeDefaultAeadNonceBytes = 12;
 const pqForgeDefaultSessionKeyBytes = 32;
 const pqForgeDefaultDeploymentSaltBytes = 32;
 
+/// Metadata key whose presence marks an envelope/container as hybrid
+/// (ML-KEM + classical) KEM-DEM. The canonical constant lives here so both
+/// the sync service (which must reject hybrid inputs with a clear error) and
+/// the async/streaming hybrid paths share it without an import cycle.
+const pqForgeHybridKexMetadataKey = 'hybridKex';
+
+/// Metadata key recording a non-default AEAD suite (`chacha20-poly1305`).
+/// Absent means AES-256-GCM, so default containers carry no marker. Reserved:
+/// the encrypt paths reject caller metadata that already contains it.
+const pqForgeAeadSuiteMetadataKey = 'aeadSuite';
+
+/// Metadata key holding the additional-recipient key-wrap entries of a
+/// multi-recipient envelope/container (the payload is sealed once; the DEM
+/// key is wrapped per extra recipient). Reserved like [pqForgeHybridKexMetadataKey].
+const pqForgeRecipientsMetadataKey = 'recipients';
+
+/// Metadata key naming the primary recipient's key id on multi-recipient
+/// envelopes, letting a decryptor pick the right unwrap path without trials.
+const pqForgeRecipientKeyIdMetadataKey = 'recipientKeyId';
+
+/// Every metadata key pqforge writes itself and therefore refuses from
+/// callers, so user metadata can never spoof a container marker.
+const pqForgeReservedMetadataKeys = [
+  pqForgeHybridKexMetadataKey,
+  pqForgeAeadSuiteMetadataKey,
+  pqForgeRecipientsMetadataKey,
+  pqForgeRecipientKeyIdMetadataKey,
+];
+
+/// Throws [PqForgeException] when caller-supplied [metadata] already contains
+/// one of the [pqForgeReservedMetadataKeys]. Every encrypt path (sync, async,
+/// streaming) runs this before merging its own markers in.
+void requireWritableEnvelopeMetadata(Map<String, Object?> metadata) {
+  for (final key in pqForgeReservedMetadataKeys) {
+    if (metadata.containsKey(key)) {
+      throw PqForgeException(
+        'metadata already contains "$key"; it is reserved for pqforge '
+        'container markers',
+      );
+    }
+  }
+}
+
 /// ML-KEM parameter sets supported by pqforge.
 enum PqKemAlgorithm {
   mlKem512(

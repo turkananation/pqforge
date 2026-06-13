@@ -54,6 +54,11 @@ jobs:
       - name: Install dependencies
         run: dart pub get
 
+      # The OpenSSL interop harness is a nested package; resolving it keeps
+      # the repo-wide analyze below able to read that context too.
+      - name: Install interop tool dependencies
+        run: dart pub get --directory tool/openssl_interop
+
       - name: Verify generated visibility files
         run: dart run tool/visibility/generate_visibility.dart --check
 
@@ -91,10 +96,23 @@ jobs:
           printf 'hello pqforge cli\n' > "$tmp/plain.txt"
           mkdir -p "$tmp/folder/docs"
           printf 'folder secret\n' > "$tmp/folder/docs/report.txt"
-          dart run pqforge keygen --profile compact --key-id ci --out-dir "$tmp/keys" --classical ed25519 --classical ecdsa-p256 --passphrase-env PQFORGE_PASSPHRASE
+          # keygen now emits ML-KEM/ML-DSA plus all classical keys by default,
+          # wrapping them on a small isolate pool (R2).
+          dart run pqforge keygen --profile compact --key-id ci --out-dir "$tmp/keys" --passphrase-env PQFORGE_PASSPHRASE
+          test -f "$tmp/keys/ci.x25519.public.json"
+          dart run pqforge keygen --profile compact --key-id aux --out-dir "$tmp/keys" --no-classical --passphrase-env PQFORGE_PASSPHRASE
           dart run pqforge encrypt --recipient-public "$tmp/keys/ci.kem.public.json" --in "$tmp/plain.txt" --out "$tmp/plain.pqf" --profile compact
           dart run pqforge decrypt --recipient-secret "$tmp/keys/ci.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.pqf" --out "$tmp/opened.txt"
           cmp "$tmp/plain.txt" "$tmp/opened.txt"
+          # Hybrid + ChaCha20-Poly1305 + a second recipient in ONE envelope
+          # (R3 + R5): the primary decrypts hybrid; the additional recipient
+          # opens its key-wrap entry without holding any X25519 key.
+          dart run pqforge encrypt --hybrid --cipher chacha20-poly1305 --recipient-public "$tmp/keys/ci.kem.public.json" --recipient-public "$tmp/keys/aux.kem.public.json" --in "$tmp/plain.txt" --out "$tmp/plain.multi.pqf" --profile compact
+          dart run pqforge inspect --in "$tmp/plain.multi.pqf"
+          dart run pqforge decrypt --recipient-secret "$tmp/keys/ci.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.multi.pqf" --out "$tmp/opened.multi.txt"
+          cmp "$tmp/plain.txt" "$tmp/opened.multi.txt"
+          dart run pqforge decrypt --recipient-secret "$tmp/keys/aux.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.multi.pqf" --out "$tmp/opened.aux.txt"
+          cmp "$tmp/plain.txt" "$tmp/opened.aux.txt"
           dart run pqforge encrypt-folder --recipient-public "$tmp/keys/ci.kem.public.json" --in-dir "$tmp/folder" --out-dir "$tmp/folder.pqf" --profile compact
           dart run pqforge decrypt-folder --recipient-secret "$tmp/keys/ci.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in-dir "$tmp/folder.pqf" --out-dir "$tmp/folder.open"
           cmp "$tmp/folder/docs/report.txt" "$tmp/folder.open/docs/report.txt"
@@ -106,12 +124,42 @@ jobs:
           dart run pqforge hybrid-verify --signer-public "$tmp/keys/ci.sign.public.json" --classical-public "$tmp/keys/ci.ed25519.public.json" --in "$tmp/plain.txt" --signature "$tmp/h-ed.json"
           dart run pqforge hybrid-sign --signer-secret "$tmp/keys/ci.sign.secret.wrapped.json" --classical-secret "$tmp/keys/ci.ecdsa-p256.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.txt" --out "$tmp/h-ec.json" --context ci-rel
           dart run pqforge hybrid-verify --signer-public "$tmp/keys/ci.sign.public.json" --classical-public "$tmp/keys/ci.ecdsa-p256.public.json" --in "$tmp/plain.txt" --signature "$tmp/h-ec.json"
-          # Standalone ECDSA-P256
+          # Digest mode (R1): streamed SHA-256 pre-hash, self-described in the
+          # signature JSON so verify re-hashes automatically.
+          dart run pqforge hybrid-sign --digest --signer-secret "$tmp/keys/ci.sign.secret.wrapped.json" --classical-secret "$tmp/keys/ci.ed25519.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.txt" --out "$tmp/h-digest.json"
+          dart run pqforge hybrid-verify --signer-public "$tmp/keys/ci.sign.public.json" --classical-public "$tmp/keys/ci.ed25519.public.json" --in "$tmp/plain.txt" --signature "$tmp/h-digest.json"
+          # Standalone ECDSA-P256 (raw and digest modes)
           dart run pqforge ecdsa-sign --secret "$tmp/keys/ci.ecdsa-p256.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.txt" --out "$tmp/ec.json"
           dart run pqforge ecdsa-verify --public "$tmp/keys/ci.ecdsa-p256.public.json" --in "$tmp/plain.txt" --signature "$tmp/ec.json"
+          dart run pqforge ecdsa-sign --digest --secret "$tmp/keys/ci.ecdsa-p256.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/plain.txt" --out "$tmp/ec-digest.json"
+          dart run pqforge ecdsa-verify --public "$tmp/keys/ci.ecdsa-p256.public.json" --in "$tmp/plain.txt" --signature "$tmp/ec-digest.json"
           # Negative check: a tampered payload must fail verification (non-zero exit)
           printf 'tampered\n' > "$tmp/tampered.txt"
           if dart run pqforge ecdsa-verify --public "$tmp/keys/ci.ecdsa-p256.public.json" --in "$tmp/tampered.txt" --signature "$tmp/ec.json"; then echo "tamper not detected" && exit 1; fi
 
       - name: Package dry run
         run: dart pub publish --dry-run
+
+  openssl-interop:
+    name: OpenSSL EVP interop verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: |
+          dart pub get
+          dart pub get --directory tool/openssl_interop
+
+      # Byte-compatibility of both AEAD suites on both pure-Dart engines
+      # against the system libcrypto (R6 — dev-tool policy mirroring
+      # pqcrypto's tool/openssl_interop; no FFI ships in the package).
+      - name: Verify AEAD interop against system OpenSSL
+        working-directory: tool/openssl_interop
+        run: REQUIRE_OPENSSL=1 dart run bin/verify_interop.dart

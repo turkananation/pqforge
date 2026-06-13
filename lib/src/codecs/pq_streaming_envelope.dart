@@ -1,10 +1,12 @@
 /// Pure framing codec for the `.pqfs` streaming envelope.
 ///
-/// This file is exported from `package:pqforge/pqforge_io.dart` (alongside the
-/// `dart:io` stream cipher that drives it) rather than the core web-safe
-/// umbrella: the frame counter uses `ByteData.setUint64`, which `dart2js` does
-/// not support (VM and WASM are fine). Keeping it out of the core entrypoint
-/// keeps `package:pqforge/pqforge.dart` importable-and-callable everywhere.
+/// This codec is pure Dart and web-safe — frame counters are encoded as two
+/// uint32 halves (see `PqBytes.uint64`/`readUint64`), so it runs under
+/// `dart2js` as well as the VM and WASM. It is exported from the core
+/// `package:pqforge/pqforge.dart` umbrella; only the `dart:io` stream cipher
+/// that drives it over files lives behind `package:pqforge/pqforge_io.dart`.
+/// A browser app can therefore frame/seal/open `.pqfs` content over its own
+/// transport (fetch streams, IndexedDB blocks) with this codec alone.
 library;
 
 import 'dart:convert';
@@ -190,17 +192,16 @@ abstract final class PqStreamingEnvelope {
         '($maxFrameCount frames)',
       );
     }
-    final nonce = Uint8List(pqForgeDefaultAeadNonceBytes)
-      ..setRange(0, nonceSaltBytes, nonceSalt);
-    nonce.buffer.asByteData().setUint64(nonceSaltBytes, seq, Endian.big);
-    return nonce;
+    return Uint8List(pqForgeDefaultAeadNonceBytes)
+      ..setRange(0, nonceSaltBytes, nonceSalt)
+      ..setRange(nonceSaltBytes, nonceSaltBytes + 8, PqBytes.uint64(seq));
   }
 
   /// `SHA-256(headerCore) ‖ uint64(seq) ‖ uint8(isFinal)`.
   static Uint8List frameAad(Uint8List headerHash, int seq, bool isFinal) {
     final aad = Uint8List(headerHash.length + 9)
-      ..setRange(0, headerHash.length, headerHash);
-    aad.buffer.asByteData().setUint64(headerHash.length, seq, Endian.big);
+      ..setRange(0, headerHash.length, headerHash)
+      ..setRange(headerHash.length, headerHash.length + 8, PqBytes.uint64(seq));
     aad[headerHash.length + 8] = isFinal ? 1 : 0;
     return aad;
   }
@@ -211,10 +212,9 @@ abstract final class PqStreamingEnvelope {
     required int seq,
     required bool isFinal,
   }) {
-    final header = Uint8List(frameHeaderBytes);
-    header.buffer.asByteData()
-      ..setUint32(0, bodyLen, Endian.big)
-      ..setUint64(4, seq, Endian.big);
+    final header = Uint8List(frameHeaderBytes)
+      ..setRange(0, 4, PqBytes.uint32(bodyLen))
+      ..setRange(4, 12, PqBytes.uint64(seq));
     header[12] = isFinal ? 1 : 0;
     return header;
   }
@@ -232,7 +232,7 @@ abstract final class PqStreamingEnvelope {
     );
     return (
       bodyLen: view.getUint32(0, Endian.big),
-      seq: view.getUint64(4, Endian.big),
+      seq: PqBytes.readUint64(header, 4),
       isFinal: header[12] != 0,
     );
   }

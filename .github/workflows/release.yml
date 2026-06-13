@@ -1,0 +1,66 @@
+name: Release binaries
+
+# R4: AOT-compiled CLI binaries per OS/arch, attached to the GitHub release.
+# `dart compile exe` removes the ~2-3 s `dart run` JIT warmup measured in
+# doc/technical/PERFORMANCE_AUDIT_AND_HYBRID_CLI.md §2.3, so CLI timings match
+# library benchmarks. Pure Dart AOT — no native dependencies are linked in.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # attach binaries to the release
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            binary: pqforge-linux-x64
+          - os: macos-latest
+            target: macos-arm64
+            binary: pqforge-macos-arm64
+          - os: windows-latest
+            target: windows-x64
+            binary: pqforge-windows-x64.exe
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Compile AOT executable
+        run: dart compile exe bin/pqforge.dart -o ${{ matrix.binary }}
+
+      - name: Smoke-test the binary
+        run: ./${{ matrix.binary }} --version
+
+      - name: Write SHA-256 checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null; then
+            sha256sum '${{ matrix.binary }}' > '${{ matrix.binary }}.sha256'
+          else
+            shasum -a 256 '${{ matrix.binary }}' > '${{ matrix.binary }}.sha256'
+          fi
+          cat '${{ matrix.binary }}.sha256'
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.binary }}
+            ${{ matrix.binary }}.sha256

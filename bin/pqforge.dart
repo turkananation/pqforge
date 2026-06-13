@@ -21,7 +21,7 @@ const _description =
 
 /// Display order and grouping for the styled top-level help.
 const Map<String, List<String>> _groups = {
-  'Keys': ['keygen'],
+  'Keys': ['keygen', 'inspect'],
   'Encrypt / decrypt': [
     'encrypt',
     'decrypt',
@@ -102,6 +102,7 @@ final class PqForgeRunner extends CommandRunner<void> {
             'Use ANSI colors (use --no-color to disable; auto-off when piped).',
       );
     addCommand(KeygenCommand());
+    addCommand(InspectCommand());
     addCommand(EncryptCommand());
     addCommand(DecryptCommand());
     addCommand(EncryptFolderCommand());

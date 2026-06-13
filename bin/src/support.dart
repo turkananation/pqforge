@@ -83,6 +83,234 @@ void addEngineOption(ArgParser parser) {
   );
 }
 
+/// Adds the AEAD cipher-suite selector to an encrypt-side command. Decrypt
+/// commands need no flag: containers record a non-default suite in their
+/// metadata and the open paths rebuild the engine to match.
+void addCipherOption(ArgParser parser) {
+  parser.addOption(
+    'cipher',
+    allowed: const ['aes-256-gcm', 'chacha20-poly1305'],
+    defaultsTo: 'aes-256-gcm',
+    help:
+        'Bulk AEAD suite. ChaCha20-Poly1305 is constant-time in software and '
+        'typically faster on CPUs without AES instructions; decrypt '
+        'auto-detects it from the container.',
+    valueHelp: 'suite',
+  );
+}
+
+/// Resolves `--cipher` into a suite (default AES-256-GCM).
+PqForgeCipherSuite cipherFrom(ArgResults results) =>
+    PqForgeCipherSuite.byId(results['cipher'] as String? ?? 'aes-256-gcm');
+
+/// Adds the hybrid (ML-KEM + X25519) options to an encrypt-side command.
+void addHybridEncryptOptions(ArgParser parser) {
+  parser
+    ..addFlag(
+      'hybrid',
+      negatable: false,
+      help:
+          'Hybrid ML-KEM + X25519 encryption using the conventional '
+          '<key-id>.x25519.public.json next to each --recipient-public.',
+    )
+    ..addMultiOption(
+      'recipient-x25519-public',
+      valueHelp: 'file',
+      help:
+          'Recipient X25519 public key JSON (from pqforge keygen) — enables '
+          'hybrid ML-KEM + X25519 encryption with explicit key paths. '
+          'Repeat once per --recipient-public when encrypting to several '
+          'recipients.',
+    );
+}
+
+/// Adds the hybrid recipient key option to a decrypt-side command. Hybrid
+/// inputs are auto-detected; this only overrides where the key is found.
+void addHybridDecryptOptions(ArgParser parser) {
+  parser.addOption(
+    'recipient-x25519-secret',
+    valueHelp: 'file',
+    help:
+        'Recipient raw or wrapped X25519 secret key JSON for hybrid inputs. '
+        'Defaults to the conventional <key-id>.x25519.secret[.wrapped].json '
+        'next to --recipient-secret when the input is hybrid.',
+  );
+}
+
+/// The resolved recipient set of an encrypt command: the first
+/// `--recipient-public` is the primary (classic KEM-DEM or hybrid), every
+/// further one becomes a `recipients[]` key-wrap entry — the payload is still
+/// sealed exactly once.
+class CliRecipients {
+  CliRecipients({
+    required this.primary,
+    required this.primaryKex,
+    required this.additional,
+  });
+
+  /// The primary recipient's ML-KEM public key.
+  final PqExportedKey primary;
+
+  /// The primary recipient's X25519 public key when encrypting hybrid.
+  final PqExportedKey? primaryKex;
+
+  /// Key-wrap specs for every recipient after the first.
+  final List<PqRecipientSpec> additional;
+
+  bool get hybrid => primaryKex != null;
+}
+
+/// Resolves every `--recipient-public` (and the matching X25519 keys when
+/// `--hybrid`/`--recipient-x25519-public` are in play) into a [CliRecipients].
+///
+/// Explicit `--recipient-x25519-public` paths pair with the recipients by
+/// position and must match their count; bare `--hybrid` derives each
+/// conventional sibling path (`<id>.kem.public.json` →
+/// `<id>.x25519.public.json`). The hybrid key is **required** for the primary
+/// (it defines the envelope's key schedule) but resolved opportunistically
+/// for additional recipients — their key-wrap entries fall back to
+/// post-quantum-only when no X25519 key exists, mirroring the library's
+/// per-entry hybrid semantics.
+Future<CliRecipients> recipientsFrom(ArgResults results) async {
+  final paths = results['recipient-public'] as List<String>;
+  if (paths.isEmpty) {
+    throw const PqForgeException('Provide at least one --recipient-public.');
+  }
+  final explicitKex = results['recipient-x25519-public'] as List<String>;
+  final hybrid = results['hybrid'] as bool;
+  if (explicitKex.isNotEmpty && explicitKex.length != paths.length) {
+    throw PqForgeException(
+      'Pass --recipient-x25519-public once per --recipient-public '
+      '(${paths.length} recipient(s), ${explicitKex.length} X25519 key(s)).',
+    );
+  }
+
+  final kems = <PqExportedKey>[];
+  final kexes = <PqExportedKey?>[];
+  for (var i = 0; i < paths.length; i++) {
+    final kem = await readKey(paths[i]);
+    requireKind(kem, PqKeyKind.kemPublic);
+    kems.add(kem);
+    kexes.add(
+      await _kexPublicFor(
+        paths[i],
+        explicitKex.isEmpty ? null : explicitKex[i],
+        hybrid: hybrid,
+        required: i == 0,
+      ),
+    );
+  }
+  return CliRecipients(
+    primary: kems.first,
+    primaryKex: kexes.first,
+    additional: [
+      for (var i = 1; i < kems.length; i++)
+        PqRecipientSpec(
+          kemPublicKey: kems[i].bytes,
+          kexPublicKey: kexes[i]?.bytes,
+          keyId: kems[i].keyId,
+        ),
+    ],
+  );
+}
+
+/// Resolves one recipient's X25519 public key, or null in pure-PQC mode.
+///
+/// With [required] (the primary recipient) a bare `--hybrid` whose
+/// conventional key file is missing is an error; for additional recipients it
+/// quietly resolves to null (a post-quantum-only key-wrap entry).
+Future<PqExportedKey?> _kexPublicFor(
+  String kemPath,
+  String? explicitPath, {
+  required bool hybrid,
+  required bool required,
+}) async {
+  String path;
+  if (explicitPath != null) {
+    path = explicitPath;
+  } else if (hybrid) {
+    if (!kemPath.contains('.kem.public')) {
+      if (!required) return null;
+      throw PqForgeException(
+        '--hybrid could not derive an X25519 key path from $kemPath; '
+        'pass --recipient-x25519-public explicitly.',
+      );
+    }
+    path = kemPath.replaceFirst('.kem.public', '.x25519.public');
+    if (!File(path).existsSync()) {
+      if (!required) return null;
+      throw PqForgeException(
+        '--hybrid expected an X25519 public key at $path (generate one with '
+        'pqforge keygen, or pass --recipient-x25519-public explicitly).',
+      );
+    }
+  } else {
+    return null;
+  }
+  final key = await readKey(path);
+  requireKind(key, classicalKexPublicKind);
+  requireX25519Key(key);
+  return key;
+}
+
+/// Resolves the decrypt-side hybrid X25519 secret key.
+///
+/// An explicit `--recipient-x25519-secret` wins; otherwise the conventional
+/// sibling of `--recipient-secret` is tried (`.kem.secret` → `.x25519.secret`,
+/// in both wrapped and raw spellings). With [hybridInput] the input is known
+/// to be hybrid, so an unresolvable key fails with guidance — **unless**
+/// [discover] is also set (folder trees where hybrid-ness varies per file, or
+/// multi-recipient inputs where this key may be an additional recipient whose
+/// wrap entry needs no X25519 at all): then a missing key resolves to null
+/// and the library decides, with its own descriptive error when the key
+/// really was required.
+Future<PqExportedKey?> hybridKexSecretFrom(
+  ArgResults results,
+  String? passphrase, {
+  required bool hybridInput,
+  bool discover = false,
+}) async {
+  final explicit = results['recipient-x25519-secret'] as String?;
+  if (explicit == null && !hybridInput && !discover) return null;
+  String? path = explicit;
+  if (path == null) {
+    final recipientPath = results['recipient-secret'] as String;
+    final candidate = recipientPath.replaceFirst(
+      '.kem.secret',
+      '.x25519.secret',
+    );
+    for (final variant in [
+      candidate,
+      candidate.endsWith('.wrapped.json')
+          ? candidate.replaceFirst('.wrapped.json', '.json')
+          : candidate.replaceFirst(RegExp(r'\.json$'), '.wrapped.json'),
+    ]) {
+      if (variant != recipientPath && File(variant).existsSync()) {
+        path = variant;
+        break;
+      }
+    }
+    if (path == null) {
+      if (!hybridInput || discover) return null;
+      throw PqForgeException(
+        'This input uses hybrid ML-KEM + X25519 encryption. No X25519 secret '
+        'key found next to $recipientPath; pass --recipient-x25519-secret.',
+      );
+    }
+  }
+  final key = await readKey(path, passphrase: passphrase);
+  requireKind(key, classicalKexSecretKind);
+  requireX25519Key(key);
+  return key;
+}
+
+/// Asserts an already kind-checked classical key is specifically X25519.
+void requireX25519Key(PqExportedKey key) {
+  if (key.algorithmId != PqClassicalKeyAgreementAlgorithm.x25519.id) {
+    throw PqForgeException('Expected an x25519 key, got ${key.algorithmId}.');
+  }
+}
+
 /// Resolves `--engine` into an engine provider (default: the fast one).
 PqForgeEngineProvider engineFrom(ArgResults results) =>
     switch (results['engine'] as String? ?? 'cryptography') {
@@ -405,6 +633,42 @@ PqForgeProfile profileForSignature(PqSignatureAlgorithm algorithm) {
     PqSignatureAlgorithm.mlDsa87 => PqForgeProfile.maximum,
   };
 }
+
+/// One-line description of the key-establishment → KDF → AEAD combination in
+/// effect, e.g. `ML-KEM-1024 + X25519 → HKDF-SHA512 → AES-256-GCM`.
+String suiteLabel(
+  PqForgeProfile profile, {
+  required bool hybrid,
+  PqForgeCipherSuite suite = PqForgeCipherSuite.aes256Gcm,
+}) {
+  final kem = hybrid ? '${profile.kem.name} + X25519' : profile.kem.name;
+  final kdf = hybrid
+      ? 'HKDF-${PqHybridKemDem.combinerProfileFor(profile.kem).digestName}'
+      : 'HKDF-SHA-256';
+  return '$kem → $kdf → ${suite.displayName}';
+}
+
+// --- digest (pre-hashed) signing --------------------------------------------
+
+/// Canonical message for digest-mode (pre-hashed) signing: the streamed
+/// SHA-256 of the artifact under a domain-separation label, so a 32-byte file
+/// signed raw can never collide with another file signed by digest.
+Uint8List digestSigningMessage(Uint8List sha256) => PqBytes.lengthPrefixed([
+  PqBytes.utf8Bytes('pqforge/digest-input/sha-256/v1'),
+  sha256,
+]);
+
+/// Hashes [file] in O(1) memory (streamed SHA-256) and wraps the digest as
+/// the canonical digest-mode signing message — gigabyte-scale artifacts never
+/// touch RAM whole.
+Future<Uint8List> digestMessageOfFile(File file) async =>
+    digestSigningMessage(await PqBytes.sha256OfStream(file.openRead()));
+
+/// Human-readable engine descriptor for suite detail lines.
+String engineLabel(PqForgeEngineProvider provider) => switch (provider) {
+  PqForgeEngineProvider.nativeCryptography => 'cryptography (hardware-capable)',
+  PqForgeEngineProvider.pureDart => 'pure-dart (PointyCastle)',
+};
 
 extension DirectoryChild on Directory {
   File child(String name) =>

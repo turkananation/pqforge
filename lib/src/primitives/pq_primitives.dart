@@ -66,7 +66,28 @@ class PqBytes {
 
   static Uint8List uint64(int value) {
     RangeError.checkNotNegative(value, 'value');
-    return Uint8List(8)..buffer.asByteData().setUint64(0, value, Endian.big);
+    // Written as two uint32 halves: ByteData.setUint64 throws on dart2js,
+    // and `~/`//`%` stay exact there for every legitimate value (frame
+    // counters, content lengths — all far below 2^53).
+    return Uint8List(8)
+      ..buffer.asByteData().setUint32(0, value ~/ 0x100000000, Endian.big)
+      ..buffer.asByteData().setUint32(4, value % 0x100000000, Endian.big);
+  }
+
+  /// Reads a big-endian uint64 at [offset] — the inverse of [uint64].
+  ///
+  /// Decoded as two uint32 halves so it runs on dart2js (no
+  /// `ByteData.getUint64`). Values at or above 2^53 are rejected: nothing in
+  /// any pqforge format legitimately produces them, and they cannot be
+  /// represented exactly on the web.
+  static int readUint64(Uint8List bytes, [int offset = 0]) {
+    final view = ByteData.sublistView(bytes, offset, offset + 8);
+    final hi = view.getUint32(0, Endian.big);
+    final lo = view.getUint32(4, Endian.big);
+    if (hi > 0x1FFFFF) {
+      throw const PqForgeException('uint64 field exceeds 2^53-1');
+    }
+    return hi * 0x100000000 + lo;
   }
 
   static Uint8List concat(Iterable<Uint8List> chunks) {
@@ -113,6 +134,20 @@ class PqBytes {
   }
 
   static Uint8List sha256(Uint8List data) => pc.SHA256Digest().process(data);
+
+  /// SHA-256 over a byte stream in O(1) memory — one digest update per chunk,
+  /// never the whole input. This is what lets the CLI pre-hash gigabyte-scale
+  /// artifacts for digest-mode signing without buffering them.
+  static Future<Uint8List> sha256OfStream(Stream<List<int>> chunks) async {
+    final digest = pc.SHA256Digest();
+    await for (final chunk in chunks) {
+      final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+      digest.update(bytes, 0, bytes.length);
+    }
+    final out = Uint8List(digest.digestSize);
+    digest.doFinal(out, 0);
+    return out;
+  }
 
   static Uint8List hmacSha256({
     required Uint8List key,

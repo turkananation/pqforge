@@ -55,6 +55,14 @@ final class HybridSignCommand extends Command<void> {
         defaultsTo: 'require-both',
         valueHelp: 'policy',
         help: 'Combination policy recorded for verification.',
+      )
+      ..addFlag(
+        'digest',
+        negatable: false,
+        help:
+            'Sign the streamed SHA-256 of the input instead of its raw bytes '
+            '— O(1) memory for gigabyte-scale artifacts. Recorded in the '
+            'signature JSON; hybrid-verify re-hashes automatically.',
       );
     addPassphraseOptions(argParser);
   }
@@ -104,9 +112,14 @@ final class HybridSignCommand extends Command<void> {
       classicalSecret.bytes,
     );
 
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
+    // Digest mode streams the file through SHA-256 (O(1) memory) and signs
+    // the wrapped digest; raw mode reads it whole (readAsBytes already
+    // returns a fresh Uint8List — M2: no redundant copy).
+    final digestMode = results['digest'] as bool;
+    final input = File(results['in'] as String);
+    final message = digestMode
+        ? await digestMessageOfFile(input)
+        : await input.readAsBytes();
     final context = optionalContext(results);
     final policy = _policyFrom(results['policy'] as String);
 
@@ -121,6 +134,7 @@ final class HybridSignCommand extends Command<void> {
 
     final json = {
       ...signature.toJson(),
+      if (digestMode) 'digest': 'sha-256',
       if (context != null) 'context': base64Encode(context),
     };
     final output = File(results['out'] as String);
@@ -210,9 +224,12 @@ final class HybridVerifyCommand extends Command<void> {
       profile: profileForSignature(signature.pqcAlgorithm),
       classicalAlgorithm: signature.classicalAlgorithm,
     );
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
+    // The signature JSON self-describes digest mode; re-hash the input the
+    // same way (streamed, O(1) memory) before verifying.
+    final input = File(results['in'] as String);
+    final message = sigJson['digest'] == 'sha-256'
+        ? await digestMessageOfFile(input)
+        : await input.readAsBytes();
     final context = optionalContext(results) ?? _storedContext(sigJson);
 
     final ok = await signer.verify(
@@ -262,6 +279,14 @@ final class EcdsaSignCommand extends Command<void> {
         mandatory: true,
         valueHelp: 'file',
         help: 'Signature JSON output file.',
+      )
+      ..addFlag(
+        'digest',
+        negatable: false,
+        help:
+            'Sign the streamed SHA-256 of the input instead of its raw bytes '
+            '— O(1) memory for gigabyte-scale artifacts. Recorded in the '
+            'signature JSON; ecdsa-verify re-hashes automatically.',
       );
     addPassphraseOptions(argParser);
   }
@@ -290,9 +315,11 @@ final class EcdsaSignCommand extends Command<void> {
     requireKind(secret, classicalSignatureSecretKind);
     requireEcdsaKey(secret);
 
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
+    final digestMode = results['digest'] as bool;
+    final input = File(results['in'] as String);
+    final message = digestMode
+        ? await digestMessageOfFile(input)
+        : await input.readAsBytes();
     final signature = PqEcdsaP256.sign(
       privateKey: secret.bytes,
       message: message,
@@ -301,6 +328,7 @@ final class EcdsaSignCommand extends Command<void> {
     await writeJson(output, {
       'version': 1,
       'scheme': 'ecdsa-p256',
+      if (digestMode) 'digest': 'sha-256',
       'signature': base64Encode(signature),
     });
     console.success('ECDSA-P256 signed');
@@ -351,11 +379,12 @@ final class EcdsaVerifyCommand extends Command<void> {
     requireKind(public, classicalSignaturePublicKind);
     requireEcdsaKey(public);
 
-    final message = Uint8List.fromList(
-      await File(results['in'] as String).readAsBytes(),
-    );
     final sigJson = await readJsonMap(File(results['signature'] as String));
     final signature = base64Decode(sigJson['signature'] as String);
+    final input = File(results['in'] as String);
+    final message = sigJson['digest'] == 'sha-256'
+        ? await digestMessageOfFile(input)
+        : await input.readAsBytes();
 
     final ok = PqEcdsaP256.verify(
       publicKey: public.bytes,
