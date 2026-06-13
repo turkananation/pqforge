@@ -1,3 +1,31 @@
+## 0.2.1
+
+Documentation, discovery, and site release. No library or CLI behavior changes
+— only the version string moves (`pubspec.yaml`, `pqforgeCliVersion`).
+
+- Docs realigned to the as-shipped v0.2.0 surface: the CLI guide now covers
+  auto-streaming (`.pqfs` at ≥ 8 MiB), `pack`/`unpack`, multi-recipient and
+  hybrid encryption, `--cipher`/`--engine`, digest signing, and `inspect`, and a
+  stale "no multi-GB streaming" note was removed. `doc/INDEX.md` now maps every
+  document, and the hybrid audit lists the full v0.2.0 command set.
+- Fixed published links that pointed at a feature branch: generated discovery
+  files and the site now build repository links from `main`, driven by
+  `repository_branch` in the visibility manifest. Also repaired two dead
+  doc links and removed a non-portable local path from the audit notes.
+- Surfaced the `pqcrypto` relationship and differentiation: a new README section
+  and `pqforge-vs-pqcrypto` wiki page, a "Relationship to pqcrypto" block in
+  `llms.txt`/`llms-full.txt`, and `isBasedOn` structured data in `identity.json`.
+- Expanded the LLM/AI discovery surface: `faq-ai.txt` grew from 5 to 21 Q&As,
+  with richer capabilities, recipes, and keywords.
+- Expanded the wiki (new Streaming, Multi-Recipient, Performance, and
+  pqforge-vs-pqcrypto pages; refreshed Home, CLI, sidebar, and recipe catalog).
+- GitHub Pages site: prominent pub.dev / Wiki / GitHub / pqcrypto links, inline
+  SVG icons, hero badges, and SEO/discovery metadata (Open Graph, Twitter card,
+  keywords, canonical, and a `FAQPage` JSON-LD block).
+- Added `CLAUDE.md` and a `pqforge-docs` skill that keep documentation aligned
+  to the code (verify-against-source, generated-vs-hand-maintained split, claim
+  boundary, and the `main`-branch link rule).
+
 ## 0.2.0
 
 Post-quantum + classical hybrid encryption, bounded-memory gigabyte-scale

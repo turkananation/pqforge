@@ -37,7 +37,7 @@ Status legend: ✅ **shipped** (this change) · 📋 **recommended** (open) ·
 | R5 | Multi-recipient envelopes (N keys, one payload) require N full encrypts today | Medium | ✅ Seal once, wrap the DEM key per extra recipient in `recipients[]` metadata — **no wire-format change**, both container formats, per-entry hybrid, keyId routing; CLI `--recipient-public` is repeatable — §8.4 |
 | R6 | Hardware-AEAD FFI engine (OpenSSL EVP) — the GB/s ceiling vs 11 MiB/s today | High (servers with >10 GB workloads) | ✅ *as a dev tool, never a package feature*: `tool/openssl_interop` (own `publish_to: none` package, the same structure as pqcrypto's OpenSSL ML-KEM interop) proves byte-compatibility and measures the ceiling. The published package contains no `dart:ffi` by design — it is pure Dart and web-first, and FFI does not exist on the web — §8.5 |
 | R7 | Native lattice (ML-KEM/ML-DSA) via FFI | Low (lattice ops are not the bottleneck) | 🚫 Deliberately not shipped (supply chain + the same pure-Dart policy as R6); host-build guide exists: [PHASE7_NATIVE_LATTICE_FFI.md](./PHASE7_NATIVE_LATTICE_FFI.md) |
-| R8 | Parsed/preprocessed public-key reuse in `pqcrypto` (folder workloads redo PK parsing per file) | Medium | 🚫 Blocked on upstream API; spec already written: [PQCRYPTO_PARSED_PK_PROPOSAL.md](./PQCRYPTO_PARSED_PK_PROPOSAL.md) (user owns `pqcrypto`) |
+| R8 | Parsed/preprocessed public-key reuse in `pqcrypto` (folder workloads redo PK parsing per file) | Medium | 🚫 Blocked on an upstream `pqcrypto` API change; a parsed/preprocessed public-key reuse proposal is tracked against `pqcrypto` |
 | R9 | Streaming frame pipelining (overlap read → seal → write) | Low | ✅ `encryptFile` double-buffers (the next frame reads from disk while the current one seals/writes); `decryptStream` prefetches one frame; in-flight reads are drained on failure so cleanup semantics are unchanged — §8.6 |
 | R10 | Web profile cannot stream (`.pqfs` uses `setUint64`, dart2js-unsafe) | Info | ✅ Frame counters now encode as two uint32 halves (`PqBytes.uint64`/`readUint64` — byte-identical wire format, VM-oracle-tested); the codec is dart2js-safe and exported from the core umbrella — §8.7 |
 
@@ -201,10 +201,12 @@ Notes:
 ### 5.1 Flutter apps (Android / iOS / desktop)
 
 1. **Register hardware crypto once, at startup, on the root isolate:**
+
    ```dart
    import 'package:cryptography_flutter/cryptography_flutter.dart';
    void main() { FlutterCryptography.enable(); runApp(...); }
    ```
+
    The default engine then dispatches AES-GCM to AES-NI/ARMv8 Crypto via OS
    bindings — GB/s-class instead of ~11 MiB/s pure Dart.
 2. **Never run bulk crypto on the UI isolate.** Use

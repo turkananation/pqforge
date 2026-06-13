@@ -20,19 +20,28 @@ dart run pqforge --help
 
 `keygen` writes reusable keys into the directory passed to `--out-dir`.
 
+By default `keygen` emits the **full hybrid keyset** — ML-KEM + ML-DSA plus the
+classical X25519, Ed25519, and ECDSA-P256 keypairs — so hybrid encryption and
+hybrid signing work out of the box. `--classical <algo>` narrows the classical
+set, `--no-classical` keeps the post-quantum bundle only, and `--classical-only`
+emits just the classical keys (see [Classical Keys](#classical-keys)).
+
 Public keys are not secret:
 
 - `<key-id>.kem.public.json`
 - `<key-id>.sign.public.json`
+- `<key-id>.x25519.public.json`, `<key-id>.ed25519.public.json`, `<key-id>.ecdsa-p256.public.json`
 
 Secret keys should be wrapped:
 
 - `<key-id>.kem.secret.wrapped.json`
 - `<key-id>.sign.secret.wrapped.json`
+- `<key-id>.x25519.secret.wrapped.json`, `<key-id>.ed25519.secret.wrapped.json`, `<key-id>.ecdsa-p256.secret.wrapped.json`
 
 Wrapped secret keys use `PqWrappedKey`: Argon2id derives a wrapping key from the
 passphrase, and AES-256-GCM encrypts the secret key bytes with authenticated
-metadata.
+metadata. With `--passphrase-env` the wraps run on a small isolate pool
+(`--wrap-concurrency`, default 2).
 
 ```bash
 export PQFORGE_PASSPHRASE='load-this-from-a-secret-manager'
@@ -148,6 +157,90 @@ dart run pqforge decrypt-media \
 If `--mime-type` is omitted, the CLI infers common extensions and otherwise
 uses `application/octet-stream`.
 
+## Encryption Options
+
+The bulk encrypt commands (`encrypt`, `encrypt-folder`, `encrypt-text`,
+`encrypt-media`, and `pack`) share a small set of flags. The matching decrypt
+commands need **none** of them — every choice is recorded in the self-describing
+container and auto-detected on read.
+
+| Flag | Effect |
+| --- | --- |
+| `--hybrid` | Add an X25519 leg (finds `<key-id>.x25519.public.json` next to `--recipient-public`); confidentiality holds while ML-KEM **or** X25519 stands. `--recipient-x25519-public` overrides the lookup. |
+| `--recipient-public` (repeatable) | Encrypt once, key-wrap the payload key to several recipients (first = primary). |
+| `--cipher chacha20-poly1305` | Use ChaCha20-Poly1305 instead of AES-256-GCM (~2.6× faster in pure Dart, ideal where hardware AES is not dispatched). Recorded as a tamper-evident `aeadSuite` marker. |
+| `--engine cryptography\|pure-dart` | Pick the AEAD backend. `cryptography` (default) is ~10× the PointyCastle throughput even in pure Dart and hardware-backed on Flutter; `pure-dart` is the PointyCastle reference. Wire formats are engine-independent. |
+| `--profile` / `--kem` / `--sig` | Composition strength. `--kem`/`--sig` decouple the KEM and signature levels (e.g. a strong KEM with a lighter signature). |
+| `--signer-secret` | Sign the envelope/header with an ML-DSA key (cost is O(1) in file size). |
+
+```bash
+# Hybrid + ChaCha20-Poly1305 + two recipients, in ONE ciphertext:
+dart run pqforge encrypt --hybrid --cipher chacha20-poly1305 \
+  --recipient-public keys/alice.kem.public.json \
+  --recipient-public keys/bob.kem.public.json \
+  --in report.pdf --out report.pqf
+```
+
+The primary recipient decrypts with their `--recipient-secret`; each additional
+recipient opens the same file with their own secret key and no extra flags.
+
+## Large Files And Streaming
+
+Inputs at or above **8 MiB** automatically switch to the `.pqfs` streaming
+container: a signed master header followed by independently authenticated
+frames, with a working set of roughly two frames regardless of total size.
+Per-frame sequence and final-flag binding prevent truncation, reordering,
+duplication, and splicing. No flag is needed — `encrypt` and `encrypt-media`
+detect the size and the decrypt side detects the format.
+
+```bash
+dart run pqforge encrypt \
+  --recipient-public keys/vault.kem.public.json \
+  --in movie.mp4 --out movie.mp4.pqf   # auto-streams; bounded memory
+
+dart run pqforge decrypt \
+  --recipient-secret keys/vault.kem.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --in movie.mp4.pqf --out movie.open.mp4
+```
+
+For the library streaming API (`PqForgeStreamCipher`), import
+`package:pqforge/pqforge_io.dart` — see [API.md](API.md).
+
+## Pack Archives
+
+`pack` collapses a whole folder into **one** encrypted streaming archive — a
+single KEM encapsulation and signature for the entire tree — and `unpack`
+restores it path-traversal-safe. Both stream end to end (no plaintext temp
+spool), and a failed `unpack` removes everything it created. For many small
+files this is far less overhead than one envelope per file.
+
+```bash
+dart run pqforge pack \
+  --recipient-public keys/vault.kem.public.json \
+  --in-dir ./site --out ./site.pqfs
+
+dart run pqforge unpack \
+  --recipient-secret keys/vault.kem.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --in ./site.pqfs --out-dir ./site.open
+```
+
+Use `encrypt-folder` (one `.pqf` per file) when recipients fetch individual
+files; use `pack` when the whole tree moves together.
+
+## Inspecting Artifacts
+
+`inspect` describes any `.pqf`, `.pqfs`, key, or signature file **without
+decrypting it** — format, profile, suite, engine, signature, recipients, and
+metadata:
+
+```bash
+dart run pqforge inspect --in report.pqf
+# → format, profile, suite (e.g. ML-KEM-1024 + X25519 → HKDF-SHA-512 →
+#   AES-256-GCM), engine, signature, recipients, and metadata
+```
+
 ## Signatures
 
 The `sign` command supports recipe-specific signature containers.
@@ -234,12 +327,19 @@ dart run pqforge decrypt \
 
 ## Classical Keys
 
-`keygen --classical` adds classical keypairs next to the ML-KEM/ML-DSA bundle.
-The option is repeatable and accepts `x25519` (hybrid key agreement), `ed25519`,
-and `ecdsa-p256` (hybrid/standalone signers). Pass `--classical-only` to skip
-the post-quantum bundle entirely.
+`keygen` emits **all** classical keypairs by default — `x25519` (hybrid key
+agreement), `ed25519`, and `ecdsa-p256` (hybrid/standalone signers) — next to the
+ML-KEM/ML-DSA bundle, so hybrid workflows need no extra step. Narrow or opt out:
+
+| Flag | Result |
+| --- | --- |
+| (none) | ML-KEM + ML-DSA **and** X25519 + Ed25519 + ECDSA-P256 |
+| `--classical ed25519 --classical ecdsa-p256` | ML-KEM + ML-DSA plus only the listed classical keys (repeatable) |
+| `--no-classical` | Post-quantum bundle only |
+| `--classical-only` | Classical keys only, no post-quantum bundle |
 
 ```bash
+# Post-quantum bundle plus only the two signing keys
 dart run pqforge keygen \
   --key-id vault \
   --out-dir keys \
@@ -282,11 +382,17 @@ dart run pqforge hybrid-verify \
 require-both` fails unless **both** signatures verify; `--policy accept-either`
 records an either-or policy instead.
 
+For gigabyte inputs, add `--digest`: `hybrid-sign --digest` signs the streamed
+SHA-256 of the input (O(1) memory) under a domain-separation label, recorded in
+the signature JSON so `hybrid-verify` re-hashes automatically — no `--digest`
+flag needed on verify.
+
 ## Standalone ECDSA-P256
 
 `ecdsa-sign` / `ecdsa-verify` use the pure classical ECDSA-P256 path (RFC 6979
 deterministic nonces, canonical low-S) over the raw file bytes — no
-post-quantum key involved.
+post-quantum key involved. They also accept `--digest` for the same streamed
+SHA-256 pre-hash described above.
 
 ```bash
 dart run pqforge ecdsa-sign \
@@ -317,5 +423,6 @@ with `--no-color`. `pqforge --version` prints the version.
 - Prefer `--passphrase-env` for automation.
 - Rotate keys according to the app's retention and risk policy.
 - Keep public-key trust explicit; a self-provided public key is not an identity.
-- Do not use this CLI as a streaming encryptor for multi-GB files yet; add
-  application-level chunking for very large payloads.
+- Multi-GB files are handled automatically: inputs ≥ 8 MiB stream through the
+  bounded-memory `.pqfs` container, and `--digest` signing avoids loading whole
+  artifacts into memory. No application-level chunking is required.

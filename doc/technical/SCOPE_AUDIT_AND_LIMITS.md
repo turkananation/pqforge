@@ -242,6 +242,6 @@ enforced, all profiles round-trip, the streaming codec is web-safely isolated
 in `pqforge_io`, the memory gate runs enforced in CI, the stall bound is
 asserted, and the folder walk streams into the pool. The remaining FIPS item is
 inherently deployment-side: running on validated modules via the engine/lattice
-seams (§5). The upstream `pqcrypto` parsed-PK API is specified in
-[PQCRYPTO_PARSED_PK_PROPOSAL.md](./PQCRYPTO_PARSED_PK_PROPOSAL.md) for the
-owner to land in 0.4.
+seams (§5). A parsed/preprocessed public-key API that would let folder workloads
+reuse a parsed public key is a proposal tracked against the upstream `pqcrypto`
+package; it is not part of this repository.

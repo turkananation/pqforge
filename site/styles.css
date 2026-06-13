@@ -95,12 +95,19 @@ h3 { font-size: 20px; }
   min-height: 44px;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   padding: 0 18px;
   border-radius: 8px;
   font-weight: 800;
+  transition: transform .15s ease, filter .15s ease, border-color .15s ease;
 }
+.button:hover { transform: translateY(-1px); }
 .primary { background: var(--cyan); color: #06111d; }
+.primary:hover { filter: brightness(1.06); }
 .secondary { border: 1px solid var(--line); color: var(--ink); background: rgba(255,255,255,.04); }
+.secondary:hover { border-color: var(--cyan); }
+.ghost { border: 1px solid var(--line); color: var(--ink); background: transparent; }
+.ghost:hover { border-color: var(--cyan); color: var(--cyan); }
 
 .hero-visual {
   margin: 0;
@@ -211,9 +218,63 @@ footer {
 
 .not-found main { max-width: 720px; margin: 18vh auto; padding: 24px; }
 
+/* Inline icons */
+.i { width: 1.05em; height: 1.05em; display: inline-block; vertical-align: -.16em; flex: none; }
+
+/* Topbar external links */
+.topbar-right { display: flex; align-items: center; gap: clamp(14px, 2.4vw, 28px); }
+.topbar-links { display: flex; align-items: center; gap: 8px; }
+.ext {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.ext:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(82, 224, 213, .08); }
+
+/* Hero credibility badges */
+.hero-badges { list-style: none; display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 0; padding: 0; }
+.hero-badges li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.hero-badges .i { color: var(--green); }
+
+/* Signal grid icons */
+.signal-grid div { display: flex; flex-direction: column; gap: 6px; }
+.signal-grid .i { width: 24px; height: 24px; color: var(--cyan); }
+
+/* Card hover polish */
+.recipes article, .doc-grid a, .profile-grid div { transition: border-color .15s ease, transform .15s ease; }
+.recipes article:hover, .doc-grid a:hover, .profile-grid div:hover { border-color: var(--cyan); transform: translateY(-2px); }
+
+/* Footer links with icons */
+footer a { display: inline-flex; align-items: center; gap: 7px; transition: color .15s ease; }
+footer a:hover { color: var(--cyan); }
+
+/* Sticky-header offset for in-page anchors */
+.section, #top { scroll-margin-top: 84px; }
+
 @media (max-width: 900px) {
   .hero, .split, .boundary { grid-template-columns: 1fr; }
   .recipes, .use-cases, .doc-grid, .profile-grid, .signal-grid { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; flex-direction: column; }
+  .topbar-right { flex-direction: column; align-items: flex-start; gap: 12px; width: 100%; }
+  .topbar-links { flex-wrap: wrap; }
   h1 { font-size: 42px; }
 }

@@ -5,11 +5,15 @@
 - ML-DSA signs; AES encrypts and never signs.
 - Public-key trust, identity vetting, and replay stores belong to the application.
 - Use these recipe surfaces:
-  - Local File Vault: encryptFileBytes, decryptFileBytes, PqEnvelope
+  - Local File Vault: encryptFileBytes, decryptFileBytes, encryptAsync, PqEnvelope
   - Folder Archive: encryptFolderEntry, decryptFolderEntry
+  - Folder Pack Archive: PqForgePackService (package:pqforge/pqforge_io.dart)
+  - Large Files And Media Streaming: PqForgeStreamCipher.encryptFile, decryptStream (package:pqforge/pqforge_io.dart)
+  - Multi-Recipient Envelopes: encryptAsync, PqMultiRecipient, PqRecipientSpec
   - Text Snippets: sealText, openText, signText, verifyText
   - Media Assets: sealMedia, openMedia, signMedia, verifyMedia
   - Document Signing: signDocument, verifyDocument
+  - Hybrid And Classical Signatures: PqForgeHybridSigner, PqEcdsaP256, dualSign, dualVerify
   - Webhook Integrity: signWebhook, verifyWebhook
   - Signed Tokens: issueToken, verifyToken
   - Private Email Payloads: sealEmail, openEmail
