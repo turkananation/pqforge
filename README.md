@@ -38,6 +38,24 @@ The core (`package:pqforge/pqforge.dart`) is **pure Dart and web-safe** — no
 hardware-backed AEAD), and the web. Gigabyte-scale file streaming lives behind
 the `dart:io` entrypoint `package:pqforge/pqforge_io.dart`.
 
+## Built on pqcrypto
+
+`pqforge` is the **application layer**;
+[`pqcrypto`](https://pub.dev/packages/pqcrypto)
+([repo](https://github.com/turkananation/pqcrypto)) is the **primitives layer**.
+
+- **`pqcrypto`** gives you pure-Dart FIPS 203 ML-KEM and FIPS 204 ML-DSA (plus
+  SHA-2/3) with zero runtime dependencies — raw keygen, encaps/decaps, sign/verify
+  over bytes. Reach for it when you need the algorithms and nothing else.
+- **`pqforge`** depends on `pqcrypto` and never reimplements the lattice
+  primitives. It adds everything you need to *ship a feature*: KEM-DEM envelopes,
+  AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids,
+  streaming, multi-recipient envelopes, key custody, recipes, and a CLI.
+
+`pqforge`'s post-quantum security claim is inherited from `pqcrypto`. Full
+breakdown: [pqforge vs pqcrypto](https://github.com/turkananation/pqforge/wiki/pqforge-vs-pqcrypto)
+· [doc/HYBRID_AUDIT.md](doc/HYBRID_AUDIT.md).
+
 ## First Run
 
 ```bash

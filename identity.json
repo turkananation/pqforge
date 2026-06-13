@@ -2,8 +2,8 @@
   "@context": "https://schema.org",
   "@type": "SoftwareSourceCode",
   "name": "pqforge",
-  "alternateName": "pqforge: Post-Quantum Application Recipes",
-  "description": "pqforge turns pqcrypto ML-KEM and ML-DSA primitives into application-ready envelopes, signatures, hybrid key agreement, wrapped key custody, and a local/server CLI.",
+  "alternateName": "pqforge: Post-Quantum Application Recipes for Dart",
+  "description": "pqforge turns the pqcrypto ML-KEM (FIPS 203) and ML-DSA (FIPS 204) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. The core is pure Dart and web-safe — no dart:ffi.",
   "url": "https://turkananation.github.io/pqforge/",
   "codeRepository": "https://github.com/turkananation/pqforge",
   "programmingLanguage": "Dart",
@@ -14,7 +14,7 @@
     "CLI"
   ],
   "license": "MIT",
-  "softwareVersion": "0.1.0",
+  "softwareVersion": "0.2.1",
   "applicationCategory": "Cryptography composition library",
   "keywords": [
     "Dart post-quantum encryption",
@@ -26,7 +26,17 @@
     "post-quantum document signing",
     "Serverpod PQC",
     "hybrid key agreement",
-    "Argon2id key wrapping"
+    "Argon2id key wrapping",
+    "ChaCha20-Poly1305 Dart",
+    "post-quantum streaming encryption",
+    "multi-recipient encryption",
+    "FIPS 203 ML-KEM",
+    "FIPS 204 ML-DSA",
+    "quantum-safe Dart",
+    "hybrid signatures Ed25519 ECDSA",
+    "pqcrypto composition layer",
+    "web-safe Dart encryption",
+    "harvest-now-decrypt-later defense"
   ],
   "maintainer": {
     "@type": "Organization",
@@ -38,15 +48,28 @@
     "https://pub.dev/documentation/pqforge/latest/",
     "https://github.com/turkananation/pqforge/wiki"
   ],
+  "isBasedOn": {
+    "@type": "SoftwareSourceCode",
+    "name": "pqcrypto",
+    "description": "pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM and FIPS 204 ML-DSA, plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.",
+    "url": "https://pub.dev/packages/pqcrypto",
+    "codeRepository": "https://github.com/turkananation/pqcrypto"
+  },
   "capabilities": [
-    "ML-KEM-512/768/1024 KEM-DEM envelopes through pqcrypto",
-    "ML-DSA-44/65/87 detached signatures through pqcrypto",
-    "AES-256-GCM and ChaCha20-Poly1305 secure sessions",
-    "X25519 plus ML-KEM built-in hybrid key agreement",
-    "ML-DSA plus Ed25519 built-in hybrid signatures",
-    "Argon2id plus AES-GCM wrapped key custody",
+    "ML-KEM-512/768/1024 KEM-DEM envelopes through pqcrypto (FIPS 203-aligned)",
+    "ML-DSA-44/65/87 detached and pre-hash signatures through pqcrypto (FIPS 204-aligned)",
+    "AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine",
+    "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
+    "Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change",
+    "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
+    "ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S)",
+    "Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory",
+    "pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)",
+    "Argon2id plus AES-256-GCM wrapped key custody with pluggable stores; PBKDF2 wrapping under FIPS mode",
     "Named recipes for files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, and identity bindings",
-    "Universal CLI for local and server encryption, decryption, signing, and verification"
+    "Universal CLI plus AOT-compiled release binaries for local, server, and release-pipeline workflows",
+    "FIPS deployment layer (PqFipsMode), swappable lattice backend (PqLatticeProvider), and a swappable DRBG (PqRandom.generator)",
+    "Pure-Dart, web-safe core (no dart:ffi); dart:io file streaming behind package:pqforge/pqforge_io.dart"
   ],
   "doesNotProvide": [
     "CMVP/FIPS 140 module validation",
@@ -60,7 +83,7 @@
     "allowed_claims": [
       "FIPS 203-aligned ML-KEM through pqcrypto.",
       "FIPS 204-aligned ML-DSA through pqcrypto.",
-      "Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key custody, signatures, recipes, and CLI workflows.",
+      "Application-layer composition helpers for KEM-DEM, AEAD sessions, hybrid key agreement, streaming, multi-recipient envelopes, wrapped key custody, signatures, recipes, and CLI workflows.",
       "Best-effort zeroization in Dart."
     ],
     "forbidden_claims": [
@@ -81,7 +104,7 @@
       "name": "Local File Vault",
       "surface": "CLI: keygen, encrypt, decrypt",
       "apps": "developer machines, backup jobs, admin laptops, server batch jobs",
-      "apis": "encryptFileBytes, decryptFileBytes, PqEnvelope",
+      "apis": "encryptFileBytes, decryptFileBytes, encryptAsync, PqEnvelope",
       "caveat": "Use wrapped secret keys and external storage policy."
     },
     {
@@ -89,7 +112,28 @@
       "surface": "CLI: encrypt-folder, decrypt-folder",
       "apps": "case files, release bundles, evidence folders, internal archives",
       "apis": "encryptFolderEntry, decryptFolderEntry",
-      "caveat": "Each file is an independent envelope; design streaming for very large files."
+      "caveat": "Each file is an independent envelope; folder commands run files concurrently via --concurrency."
+    },
+    {
+      "name": "Folder Pack Archive",
+      "surface": "CLI: pack, unpack",
+      "apps": "many small files, site exports, evidence bundles, dataset shards",
+      "apis": "PqForgePackService (package:pqforge/pqforge_io.dart)",
+      "caveat": "One KEM encapsulation and one signature for the whole tree; restores path-traversal-safe and streams end to end."
+    },
+    {
+      "name": "Large Files And Media Streaming",
+      "surface": "CLI: encrypt / encrypt-media (auto .pqfs at 8 MiB)",
+      "apps": "gigabyte media, datasets, disk images, backups, VM snapshots",
+      "apis": "PqForgeStreamCipher.encryptFile, decryptStream (package:pqforge/pqforge_io.dart)",
+      "caveat": "Streaming I/O lives behind the dart:io entrypoint; the working set is roughly two frames regardless of file size."
+    },
+    {
+      "name": "Multi-Recipient Envelopes",
+      "surface": "CLI: repeatable --recipient-public on encrypt commands",
+      "apps": "shared vaults, team archives, escrow, break-glass recipients",
+      "apis": "encryptAsync, PqMultiRecipient, PqRecipientSpec",
+      "caveat": "The payload is sealed once and key-wrapped per recipient; the app still authenticates each recipient public key."
     },
     {
       "name": "Text Snippets",
@@ -111,6 +155,13 @@
       "apps": "contracts, reports, certificates, approvals, policy documents",
       "apis": "signDocument, verifyDocument",
       "caveat": "Application owns legal policy and signer identity vetting."
+    },
+    {
+      "name": "Hybrid And Classical Signatures",
+      "surface": "CLI: hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify",
+      "apps": "release artifacts, firmware, long-lived approvals, dual-trust signing",
+      "apis": "PqForgeHybridSigner, PqEcdsaP256, dualSign, dualVerify",
+      "caveat": "require-both vs accept-either is the app's policy; --digest signs the streamed SHA-256 for gigabyte inputs."
     },
     {
       "name": "Webhook Integrity",
@@ -149,12 +200,12 @@
     },
     {
       "name": "Hybrid Server Sessions",
-      "surface": "cryptography entrypoint",
+      "surface": "core import (package:pqforge/pqforge.dart)",
       "apps": "Serverpod, API services, local agents, backend handshakes",
       "apis": "PqForgeHybridKeyAgreement, PqForgeSecureSession",
       "caveat": "Authenticate public key bundles and design replay/session storage."
     }
   ],
   "generatedBy": "Generated by dart run tool/visibility/generate_visibility.dart. Edit tool/visibility/visibility_manifest.json instead.",
-  "dateModified": "2026-06-07"
+  "dateModified": "2026-06-13"
 }

@@ -95,6 +95,7 @@ Map<String, String> _generateOutputs(JsonMap manifest) {
 
 String _llms(JsonMap manifest) {
   final project = _map(manifest['project']);
+  final pqcrypto = _map(manifest['pqcrypto_relationship']);
   final docs = _maps(manifest['docs']);
   final recipes = _maps(manifest['recipes']);
   final doesNotProvide = _strings(manifest['does_not_provide']);
@@ -120,6 +121,16 @@ String _llms(JsonMap manifest) {
     ..writeln('- Package: ${project['pub_dev']}')
     ..writeln('- API docs: ${project['api_docs']}')
     ..writeln('- Wiki: ${project['wiki']}')
+    ..writeln('- Built on pqcrypto: ${pqcrypto['pqcrypto_pub_dev']}')
+    ..writeln()
+    ..writeln('## Built On pqcrypto')
+    ..writeln()
+    ..writeln(pqcrypto['summary'])
+    ..writeln()
+    ..writeln('- pqcrypto (primitives): ${pqcrypto['pqcrypto_is']}')
+    ..writeln('- pqforge (composition): ${pqcrypto['pqforge_is']}')
+    ..writeln('- pqcrypto package: ${pqcrypto['pqcrypto_pub_dev']}')
+    ..writeln('- pqcrypto repository: ${pqcrypto['pqcrypto_repository']}')
     ..writeln()
     ..writeln('## Key Boundary')
     ..writeln()
@@ -170,6 +181,7 @@ String _llms(JsonMap manifest) {
 
 String _llmsFull(JsonMap manifest) {
   final project = _map(manifest['project']);
+  final pqcrypto = _map(manifest['pqcrypto_relationship']);
   final capabilities = _strings(manifest['capabilities']);
   final doesNotProvide = _strings(manifest['does_not_provide']);
   final evidence = _map(manifest['evidence_boundary']);
@@ -191,6 +203,21 @@ String _llmsFull(JsonMap manifest) {
     ..writeln('## Identity')
     ..writeln()
     ..writeln(project['summary'])
+    ..writeln()
+    ..writeln('## Relationship To pqcrypto')
+    ..writeln()
+    ..writeln(pqcrypto['summary'])
+    ..writeln()
+    ..writeln('- pqcrypto package: ${pqcrypto['pqcrypto_pub_dev']}')
+    ..writeln('- pqcrypto repository: ${pqcrypto['pqcrypto_repository']}')
+    ..writeln('- pqcrypto is the primitives layer: ${pqcrypto['pqcrypto_is']}')
+    ..writeln('- pqforge is the composition layer: ${pqcrypto['pqforge_is']}')
+    ..writeln();
+  for (final item in _strings(pqcrypto['differentiation'])) {
+    buffer.writeln('- $item');
+  }
+
+  buffer
     ..writeln()
     ..writeln('## Capabilities')
     ..writeln();
@@ -272,6 +299,7 @@ String _llmsFull(JsonMap manifest) {
 
 String _identityJson(JsonMap manifest) {
   final project = _map(manifest['project']);
+  final pqcrypto = _map(manifest['pqcrypto_relationship']);
   final identity = <String, Object?>{
     '@context': 'https://schema.org',
     '@type': 'SoftwareSourceCode',
@@ -293,6 +321,13 @@ String _identityJson(JsonMap manifest) {
       project['api_docs'],
       project['wiki'],
     ],
+    'isBasedOn': {
+      '@type': 'SoftwareSourceCode',
+      'name': 'pqcrypto',
+      'description': pqcrypto['pqcrypto_is'],
+      'url': pqcrypto['pqcrypto_pub_dev'],
+      'codeRepository': pqcrypto['pqcrypto_repository'],
+    },
     'capabilities': _strings(manifest['capabilities']),
     'doesNotProvide': _strings(manifest['does_not_provide']),
     'evidenceBoundary': manifest['evidence_boundary'],
@@ -461,11 +496,14 @@ Rules:
 
 String _siteIndex(JsonMap manifest) {
   final project = _map(manifest['project']);
+  final pqcrypto = _map(manifest['pqcrypto_relationship']);
   final capabilities = _strings(manifest['capabilities']);
   final recipes = _maps(manifest['recipes']);
   final docs = _maps(manifest['docs']);
   final profiles = _maps(manifest['profiles']);
   final faq = _maps(manifest['faq']);
+  final keywords = _strings(manifest['keywords']);
+  final ogImage = '${project['canonical_url']}assets/pqforge-protocol.png';
 
   return '''
 <!doctype html>
@@ -475,9 +513,25 @@ String _siteIndex(JsonMap manifest) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${_html(project['title'] as String)}</title>
   <meta name="description" content="${_html(project['summary'] as String)}">
+  <meta name="keywords" content="${_html(keywords.join(', '))}">
+  <meta name="author" content="${_html(project['maintainer'] as String)}">
+  <meta name="theme-color" content="#07111d">
+  <link rel="canonical" href="${_html(project['canonical_url'] as String)}">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="${_html(project['short_title'] as String)}">
+  <meta property="og:title" content="${_html(project['title'] as String)}">
+  <meta property="og:description" content="${_html(project['summary'] as String)}">
+  <meta property="og:url" content="${_html(project['canonical_url'] as String)}">
+  <meta property="og:image" content="${_html(ogImage)}">
+  <meta property="og:image:alt" content="pqforge recipe pipeline from payloads to post-quantum envelopes">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${_html(project['title'] as String)}">
+  <meta name="twitter:description" content="${_html(project['summary'] as String)}">
+  <meta name="twitter:image" content="${_html(ogImage)}">
   <script type="application/ld+json">${jsonEncode(jsonDecode(_identityJson(manifest)))}</script>
+  <script type="application/ld+json">${_faqJsonLd(manifest)}</script>
 </head>
 <body>
   <header class="topbar">
@@ -485,12 +539,19 @@ String _siteIndex(JsonMap manifest) {
       <span class="brand-mark">PQ</span>
       <span>pqforge</span>
     </a>
-    <nav aria-label="Primary">
-      <a href="#recipes">Recipes</a>
-      <a href="#cli">CLI</a>
-      <a href="#use-cases">Use cases</a>
-      <a href="#docs">Docs</a>
-    </nav>
+    <div class="topbar-right">
+      <nav aria-label="Primary">
+        <a href="#recipes">Recipes</a>
+        <a href="#cli">CLI</a>
+        <a href="#use-cases">Use cases</a>
+        <a href="#docs">Docs</a>
+      </nav>
+      <div class="topbar-links">
+        <a class="ext" href="${_html(project['pub_dev'] as String)}" rel="noopener">${_icon('pub')}<span>pub.dev</span></a>
+        <a class="ext" href="${_html(project['wiki'] as String)}" rel="noopener">${_icon('book')}<span>Wiki</span></a>
+        <a class="ext" href="${_html(project['repository'] as String)}" rel="noopener">${_icon('github')}<span>GitHub</span></a>
+      </div>
+    </div>
   </header>
 
   <main id="top">
@@ -500,9 +561,16 @@ String _siteIndex(JsonMap manifest) {
         <h1>Encrypt files, folders, text, media, webhooks, tokens, and server sessions.</h1>
         <p class="lede">${_html(project['summary'] as String)}</p>
         <div class="hero-actions">
-          <a class="button primary" href="#cli">Use the CLI</a>
-          <a class="button secondary" href="#recipes">Explore recipes</a>
+          <a class="button primary" href="#cli">${_icon('terminal')}<span>Use the CLI</span></a>
+          <a class="button secondary" href="#recipes">${_icon('bolt')}<span>Explore recipes</span></a>
+          <a class="button ghost" href="${_html(project['pub_dev'] as String)}" rel="noopener">${_icon('pub')}<span>Install from pub.dev</span></a>
         </div>
+        <ul class="hero-badges">
+          <li>${_icon('check')}<span>Pure Dart, no FFI</span></li>
+          <li>${_icon('check')}<span>Web-safe core</span></li>
+          <li>${_icon('check')}<span>FIPS 203/204-aligned via pqcrypto</span></li>
+          <li>${_icon('check')}<span>${_html(project['license'] as String)} licensed</span></li>
+        </ul>
       </div>
       <figure class="hero-visual">
         <img src="assets/pqforge-protocol.png" alt="pqforge recipe pipeline from payloads to post-quantum envelopes">
@@ -510,10 +578,10 @@ String _siteIndex(JsonMap manifest) {
     </section>
 
     <section class="signal-grid" aria-label="Package signals">
-      <div><strong>3</strong><span>ML-KEM profiles</span></div>
-      <div><strong>3</strong><span>ML-DSA profiles</span></div>
-      <div><strong>11</strong><span>named recipes</span></div>
-      <div><strong>1</strong><span>universal CLI</span></div>
+      <div>${_icon('shield')}<strong>${profiles.length}</strong><span>ML-KEM profiles</span></div>
+      <div>${_icon('pen')}<strong>${profiles.length}</strong><span>ML-DSA profiles</span></div>
+      <div>${_icon('layers')}<strong>${recipes.length}</strong><span>named recipes</span></div>
+      <div>${_icon('terminal')}<strong>1</strong><span>universal CLI</span></div>
     </section>
 
     <section id="recipes" class="section">
@@ -573,7 +641,7 @@ dart run pqforge sign --kind media --signer-secret keys/vault.sign.secret.wrappe
       <div>
         <p class="eyebrow">Claim boundary</p>
         <h2>Composition, not certification.</h2>
-        <p>pqforge provides application composition around pqcrypto evidence. It does not claim CMVP/FIPS 140 validation, hard constant-time Dart behavior, or hard memory erasure. RC4 is rejected.</p>
+        <p>pqforge is the application layer built on <a href="${_html(pqcrypto['pqcrypto_pub_dev'] as String)}">pqcrypto</a> ML-KEM/ML-DSA. It does not claim CMVP/FIPS 140 validation, hard constant-time Dart behavior, or hard memory erasure. RC4 is rejected.</p>
       </div>
       <ul>
         ${capabilities.take(6).map((item) => '<li>${_html(item)}</li>').join('\n')}
@@ -591,9 +659,10 @@ dart run pqforge sign --kind media --signer-secret keys/vault.sign.secret.wrappe
 
   <footer>
     <span>Generated from tool/visibility/visibility_manifest.json</span>
-    <a href="${_html(project['repository'] as String)}">GitHub</a>
-    <a href="${_html(project['pub_dev'] as String)}">pub.dev</a>
-    <a href="${_html(project['wiki'] as String)}">Wiki</a>
+    <a href="${_html(project['repository'] as String)}" rel="noopener">${_icon('github')}<span>GitHub</span></a>
+    <a href="${_html(project['pub_dev'] as String)}" rel="noopener">${_icon('pub')}<span>pub.dev</span></a>
+    <a href="${_html(project['wiki'] as String)}" rel="noopener">${_icon('book')}<span>Wiki</span></a>
+    <a href="${_html(pqcrypto['pqcrypto_pub_dev'] as String)}" rel="noopener">${_icon('blocks')}<span>pqcrypto</span></a>
   </footer>
 </body>
 </html>
@@ -614,6 +683,85 @@ String _recipeCard(JsonMap recipe) {
   <code>${_html(recipe['apis'] as String)}</code>
 </article>
 ''';
+}
+
+/// Embeds the FAQ as schema.org `FAQPage` JSON-LD so search engines can render
+/// answer-rich results. Sourced from the manifest `faq`, so it never drifts
+/// from `faq-ai.txt` or the on-page FAQ.
+String _faqJsonLd(JsonMap manifest) {
+  final faq = _maps(manifest['faq']);
+  return jsonEncode(<String, Object?>{
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    'mainEntity': [
+      for (final item in faq)
+        {
+          '@type': 'Question',
+          'name': item['question'],
+          'acceptedAnswer': {'@type': 'Answer', 'text': item['answer']},
+        },
+    ],
+  });
+}
+
+/// Inline, dependency-free SVG icons. Inline keeps the site self-contained (no
+/// icon CDN) and recolourable via `currentColor`. Icons are decorative —
+/// every use is paired with a visible text label, so they are `aria-hidden`.
+String _icon(String name) {
+  const open =
+      '<svg class="i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+  String stroke(String path) =>
+      '$open fill="none" stroke="currentColor" stroke-width="2" '
+      'stroke-linecap="round" stroke-linejoin="round"><path d="$path"/></svg>';
+  String fill(String path) =>
+      '$open fill="currentColor"><path d="$path"/></svg>';
+  switch (name) {
+    case 'github':
+      return fill(
+        'M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79'
+        '-.56 0-.27-.01-1.01-.02-1.98-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28'
+        '-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 '
+        '1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 '
+        '0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a'
+        '11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 '
+        '3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 '
+        '2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.52 11.52 0 0 0 23.5 12C'
+        '23.5 5.73 18.27.5 12 .5Z',
+      );
+    case 'pub':
+      return stroke(
+        'M12 2.5 3.5 7v10L12 21.5 20.5 17V7L12 2.5Z M3.5 7 12 11.5 20.5 7 M12 11.5V21.5',
+      );
+    case 'book':
+      return stroke(
+        'M12 6C10.5 4.8 8.7 4 6.5 4H3v13h4c1.9 0 3.6.6 5 1.7M12 6c1.5-1.2 3.3-2 '
+        '5.5-2H21v13h-4c-1.9 0-3.6.6-5 1.7M12 6v12.7',
+      );
+    case 'blocks':
+      return stroke(
+        'M4 4h6v6H4V4Z M14 4h6v6h-6V4Z M4 14h6v6H4v-6Z M14 14h6v6h-6v-6Z',
+      );
+    case 'terminal':
+      return stroke(
+        'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z M7 9.5l3 2.5-3 2.5 M13 15h4',
+      );
+    case 'shield':
+      return stroke(
+        'M12 3 5 6v5c0 4 2.9 7 7 8 4.1-1 7-4 7-8V6l-7-3Z M9.5 11.5l1.8 1.8 3.4-3.6',
+      );
+    case 'pen':
+      return stroke('M16.5 4.5 19.5 7.5 9 18l-4 1 1-4 10.5-10.5Z M14 7l3 3');
+    case 'layers':
+      return stroke(
+        'M12 3 2.5 8 12 13l9.5-5L12 3Z M2.5 12 12 17l9.5-5 M2.5 16 12 21l9.5-5',
+      );
+    case 'bolt':
+      return fill('M13 2 4 13h6l-1 9 9-13h-6l1-7Z');
+    case 'check':
+      return stroke('M5 12.5 10 17.5 19.5 6.5');
+    default:
+      return '';
+  }
 }
 
 String _siteNotFound(JsonMap manifest) {
@@ -738,12 +886,19 @@ h3 { font-size: 20px; }
   min-height: 44px;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   padding: 0 18px;
   border-radius: 8px;
   font-weight: 800;
+  transition: transform .15s ease, filter .15s ease, border-color .15s ease;
 }
+.button:hover { transform: translateY(-1px); }
 .primary { background: var(--cyan); color: #06111d; }
+.primary:hover { filter: brightness(1.06); }
 .secondary { border: 1px solid var(--line); color: var(--ink); background: rgba(255,255,255,.04); }
+.secondary:hover { border-color: var(--cyan); }
+.ghost { border: 1px solid var(--line); color: var(--ink); background: transparent; }
+.ghost:hover { border-color: var(--cyan); color: var(--cyan); }
 
 .hero-visual {
   margin: 0;
@@ -854,10 +1009,64 @@ footer {
 
 .not-found main { max-width: 720px; margin: 18vh auto; padding: 24px; }
 
+/* Inline icons */
+.i { width: 1.05em; height: 1.05em; display: inline-block; vertical-align: -.16em; flex: none; }
+
+/* Topbar external links */
+.topbar-right { display: flex; align-items: center; gap: clamp(14px, 2.4vw, 28px); }
+.topbar-links { display: flex; align-items: center; gap: 8px; }
+.ext {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.ext:hover { border-color: var(--cyan); color: var(--cyan); background: rgba(82, 224, 213, .08); }
+
+/* Hero credibility badges */
+.hero-badges { list-style: none; display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 0; padding: 0; }
+.hero-badges li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.hero-badges .i { color: var(--green); }
+
+/* Signal grid icons */
+.signal-grid div { display: flex; flex-direction: column; gap: 6px; }
+.signal-grid .i { width: 24px; height: 24px; color: var(--cyan); }
+
+/* Card hover polish */
+.recipes article, .doc-grid a, .profile-grid div { transition: border-color .15s ease, transform .15s ease; }
+.recipes article:hover, .doc-grid a:hover, .profile-grid div:hover { border-color: var(--cyan); transform: translateY(-2px); }
+
+/* Footer links with icons */
+footer a { display: inline-flex; align-items: center; gap: 7px; transition: color .15s ease; }
+footer a:hover { color: var(--cyan); }
+
+/* Sticky-header offset for in-page anchors */
+.section, #top { scroll-margin-top: 84px; }
+
 @media (max-width: 900px) {
   .hero, .split, .boundary { grid-template-columns: 1fr; }
   .recipes, .use-cases, .doc-grid, .profile-grid, .signal-grid { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; flex-direction: column; }
+  .topbar-right { flex-direction: column; align-items: flex-start; gap: 12px; width: 100%; }
+  .topbar-links { flex-wrap: wrap; }
   h1 { font-size: 42px; }
 }
 ''';

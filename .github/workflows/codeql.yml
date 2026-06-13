@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   push:
-    branches: ["main", "develop", "feat/hybrid-combiner-secure-session"]
+    branches: ["main", "develop"]
   pull_request:
-    branches: ["main", "develop", "feat/hybrid-combiner-secure-session"]
+    branches: ["main", "develop"]
   schedule:
     - cron: "27 3 * * 2"
 

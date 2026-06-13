@@ -1,20 +1,20 @@
 # pqforge Hybrid Coverage Audit
 
-Last updated: 2026-06-07
+Last updated: 2026-06-13
 
-This audit reconciles `pqforge` against the local
-`/home/turkananation/Projects/PQC/pqcrypto` repository, especially:
-
-- `doc/UNIVERSAL_MULTI_AGENT_PQC_FRAMEWORK.md`
-- `doc/cookbook/BUILDING_BLOCKS.md`
-- `doc/cookbook/PROJECT_CATALOG.md`
-- `doc/cookbook/FUTURE_RELEASES.md`
+This audit reconciles `pqforge` against the
+[`pqcrypto`](https://pub.dev/packages/pqcrypto) primitives package
+([repository](https://github.com/turkananation/pqcrypto)) — what `pqforge`
+composes on top of it, and the boundaries it deliberately keeps. For the
+plain-language version, see the
+[pqforge vs pqcrypto](https://github.com/turkananation/pqforge/wiki/pqforge-vs-pqcrypto)
+wiki page.
 
 ## Evidence Summary
 
 `pqcrypto` 0.3.1 is pure post-quantum cryptography: ML-KEM, ML-DSA, SHA-2,
-SHA-3/SHAKE building blocks, and zero runtime dependencies. Its local source
-does not expose classical KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
+SHA-3/SHAKE building blocks, and zero runtime dependencies. It does not expose
+classical KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
 
 `pqforge` supplies the composition layer around that boundary:
 
@@ -26,10 +26,13 @@ does not expose classical KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
 | Signatures | raw signatures, documents, text, media, webhooks, artifacts, logs, tokens |
 | Hybrid KDF | `PqForgeCombiner`, `deriveHybridSessionKey` |
 | Built-in hybrid KEX | X25519 + ML-KEM through `PqForgeHybridKeyAgreement` |
-| Built-in hybrid signatures | ML-DSA + Ed25519 through `PqForgeHybridSigner` |
-| App-supplied hybrid signatures | `dualSign` / `dualVerify` for ECDSA or any other verifier |
-| AEAD | AES-256-GCM and ChaCha20-Poly1305 |
-| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/sign/verify` |
+| Built-in hybrid signatures | ML-DSA + Ed25519 **or ECDSA-P256** through `PqForgeHybridSigner` |
+| Built-in classical signatures | ECDSA-P256 (`PqEcdsaP256`, pure-Dart PointyCastle, RFC 6979, low-S) — `ecdsa-sign`/`ecdsa-verify` |
+| App-supplied hybrid signatures | `dualSign` / `dualVerify` for any other classical verifier callback |
+| AEAD | AES-256-GCM and ChaCha20-Poly1305 on a pure-Dart or native (`package:cryptography`) engine |
+| Large files | Bounded-memory `.pqfs` streaming (auto ≥ 8 MiB) and `pack`/`unpack` whole-folder archives |
+| Multi-recipient | One sealed payload, DEM key wrapped per recipient (`PqMultiRecipient`), no wire-format change |
+| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/pack/unpack/inspect/sign/verify/hybrid-sign/hybrid-verify/ecdsa-sign/ecdsa-verify` |
 
 ## Rejections And Boundaries
 

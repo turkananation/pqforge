@@ -10,7 +10,7 @@ library;
 import 'dart:io';
 
 /// Keep in sync with `version:` in pubspec.yaml.
-const String pqforgeCliVersion = '0.2.0';
+const String pqforgeCliVersion = '0.2.1';
 
 /// Shorthand for the shared, color-configured console used across commands.
 Console get console => Console.instance;
