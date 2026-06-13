@@ -1,0 +1,19 @@
+# Dev-only interop harness — NEVER published. The pqforge package itself stays
+# pure Dart (no dart:ffi anywhere in lib/); this nested package exists solely
+# to cross-check pqforge's AEAD engines against the system OpenSSL and to
+# measure the hardware ceiling, mirroring pqcrypto's tool/openssl_interop
+# (openssl_pqcrypto_interop) policy for ML-KEM.
+name: openssl_pqforge_interop
+description: OpenSSL EVP AEAD interop verification harness for pqforge (dev tool).
+publish_to: none
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  ffi: ^2.1.0
+  pqforge:
+    path: ../..
+
+dev_dependencies:
+  lints: ^6.0.0

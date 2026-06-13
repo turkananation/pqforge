@@ -78,6 +78,15 @@ final class KeygenCommand extends Command<void> {
         defaultsTo: '4',
         valueHelp: 'n',
         help: 'Argon2id lanes used when wrapping secret keys.',
+      )
+      ..addOption(
+        'wrap-concurrency',
+        defaultsTo: '2',
+        valueHelp: 'n',
+        help:
+            'Secret keys wrapped in parallel (1-4). Each Argon2id instance '
+            'holds 2^argon-memory-power-of-2 KiB (default 64 MiB), so raise '
+            'this only on machines with RAM to spare.',
       );
     addPassphraseOptions(argParser);
   }
@@ -264,21 +273,60 @@ final class KeygenCommand extends Command<void> {
       argResults['argon-memory-power-of-2'] as String,
     );
     final lanes = int.parse(argResults['argon-lanes'] as String);
-    const forge = PqForge();
-    for (final entry in secretFiles.entries) {
-      final wrapped = forge.wrapKeyWithPassphrase(
-        entry.value,
-        passphrase,
-        iterations: iterations,
-        memoryPowerOf2: memoryPowerOf2,
-        lanes: lanes,
-      );
-      await writeJson(
-        outDir.child(entry.key.replaceFirst('.json', '.wrapped.json')),
-        wrapped.toJson(),
-      );
-    }
+    // Argon2id wrapping is a deliberate ~0.5 s CPU+RAM burn per key; with the
+    // full default key set that is the dominant keygen cost. Wrap on a small
+    // pool of background isolates — bounded because every concurrent wrap
+    // pins its own Argon2id arena (default 64 MiB).
+    final wrapConcurrency =
+        (int.tryParse(argResults['wrap-concurrency'] as String) ?? 2).clamp(
+          1,
+          4,
+        );
+    final pool = Semaphore(wrapConcurrency);
+    await Future.wait([
+      for (final entry in secretFiles.entries)
+        () async {
+          await pool.acquire();
+          try {
+            final wrapped = await _wrapKeyInIsolate(
+              entry.value,
+              passphrase,
+              iterations: iterations,
+              memoryPowerOf2: memoryPowerOf2,
+              lanes: lanes,
+            );
+            await writeJson(
+              outDir.child(entry.key.replaceFirst('.json', '.wrapped.json')),
+              wrapped.toJson(),
+            );
+          } finally {
+            pool.release();
+          }
+        }(),
+    ]);
   }
+}
+
+/// Wraps one secret key on a background isolate. Top-level so the
+/// `Isolate.run` closure's context chain holds only these sendable parameters
+/// — written inline in the pooled task it would capture the enclosing scope
+/// (the semaphore and its completers) and fail to send.
+Future<PqWrappedKey> _wrapKeyInIsolate(
+  PqExportedKey key,
+  String passphrase, {
+  required int iterations,
+  required int memoryPowerOf2,
+  required int lanes,
+}) {
+  return Isolate.run(
+    () => const PqForge().wrapKeyWithPassphrase(
+      key,
+      passphrase,
+      iterations: iterations,
+      memoryPowerOf2: memoryPowerOf2,
+      lanes: lanes,
+    ),
+  );
 }
 
 /// Prints the suite/engine/signature detail lines every encrypt/decrypt
@@ -286,12 +334,20 @@ final class KeygenCommand extends Command<void> {
 void _printSuite({
   required PqForgeProfile profile,
   required bool hybrid,
+  PqForgeCipherSuite suite = PqForgeCipherSuite.aes256Gcm,
   PqForgeEngineProvider? engine,
   PqSignatureAlgorithm? signature,
+  int additionalRecipients = 0,
 }) {
-  console.detail('suite', suiteLabel(profile, hybrid: hybrid));
+  console.detail('suite', suiteLabel(profile, hybrid: hybrid, suite: suite));
   if (engine != null) console.detail('engine', engineLabel(engine));
   if (signature != null) console.detail('signature', signature.name);
+  if (additionalRecipients > 0) {
+    console.detail(
+      'recipients',
+      '1 primary + $additionalRecipients key-wrapped',
+    );
+  }
 }
 
 /// `encrypt` — encrypt a single file to an ML-KEM public key, optionally
@@ -300,11 +356,13 @@ final class EncryptCommand extends Command<void> {
   EncryptCommand() {
     addEnvelopeOptions(argParser, includeProfile: true);
     argParser
-      ..addOption(
+      ..addMultiOption(
         'recipient-public',
-        mandatory: true,
         valueHelp: 'file',
-        help: 'Recipient ML-KEM public key JSON from pqforge keygen.',
+        help:
+            'Recipient ML-KEM public key JSON from pqforge keygen. Repeat to '
+            'add recipients: the payload is sealed once and the key is '
+            'wrapped to each extra recipient (~1.6 KB each).',
       )
       ..addOption(
         'in',
@@ -325,6 +383,7 @@ final class EncryptCommand extends Command<void> {
       );
     addHybridEncryptOptions(argParser);
     addEngineOption(argParser);
+    addCipherOption(argParser);
     addPassphraseOptions(argParser);
   }
 
@@ -333,7 +392,7 @@ final class EncryptCommand extends Command<void> {
 
   @override
   String get description =>
-      'Encrypt a file to an ML-KEM public key (add --hybrid for '
+      'Encrypt a file to one or more ML-KEM public keys (add --hybrid for '
       'ML-KEM + X25519).';
 
   @override
@@ -343,20 +402,23 @@ final class EncryptCommand extends Command<void> {
     '# Hybrid: ML-KEM + X25519 (uses keys/vault.x25519.public.json)',
     'pqforge encrypt --hybrid --recipient-public keys/vault.kem.public.json \\',
     '  --in report.pdf --out report.pdf.pqf',
+    '# Two recipients, one ciphertext',
+    'pqforge encrypt --recipient-public keys/vault.kem.public.json \\',
+    '  --recipient-public keys/audit.kem.public.json \\',
+    '  --in report.pdf --out report.pdf.pqf',
   ]);
 
   @override
   Future<void> run() async {
     final results = argResults!;
     final passphrase = await passphraseFrom(results);
-    final recipient = await readKey(results['recipient-public'] as String);
-    requireKind(recipient, PqKeyKind.kemPublic);
-    final kexPublic = await hybridKexPublicFrom(results);
+    final recipients = await recipientsFrom(results);
     final input = File(results['in'] as String);
     final output = File(results['out'] as String);
     final profile = resolveProfile(results);
     final signer = await optionalSignerSecret(results, passphrase);
     final engineProvider = engineFrom(results);
+    final cipher = cipherFrom(results);
 
     final fileName = input.uri.pathSegments.last;
     final aad = PqRecipeMessages.fileAad(
@@ -374,10 +436,15 @@ final class EncryptCommand extends Command<void> {
       // Large file: stream it frame-by-frame so peak memory stays a few MB
       // regardless of size (Phase 3). The container is self-describing, so the
       // matching decrypt auto-detects it.
-      final stats = await PqForgeStreamCipher.forProvider(engineProvider)
-          .encryptFile(
-            recipientPublicKey: recipient.bytes,
-            recipientKexPublicKey: kexPublic?.bytes,
+      final stats =
+          await PqForgeStreamCipher.forProvider(
+            engineProvider,
+            cipherSuite: cipher,
+          ).encryptFile(
+            recipientPublicKey: recipients.primary.bytes,
+            recipientKexPublicKey: recipients.primaryKex?.bytes,
+            additionalRecipients: recipients.additional,
+            recipientKeyId: recipients.primary.keyId,
             input: input,
             output: output,
             profile: profile,
@@ -392,9 +459,11 @@ final class EncryptCommand extends Command<void> {
       );
       _printSuite(
         profile: profile,
-        hybrid: kexPublic != null,
+        hybrid: recipients.hybrid,
+        suite: cipher,
         engine: engineProvider,
         signature: signer == null ? null : profile.signature,
+        additionalRecipients: recipients.additional.length,
       );
       console.created(output.path);
       return;
@@ -406,10 +475,12 @@ final class EncryptCommand extends Command<void> {
     // the streaming path instead of being pinned to PointyCastle.
     final plaintext = await input.readAsBytes();
     final envelope = await PqForge(profile: profile).encryptAsync(
-      recipient.bytes,
+      recipients.primary.bytes,
       plaintext,
-      recipientKexPublicKey: kexPublic?.bytes,
-      engine: aeadEngineForProvider(engineProvider),
+      recipientKexPublicKey: recipients.primaryKex?.bytes,
+      additionalRecipients: recipients.additional,
+      recipientKeyId: recipients.primary.keyId,
+      engine: aeadEngineForProvider(engineProvider, cipherSuite: cipher),
       aad: aad,
       metadata: metadata,
       profile: profile,
@@ -422,9 +493,11 @@ final class EncryptCommand extends Command<void> {
     );
     _printSuite(
       profile: profile,
-      hybrid: kexPublic != null,
+      hybrid: recipients.hybrid,
+      suite: cipher,
       engine: engineProvider,
       signature: signer == null ? null : profile.signature,
+      additionalRecipients: recipients.additional.length,
     );
     console.created(output.path);
   }
@@ -505,10 +578,14 @@ final class DecryptCommand extends Command<void> {
         results,
         passphrase,
         hybridInput: hybrid,
+        // Multi-recipient containers may hold a hybrid wrap entry for us even
+        // when the primary isn't hybrid — resolve the key opportunistically.
+        discover: PqMultiRecipient.hasEntries(peek.metadata),
       );
       final header = await cipher.decryptFile(
         recipientSecretKey: recipient.bytes,
         recipientKexSecretKey: kexSecret?.bytes,
+        recipientKeyId: recipient.keyId,
         input: input,
         output: output,
         signerPublicKey: signer?.bytes,
@@ -521,6 +598,7 @@ final class DecryptCommand extends Command<void> {
       _printSuite(
         profile: header.profile,
         hybrid: hybrid,
+        suite: PqAeadSuite.of(header.metadata),
         engine: engineProvider,
         signature: header.isSigned ? header.signatureAlgorithm : null,
       );
@@ -534,6 +612,7 @@ final class DecryptCommand extends Command<void> {
       results,
       passphrase,
       hybridInput: hybrid,
+      discover: PqMultiRecipient.hasEntries(envelope.metadata),
     );
     final aad = PqRecipeMessages.fileAad(
       fileName: _requiredMeta(envelope.metadata, 'fileName', 'File'),
@@ -543,6 +622,7 @@ final class DecryptCommand extends Command<void> {
       recipient.bytes,
       envelope,
       recipientKexSecretKey: kexSecret?.bytes,
+      recipientKeyId: recipient.keyId,
       engine: aeadEngineForProvider(engineProvider),
       aad: aad,
       signerPublicKey: signer?.bytes,
@@ -553,6 +633,7 @@ final class DecryptCommand extends Command<void> {
     _printSuite(
       profile: envelope.profile,
       hybrid: hybrid,
+      suite: PqAeadSuite.of(envelope.metadata),
       engine: engineProvider,
       signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
     );
@@ -573,11 +654,12 @@ final class EncryptFolderCommand extends Command<void> {
   EncryptFolderCommand() {
     addEnvelopeOptions(argParser, includeProfile: true);
     argParser
-      ..addOption(
+      ..addMultiOption(
         'recipient-public',
-        mandatory: true,
         valueHelp: 'file',
-        help: 'Recipient ML-KEM public key JSON from pqforge keygen.',
+        help:
+            'Recipient ML-KEM public key JSON from pqforge keygen. Repeat to '
+            'add recipients (every envelope gets key-wrap entries for them).',
       )
       ..addOption(
         'in-dir',
@@ -603,6 +685,7 @@ final class EncryptFolderCommand extends Command<void> {
       );
     addHybridEncryptOptions(argParser);
     addEngineOption(argParser);
+    addCipherOption(argParser);
     addPassphraseOptions(argParser);
   }
 
@@ -622,9 +705,7 @@ final class EncryptFolderCommand extends Command<void> {
   Future<void> run() async {
     final results = argResults!;
     final passphrase = await passphraseFrom(results);
-    final recipient = await readKey(results['recipient-public'] as String);
-    requireKind(recipient, PqKeyKind.kemPublic);
-    final kexPublic = await hybridKexPublicFrom(results);
+    final recipients = await recipientsFrom(results);
     final inputDir = Directory(results['in-dir'] as String);
     final outputDir = Directory(results['out-dir'] as String);
     final profile = resolveProfile(results);
@@ -633,6 +714,7 @@ final class EncryptFolderCommand extends Command<void> {
     final keyId = signerKeyId(results, signer);
     final concurrency = concurrencyFrom(results);
     final engineProvider = engineFrom(results);
+    final cipher = cipherFrom(results);
 
     // Axis B: one file per background isolate, gated by a semaphore. Each file
     // gets its own DEM key by construction, so there is no shared-nonce hazard.
@@ -650,8 +732,10 @@ final class EncryptFolderCommand extends Command<void> {
         await pool.acquire();
         try {
           await _encryptFolderEntryInIsolate(
-            recipientPublicKey: recipient.bytes,
-            recipientKexPublicKey: kexPublic?.bytes,
+            recipientPublicKey: recipients.primary.bytes,
+            recipientKexPublicKey: recipients.primaryKex?.bytes,
+            additionalRecipients: recipients.additional,
+            recipientKeyId: recipients.primary.keyId,
             profile: profile,
             inputPath: entity.path,
             outputPath: joinPath(outputDir.path, '$relativePath.pqf'),
@@ -660,6 +744,7 @@ final class EncryptFolderCommand extends Command<void> {
             signerSecretKey: signer?.bytes,
             signerKeyId: keyId,
             engineProvider: engineProvider,
+            cipherSuite: cipher,
           );
         } finally {
           pool.release();
@@ -673,9 +758,11 @@ final class EncryptFolderCommand extends Command<void> {
     );
     _printSuite(
       profile: profile,
-      hybrid: kexPublic != null,
+      hybrid: recipients.hybrid,
+      suite: cipher,
       engine: engineProvider,
       signature: signer == null ? null : profile.signature,
+      additionalRecipients: recipients.additional.length,
     );
     console.detail('output', outputDir.path);
   }
@@ -688,6 +775,8 @@ final class EncryptFolderCommand extends Command<void> {
 Future<void> _encryptFolderEntryInIsolate({
   required Uint8List recipientPublicKey,
   required Uint8List? recipientKexPublicKey,
+  required List<PqRecipientSpec> additionalRecipients,
+  required String? recipientKeyId,
   required PqForgeProfile profile,
   required String inputPath,
   required String outputPath,
@@ -696,6 +785,7 @@ Future<void> _encryptFolderEntryInIsolate({
   required Uint8List? signerSecretKey,
   required String? signerKeyId,
   required PqForgeEngineProvider engineProvider,
+  required PqForgeCipherSuite cipherSuite,
 }) {
   return Isolate.run(() async {
     final input = File(inputPath);
@@ -713,9 +803,14 @@ Future<void> _encryptFolderEntryInIsolate({
     };
 
     if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
-      await PqForgeStreamCipher.forProvider(engineProvider).encryptFile(
+      await PqForgeStreamCipher.forProvider(
+        engineProvider,
+        cipherSuite: cipherSuite,
+      ).encryptFile(
         recipientPublicKey: recipientPublicKey,
         recipientKexPublicKey: recipientKexPublicKey,
+        additionalRecipients: additionalRecipients,
+        recipientKeyId: recipientKeyId,
         input: input,
         output: output,
         profile: profile,
@@ -731,7 +826,9 @@ Future<void> _encryptFolderEntryInIsolate({
       recipientPublicKey,
       await input.readAsBytes(),
       recipientKexPublicKey: recipientKexPublicKey,
-      engine: aeadEngineForProvider(engineProvider),
+      additionalRecipients: additionalRecipients,
+      recipientKeyId: recipientKeyId,
+      engine: aeadEngineForProvider(engineProvider, cipherSuite: cipherSuite),
       aad: entryAad,
       metadata: metadata,
       profile: profile,
@@ -841,6 +938,7 @@ final class DecryptFolderCommand extends Command<void> {
           await _decryptFolderEntryInIsolate(
             recipientSecretKey: recipient.bytes,
             recipientKexSecretKey: kexSecret?.bytes,
+            recipientKeyId: recipient.keyId,
             inputPath: entity.path,
             outputDirPath: outputDir.path,
             aad: aad,
@@ -867,6 +965,7 @@ final class DecryptFolderCommand extends Command<void> {
 Future<void> _decryptFolderEntryInIsolate({
   required Uint8List recipientSecretKey,
   required Uint8List? recipientKexSecretKey,
+  required String? recipientKeyId,
   required String inputPath,
   required String outputDirPath,
   required Uint8List? aad,
@@ -883,6 +982,7 @@ Future<void> _decryptFolderEntryInIsolate({
       await PqForgeStreamCipher.forProvider(engineProvider).decryptFile(
         recipientSecretKey: recipientSecretKey,
         recipientKexSecretKey: recipientKexSecretKey,
+        recipientKeyId: recipientKeyId,
         input: input,
         output: File(joinPath(outputDirPath, relativePath)),
         signerPublicKey: signerPublicKey,
@@ -900,6 +1000,7 @@ Future<void> _decryptFolderEntryInIsolate({
       recipientSecretKey,
       envelope,
       recipientKexSecretKey: recipientKexSecretKey,
+      recipientKeyId: recipientKeyId,
       engine: aeadEngineForProvider(engineProvider),
       aad: PqRecipeMessages.folderEntryAad(
         relativePath: relativePath,
@@ -927,11 +1028,12 @@ final class EncryptTextCommand extends Command<void> {
   EncryptTextCommand() {
     addEnvelopeOptions(argParser, includeProfile: true);
     argParser
-      ..addOption(
+      ..addMultiOption(
         'recipient-public',
-        mandatory: true,
         valueHelp: 'file',
-        help: 'Recipient ML-KEM public key JSON from pqforge keygen.',
+        help:
+            'Recipient ML-KEM public key JSON from pqforge keygen. Repeat to '
+            'add recipients (one ciphertext, key wrapped to each).',
       )
       ..addOption(
         'text',
@@ -975,19 +1077,19 @@ final class EncryptTextCommand extends Command<void> {
   Future<void> run() async {
     final results = argResults!;
     final passphrase = await passphraseFrom(results);
-    final recipient = await readKey(results['recipient-public'] as String);
-    requireKind(recipient, PqKeyKind.kemPublic);
-    final kexPublic = await hybridKexPublicFrom(results);
+    final recipients = await recipientsFrom(results);
     final (text, defaultTextId) = await readTextInput(results);
     final textId = results['text-id'] as String? ?? defaultTextId;
     final profile = resolveProfile(results);
     final signer = await optionalSignerSecret(results, passphrase);
     // Same AAD and metadata as PqForge.sealText, routed through encryptAsync
-    // so the hybrid marker can ride along.
+    // so the hybrid/multi-recipient markers can ride along.
     final envelope = await PqForge(profile: profile).encryptAsync(
-      recipient.bytes,
+      recipients.primary.bytes,
       PqBytes.utf8Bytes(text),
-      recipientKexPublicKey: kexPublic?.bytes,
+      recipientKexPublicKey: recipients.primaryKex?.bytes,
+      additionalRecipients: recipients.additional,
+      recipientKeyId: recipients.primary.keyId,
       aad: PqRecipeMessages.textAad(textId: textId, aad: optionalAad(results)),
       metadata: {'recipe': 'text-seal', 'textId': textId, 'encoding': 'utf-8'},
       profile: profile,
@@ -999,8 +1101,9 @@ final class EncryptTextCommand extends Command<void> {
     console.success('Encrypted text (id: $textId)');
     _printSuite(
       profile: profile,
-      hybrid: kexPublic != null,
+      hybrid: recipients.hybrid,
       signature: signer == null ? null : profile.signature,
+      additionalRecipients: recipients.additional.length,
     );
     console.created(output.path);
   }
@@ -1072,6 +1175,7 @@ final class DecryptTextCommand extends Command<void> {
       results,
       passphrase,
       hybridInput: PqHybridKemDem.isHybrid(envelope.metadata),
+      discover: PqMultiRecipient.hasEntries(envelope.metadata),
     );
     // Mirrors PqForge.openText (textId/encoding checks + text AAD) on the
     // hybrid-capable async path.
@@ -1084,6 +1188,7 @@ final class DecryptTextCommand extends Command<void> {
       recipient.bytes,
       envelope,
       recipientKexSecretKey: kexSecret?.bytes,
+      recipientKeyId: recipient.keyId,
       aad: PqRecipeMessages.textAad(textId: textId, aad: optionalAad(results)),
       signerPublicKey: signer?.bytes,
     );
@@ -1105,11 +1210,12 @@ final class EncryptMediaCommand extends Command<void> {
   EncryptMediaCommand() {
     addEnvelopeOptions(argParser, includeProfile: true);
     argParser
-      ..addOption(
+      ..addMultiOption(
         'recipient-public',
-        mandatory: true,
         valueHelp: 'file',
-        help: 'Recipient ML-KEM public key JSON from pqforge keygen.',
+        help:
+            'Recipient ML-KEM public key JSON from pqforge keygen. Repeat to '
+            'add recipients (one ciphertext, key wrapped to each).',
       )
       ..addOption(
         'in',
@@ -1140,6 +1246,7 @@ final class EncryptMediaCommand extends Command<void> {
       );
     addHybridEncryptOptions(argParser);
     addEngineOption(argParser);
+    addCipherOption(argParser);
     addPassphraseOptions(argParser);
   }
 
@@ -1160,9 +1267,7 @@ final class EncryptMediaCommand extends Command<void> {
   Future<void> run() async {
     final results = argResults!;
     final passphrase = await passphraseFrom(results);
-    final recipient = await readKey(results['recipient-public'] as String);
-    requireKind(recipient, PqKeyKind.kemPublic);
-    final kexPublic = await hybridKexPublicFrom(results);
+    final recipients = await recipientsFrom(results);
     final input = File(results['in'] as String);
     final mediaId =
         results['media-id'] as String? ?? input.uri.pathSegments.last;
@@ -1171,6 +1276,7 @@ final class EncryptMediaCommand extends Command<void> {
     final profile = resolveProfile(results);
     final signer = await optionalSignerSecret(results, passphrase);
     final engineProvider = engineFrom(results);
+    final cipher = cipherFrom(results);
     final output = File(results['out'] as String);
     final aad = PqRecipeMessages.mediaAad(
       mediaId: mediaId,
@@ -1186,10 +1292,15 @@ final class EncryptMediaCommand extends Command<void> {
     };
 
     if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
-      final stats = await PqForgeStreamCipher.forProvider(engineProvider)
-          .encryptFile(
-            recipientPublicKey: recipient.bytes,
-            recipientKexPublicKey: kexPublic?.bytes,
+      final stats =
+          await PqForgeStreamCipher.forProvider(
+            engineProvider,
+            cipherSuite: cipher,
+          ).encryptFile(
+            recipientPublicKey: recipients.primary.bytes,
+            recipientKexPublicKey: recipients.primaryKex?.bytes,
+            additionalRecipients: recipients.additional,
+            recipientKeyId: recipients.primary.keyId,
             input: input,
             output: output,
             profile: profile,
@@ -1204,9 +1315,11 @@ final class EncryptMediaCommand extends Command<void> {
       );
       _printSuite(
         profile: profile,
-        hybrid: kexPublic != null,
+        hybrid: recipients.hybrid,
+        suite: cipher,
         engine: engineProvider,
         signature: signer == null ? null : profile.signature,
+        additionalRecipients: recipients.additional.length,
       );
       console.created(output.path);
       return;
@@ -1214,10 +1327,12 @@ final class EncryptMediaCommand extends Command<void> {
 
     final bytes = await input.readAsBytes(); // M2: no redundant full-file copy
     final envelope = await PqForge(profile: profile).encryptAsync(
-      recipient.bytes,
+      recipients.primary.bytes,
       bytes,
-      recipientKexPublicKey: kexPublic?.bytes,
-      engine: aeadEngineForProvider(engineProvider),
+      recipientKexPublicKey: recipients.primaryKex?.bytes,
+      additionalRecipients: recipients.additional,
+      recipientKeyId: recipients.primary.keyId,
+      engine: aeadEngineForProvider(engineProvider, cipherSuite: cipher),
       aad: aad,
       metadata: metadata,
       profile: profile,
@@ -1228,9 +1343,11 @@ final class EncryptMediaCommand extends Command<void> {
     console.success('Encrypted media (id: $mediaId, $mimeType)');
     _printSuite(
       profile: profile,
-      hybrid: kexPublic != null,
+      hybrid: recipients.hybrid,
+      suite: cipher,
       engine: engineProvider,
       signature: signer == null ? null : profile.signature,
+      additionalRecipients: recipients.additional.length,
     );
     console.created(output.path);
   }
@@ -1311,10 +1428,12 @@ final class DecryptMediaCommand extends Command<void> {
         results,
         passphrase,
         hybridInput: hybrid,
+        discover: PqMultiRecipient.hasEntries(peek.metadata),
       );
       await cipher.decryptFile(
         recipientSecretKey: recipient.bytes,
         recipientKexSecretKey: kexSecret?.bytes,
+        recipientKeyId: recipient.keyId,
         input: input,
         output: output,
         signerPublicKey: signer?.bytes,
@@ -1328,6 +1447,7 @@ final class DecryptMediaCommand extends Command<void> {
       _printSuite(
         profile: peek.profile,
         hybrid: hybrid,
+        suite: PqAeadSuite.of(peek.metadata),
         engine: engineProvider,
         signature: peek.isSigned ? peek.signatureAlgorithm : null,
       );
@@ -1341,6 +1461,7 @@ final class DecryptMediaCommand extends Command<void> {
       results,
       passphrase,
       hybridInput: hybrid,
+      discover: PqMultiRecipient.hasEntries(envelope.metadata),
     );
     final mediaId = _requiredMeta(envelope.metadata, 'mediaId', 'media');
     final mimeType = _requiredMeta(envelope.metadata, 'mimeType', 'media');
@@ -1348,6 +1469,7 @@ final class DecryptMediaCommand extends Command<void> {
       recipient.bytes,
       envelope,
       recipientKexSecretKey: kexSecret?.bytes,
+      recipientKeyId: recipient.keyId,
       engine: aeadEngineForProvider(engineProvider),
       aad: PqRecipeMessages.mediaAad(
         mediaId: mediaId,
@@ -1362,6 +1484,7 @@ final class DecryptMediaCommand extends Command<void> {
     _printSuite(
       profile: envelope.profile,
       hybrid: hybrid,
+      suite: PqAeadSuite.of(envelope.metadata),
       engine: engineProvider,
       signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
     );
@@ -1379,11 +1502,12 @@ final class PackCommand extends Command<void> {
   PackCommand() {
     addEnvelopeOptions(argParser, includeProfile: true);
     argParser
-      ..addOption(
+      ..addMultiOption(
         'recipient-public',
-        mandatory: true,
         valueHelp: 'file',
-        help: 'Recipient ML-KEM public key JSON from pqforge keygen.',
+        help:
+            'Recipient ML-KEM public key JSON from pqforge keygen. Repeat to '
+            'add recipients: ONE archive, sealed once, openable by each.',
       )
       ..addOption(
         'in-dir',
@@ -1404,6 +1528,7 @@ final class PackCommand extends Command<void> {
       );
     addHybridEncryptOptions(argParser);
     addEngineOption(argParser);
+    addCipherOption(argParser);
     addPassphraseOptions(argParser);
   }
 
@@ -1425,15 +1550,14 @@ final class PackCommand extends Command<void> {
   Future<void> run() async {
     final results = argResults!;
     final passphrase = await passphraseFrom(results);
-    final recipient = await readKey(results['recipient-public'] as String);
-    requireKind(recipient, PqKeyKind.kemPublic);
-    final kexPublic = await hybridKexPublicFrom(results);
+    final recipients = await recipientsFrom(results);
     final inputDir = Directory(results['in-dir'] as String);
     final output = File(results['out'] as String);
     final profile = resolveProfile(results);
     final signer = await optionalSignerSecret(results, passphrase);
     final aad = optionalAad(results);
     final engineProvider = engineFrom(results);
+    final cipher = cipherFrom(results);
 
     final entries = [
       for (final file in await listFiles(inputDir))
@@ -1445,10 +1569,15 @@ final class PackCommand extends Command<void> {
 
     // The pack stream is piped straight into the AEAD writer: the plaintext
     // archive never exists on disk (no temp spool, no extra free-space need).
-    final stats = await PqForgeStreamCipher.forProvider(engineProvider)
-        .encryptStream(
-          recipientPublicKey: recipient.bytes,
-          recipientKexPublicKey: kexPublic?.bytes,
+    final stats =
+        await PqForgeStreamCipher.forProvider(
+          engineProvider,
+          cipherSuite: cipher,
+        ).encryptStream(
+          recipientPublicKey: recipients.primary.bytes,
+          recipientKexPublicKey: recipients.primaryKex?.bytes,
+          additionalRecipients: recipients.additional,
+          recipientKeyId: recipients.primary.keyId,
           source: PqFolderPack.packStream(entries),
           output: output,
           profile: profile,
@@ -1463,9 +1592,11 @@ final class PackCommand extends Command<void> {
     );
     _printSuite(
       profile: profile,
-      hybrid: kexPublic != null,
+      hybrid: recipients.hybrid,
+      suite: cipher,
       engine: engineProvider,
       signature: signer == null ? null : profile.signature,
+      additionalRecipients: recipients.additional.length,
     );
     console.created(output.path);
   }
@@ -1552,6 +1683,7 @@ final class UnpackCommand extends Command<void> {
       results,
       passphrase,
       hybridInput: hybrid,
+      discover: PqMultiRecipient.hasEntries(peek.metadata),
     );
 
     // Authenticated plaintext frames stream straight into the unpacker — no
@@ -1560,6 +1692,7 @@ final class UnpackCommand extends Command<void> {
     final frames = cipher.decryptStream(
       recipientSecretKey: recipient.bytes,
       recipientKexSecretKey: kexSecret?.bytes,
+      recipientKeyId: recipient.keyId,
       input: input,
       signerPublicKey: signer?.bytes,
       aadResolver: (_) => PqRecipeMessages.folderPackAad(aad: aad),
@@ -1572,6 +1705,7 @@ final class UnpackCommand extends Command<void> {
     _printSuite(
       profile: peek.profile,
       hybrid: hybrid,
+      suite: PqAeadSuite.of(peek.metadata),
       engine: engineProvider,
       signature: peek.isSigned ? peek.signatureAlgorithm : null,
     );
@@ -1615,7 +1749,11 @@ final class InspectCommand extends Command<void> {
       _printSuite(
         profile: header.profile,
         hybrid: hybrid,
+        suite: PqAeadSuite.of(header.metadata),
         signature: header.isSigned ? header.signatureAlgorithm : null,
+        additionalRecipients: PqMultiRecipient.parseEntries(
+          header.metadata,
+        ).length,
       );
       if (header.signerKeyId != null) {
         console.detail('signer key id', header.signerKeyId!);
@@ -1635,7 +1773,11 @@ final class InspectCommand extends Command<void> {
       _printSuite(
         profile: envelope.profile,
         hybrid: hybrid,
+        suite: PqAeadSuite.of(envelope.metadata),
         signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
+        additionalRecipients: PqMultiRecipient.parseEntries(
+          envelope.metadata,
+        ).length,
       );
       if (envelope.signerKeyId != null) {
         console.detail('signer key id', envelope.signerKeyId!);
@@ -1702,7 +1844,8 @@ final class InspectCommand extends Command<void> {
 
   void _printMetadata(Map<String, Object?> metadata) {
     for (final entry in metadata.entries) {
-      if (entry.key == PqHybridKemDem.metadataKey) continue; // shown as suite
+      // Container markers are already rendered as suite/recipients lines.
+      if (pqForgeReservedMetadataKeys.contains(entry.key)) continue;
       console.detail(entry.key, '${entry.value}');
     }
   }

@@ -317,8 +317,9 @@ String _join(String root, String relativePath) {
 int _readUint32(Uint8List bytes) =>
     bytes.buffer.asByteData(bytes.offsetInBytes, 4).getUint32(0, Endian.big);
 
-int _readUint64(Uint8List bytes) =>
-    bytes.buffer.asByteData(bytes.offsetInBytes, 8).getUint64(0, Endian.big);
+// Two uint32 halves via PqBytes.readUint64, keeping the arithmetic portable
+// (ByteData.getUint64 throws on dart2js) even though this service is dart:io.
+int _readUint64(Uint8List bytes) => PqBytes.readUint64(bytes);
 
 Future<Uint8List> _readExactly(RandomAccessFile source, int length) async {
   final buffer = Uint8List(length);

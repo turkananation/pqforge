@@ -122,12 +122,10 @@ class PqForge {
     String? signerKeyId,
   }) {
     final selected = profile ?? this.profile;
-    if (metadata.containsKey(pqForgeHybridKexMetadataKey)) {
-      throw const PqForgeException(
-        'metadata already contains a hybridKex entry; it is reserved for the '
-        'hybrid KEM-DEM marker (use encryptAsync for hybrid envelopes)',
-      );
-    }
+    // Reserved markers (hybridKex, aeadSuite, recipients…) are written only by
+    // the async/streaming paths that implement those features; rejecting them
+    // here keeps a sync envelope from impersonating one.
+    requireWritableEnvelopeMetadata(metadata);
     final encapsulated = PqKemPrimitives.encapsulate(
       selected.kem,
       recipientPublicKey,
@@ -343,6 +341,14 @@ class PqForge {
         'decryptAsync with the recipient X25519 secret key',
       );
     }
+    if (envelope.metadata.containsKey(pqForgeAeadSuiteMetadataKey)) {
+      // The marker is only ever written for a non-default suite, and this
+      // sync path is hardwired to AES-256-GCM.
+      throw const PqForgeException(
+        'This envelope uses a non-default AEAD suite; use decryptAsync, '
+        'which selects the engine from the aeadSuite marker',
+      );
+    }
     verifyEnvelopeForOpen(envelope, aad: aad, signerPublicKey: signerPublicKey);
     final sharedSecret = PqKemPrimitives.decapsulate(
       envelope.kemAlgorithm,
@@ -354,12 +360,26 @@ class PqForge {
       sharedSecret,
       envelope.kemCiphertext,
     );
-    return PqSymmetricPrimitives.aesGcmDecrypt(
-      key: key,
-      nonce: envelope.nonce,
-      ciphertext: envelope.payload,
-      aad: aad ?? envelope.kemCiphertext,
-    );
+    try {
+      return PqSymmetricPrimitives.aesGcmDecrypt(
+        key: key,
+        nonce: envelope.nonce,
+        ciphertext: envelope.payload,
+        aad: aad ?? envelope.kemCiphertext,
+      );
+    } catch (_) {
+      if (envelope.metadata.containsKey(pqForgeRecipientsMetadataKey)) {
+        // The primary key didn't open it, but this is a multi-recipient
+        // envelope — an *additional* recipient must go through the
+        // recipients[] unwrap, which only decryptAsync implements.
+        throw const PqForgeException(
+          'AEAD authentication failed with the primary derivation; this is a '
+          'multi-recipient envelope — additional recipients must use '
+          'decryptAsync',
+        );
+      }
+      rethrow;
+    }
   }
 
   /// Runs every check [decrypt] performs before the AEAD open: the AAD

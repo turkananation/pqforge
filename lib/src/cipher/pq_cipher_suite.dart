@@ -47,6 +47,22 @@ enum PqForgeCipherSuite {
   /// Authentication tag length in bytes (appended to the ciphertext).
   final int tagLength;
 
+  /// Resolves a suite from its stable [id] (`aes-256-gcm`,
+  /// `chacha20-poly1305`). Throws [ArgumentError] for unknown ids so malformed
+  /// container metadata surfaces as a clear error rather than a default suite.
+  static PqForgeCipherSuite byId(String id) {
+    for (final suite in values) {
+      if (suite.id == id) return suite;
+    }
+    throw ArgumentError.value(id, 'id', 'unknown cipher suite');
+  }
+
+  /// Human-readable display name (`AES-256-GCM`, `ChaCha20-Poly1305`).
+  String get displayName => switch (this) {
+    aes256Gcm => 'AES-256-GCM',
+    chaCha20Poly1305 => 'ChaCha20-Poly1305',
+  };
+
   /// Throws [ArgumentError] unless [key] is exactly [keyLength] bytes.
   void requireKey(Uint8List key) {
     if (key.length != keyLength) {

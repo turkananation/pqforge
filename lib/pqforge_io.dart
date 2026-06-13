@@ -22,6 +22,5 @@
 library;
 
 export 'pqforge.dart';
-export 'src/codecs/pq_streaming_envelope.dart';
 export 'src/services/pqforge_pack_service.dart';
 export 'src/services/pqforge_stream_service.dart';

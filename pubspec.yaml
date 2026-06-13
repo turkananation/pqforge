@@ -1,6 +1,9 @@
 name: pqforge
-description: A secure, opinionated cryptographic wrapper designed to enforce safe post-quantum and classical composition in Dart/Flutter and Serverpod ecosystems. By bridging pqcrypto and pointycastle, pqforge eliminates common deployment anti-patterns, ensuring type-safe, misuse-resistant implementations of hybrid quantum-safe protocols across the full stack.
-version: 0.1.0
+description: >-
+  Pure-Dart post-quantum and classical hybrid crypto for Dart, Flutter, and
+  Serverpod: ML-KEM/ML-DSA envelopes, streaming, multi-recipient encryption,
+  signing, and a CLI.
+version: 0.2.0
 repository: https://github.com/turkananation/pqforge
 
 environment:

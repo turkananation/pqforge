@@ -3,3 +3,6 @@ doc/api/
 site/
 wiki/
 tool/visibility/
+# Dev-only OpenSSL interop harness (its own `publish_to: none` package); the
+# published pqforge package stays pure Dart — no dart:ffi ships.
+tool/openssl_interop/

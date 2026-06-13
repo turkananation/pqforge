@@ -174,6 +174,6 @@ class PqEnvelope {
 }
 
 // The `.pqfs` streaming codec (PqStreamingHeader / PqStreamingEnvelope) lives
-// in pq_streaming_envelope.dart, exported via `package:pqforge/pqforge_io.dart`
-// — its uint64 frame counters don't compile to dart2js, so it stays out of the
-// web-safe core umbrella this file belongs to.
+// in pq_streaming_envelope.dart. Its frame counters are encoded as two uint32
+// halves, so the codec is dart2js-safe and ships in the same web-safe core
+// umbrella as this file; only the dart:io stream cipher is pqforge_io-only.

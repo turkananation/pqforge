@@ -19,6 +19,7 @@ import '../cipher/pq_cryptography_aead_engine.dart';
 import '../codecs/pq_streaming_envelope.dart';
 import '../primitives/pq_primitives.dart';
 import 'pqforge_async_service.dart';
+import 'pqforge_multi_recipient.dart';
 import 'pqforge_service.dart';
 
 /// Outcome of a streaming encrypt/decrypt: byte and frame counts for logging.
@@ -112,6 +113,8 @@ class PqForgeStreamCipher {
     required String outputPath,
     required PqForgeProfile profile,
     Uint8List? recipientKexPublicKey,
+    List<PqRecipientSpec> additionalRecipients = const [],
+    String? recipientKeyId,
     Uint8List? aad,
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
@@ -120,21 +123,28 @@ class PqForgeStreamCipher {
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
     PqForgeEngineProvider engineProvider =
         PqForgeEngineProvider.nativeCryptography,
+    PqForgeCipherSuite cipherSuite = PqForgeCipherSuite.aes256Gcm,
   }) {
     return Isolate.run(
-      () => PqForgeStreamCipher.forProvider(engineProvider).encryptFile(
-        recipientPublicKey: recipientPublicKey,
-        recipientKexPublicKey: recipientKexPublicKey,
-        input: File(inputPath),
-        output: File(outputPath),
-        profile: profile,
-        aad: aad,
-        metadata: metadata,
-        signerSecretKey: signerSecretKey,
-        signatureAlgorithm: signatureAlgorithm,
-        signerKeyId: signerKeyId,
-        frameSize: frameSize,
-      ),
+      () =>
+          PqForgeStreamCipher.forProvider(
+            engineProvider,
+            cipherSuite: cipherSuite,
+          ).encryptFile(
+            recipientPublicKey: recipientPublicKey,
+            recipientKexPublicKey: recipientKexPublicKey,
+            additionalRecipients: additionalRecipients,
+            recipientKeyId: recipientKeyId,
+            input: File(inputPath),
+            output: File(outputPath),
+            profile: profile,
+            aad: aad,
+            metadata: metadata,
+            signerSecretKey: signerSecretKey,
+            signatureAlgorithm: signatureAlgorithm,
+            signerKeyId: signerKeyId,
+            frameSize: frameSize,
+          ),
     );
   }
 
@@ -147,6 +157,7 @@ class PqForgeStreamCipher {
     required String inputPath,
     required String outputPath,
     Uint8List? recipientKexSecretKey,
+    String? recipientKeyId,
     Uint8List? signerPublicKey,
     Uint8List? aad,
     PqForgeEngineProvider engineProvider =
@@ -156,6 +167,7 @@ class PqForgeStreamCipher {
       () => PqForgeStreamCipher.forProvider(engineProvider).decryptFile(
         recipientSecretKey: recipientSecretKey,
         recipientKexSecretKey: recipientKexSecretKey,
+        recipientKeyId: recipientKeyId,
         input: File(inputPath),
         output: File(outputPath),
         signerPublicKey: signerPublicKey,
@@ -170,14 +182,18 @@ class PqForgeStreamCipher {
   /// with `preHash:true`, so signing is O(1) in file size. When
   /// [recipientKexPublicKey] (a raw 32-byte X25519 public key) is supplied the
   /// container is **hybrid**: the DEM key combines the ML-KEM shared secret
-  /// with an ephemeral X25519 exchange (see [PqHybridKemDem]). On failure the
-  /// partial [output] is removed.
+  /// with an ephemeral X25519 exchange (see [PqHybridKemDem]). Each
+  /// [additionalRecipients] entry wraps the same DEM key to one more key
+  /// (see [PqMultiRecipient]) — the payload is still sealed exactly once. On
+  /// failure the partial [output] is removed.
   Future<PqStreamingStats> encryptFile({
     required Uint8List recipientPublicKey,
     required File input,
     required File output,
     required PqForgeProfile profile,
     Uint8List? recipientKexPublicKey,
+    List<PqRecipientSpec> additionalRecipients = const [],
+    String? recipientKeyId,
     Uint8List? aad,
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
@@ -188,6 +204,8 @@ class PqForgeStreamCipher {
     final context = await _prepareEncrypt(
       recipientPublicKey: recipientPublicKey,
       recipientKexPublicKey: recipientKexPublicKey,
+      additionalRecipients: additionalRecipients,
+      recipientKeyId: recipientKeyId,
       profile: profile,
       aad: aad,
       metadata: metadata,
@@ -206,16 +224,36 @@ class PqForgeStreamCipher {
           await writer.add(Uint8List(0), isFinal: true);
           return;
         }
-        final buffer = Uint8List(frameSize);
-        var read = 0;
-        while (read < total) {
-          final n = await source.readInto(buffer);
-          if (n <= 0) break;
+        // Double-buffered read-ahead (R9): the next frame is read from the
+        // source while the current one is sealed and written. Input and
+        // output are separate file handles, so the disk read genuinely
+        // overlaps the AEAD + write; peak memory grows by exactly one frame.
+        var current = Uint8List(frameSize);
+        var next = Uint8List(frameSize);
+        var read = await source.readInto(current);
+        var currentLen = read;
+        while (currentLen > 0) {
+          final isFinal = read >= total;
+          final pending = isFinal ? null : source.readInto(next);
+          try {
+            await writer.add(
+              Uint8List.sublistView(current, 0, currentLen),
+              isFinal: isFinal,
+            );
+          } on Object {
+            // Never leave the prefetch dangling: an unawaited failing future
+            // would surface as an unhandled async error during cleanup.
+            await _drainQuietly(pending);
+            rethrow;
+          }
+          if (pending == null) return;
+          final n = await pending;
+          if (n <= 0) break; // input shrank; the reader detects truncation
           read += n;
-          await writer.add(
-            Uint8List.sublistView(buffer, 0, n),
-            isFinal: read >= total,
-          );
+          currentLen = n;
+          final spare = current;
+          current = next;
+          next = spare;
         }
       });
     } finally {
@@ -236,6 +274,8 @@ class PqForgeStreamCipher {
     required File output,
     required PqForgeProfile profile,
     Uint8List? recipientKexPublicKey,
+    List<PqRecipientSpec> additionalRecipients = const [],
+    String? recipientKeyId,
     Uint8List? aad,
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
@@ -246,6 +286,8 @@ class PqForgeStreamCipher {
     final context = await _prepareEncrypt(
       recipientPublicKey: recipientPublicKey,
       recipientKexPublicKey: recipientKexPublicKey,
+      additionalRecipients: additionalRecipients,
+      recipientKeyId: recipientKeyId,
       profile: profile,
       aad: aad,
       metadata: metadata,
@@ -255,6 +297,8 @@ class PqForgeStreamCipher {
       frameSize: frameSize,
     );
     return _writeContainer(context, output, (writer) async {
+      // (No read-ahead here: the source is already an async stream, so the
+      // producer naturally runs ahead while a frame is awaited.)
       final frame = Uint8List(frameSize);
       var filled = 0;
       Uint8List? readyFrame; // full frame held until finality is known
@@ -299,10 +343,14 @@ class PqForgeStreamCipher {
   /// KEM-encapsulates, derives the DEM key, and serializes + signs the header —
   /// the shared prologue of [encryptFile] and [encryptStream]. With a
   /// [recipientKexPublicKey] the DEM key is the hybrid combination and the
-  /// header metadata carries the self-describing `hybridKex` marker.
+  /// header metadata carries the self-describing `hybridKex` marker; a
+  /// non-default engine suite and any [additionalRecipients] key-wrap entries
+  /// are recorded the same way.
   Future<_EncryptContext> _prepareEncrypt({
     required Uint8List recipientPublicKey,
     required Uint8List? recipientKexPublicKey,
+    required List<PqRecipientSpec> additionalRecipients,
+    required String? recipientKeyId,
     required PqForgeProfile profile,
     required Uint8List? aad,
     required Map<String, Object?> metadata,
@@ -314,18 +362,16 @@ class PqForgeStreamCipher {
     final signatureAlg = signerSecretKey == null
         ? signatureAlgorithm
         : (signatureAlgorithm ?? profile.signature);
-    if (PqHybridKemDem.isHybrid(metadata)) {
-      throw const PqForgeException(
-        'metadata already contains a hybridKex entry; it is reserved for the '
-        'hybrid KEM-DEM marker',
-      );
-    }
+    requireWritableEnvelopeMetadata(metadata);
     final encapsulated = PqKemPrimitives.encapsulate(
       profile.kem,
       recipientPublicKey,
     );
     final Uint8List demKey;
-    var effectiveMetadata = metadata;
+    var effectiveMetadata = {
+      ...metadata,
+      ...PqAeadSuite.entryFor(engine.cipherSuite),
+    };
     if (recipientKexPublicKey == null) {
       demKey = PqForge.deriveDemKey(
         profile,
@@ -340,7 +386,18 @@ class PqForgeStreamCipher {
         recipientKexPublicKey: recipientKexPublicKey,
       );
       demKey = hybrid.demKey;
-      effectiveMetadata = {...metadata, ...hybrid.metadataEntry};
+      effectiveMetadata = {...effectiveMetadata, ...hybrid.metadataEntry};
+    }
+    if (additionalRecipients.isNotEmpty) {
+      effectiveMetadata = {
+        ...effectiveMetadata,
+        PqMultiRecipient.primaryKeyIdKey: ?recipientKeyId,
+        PqMultiRecipient.metadataKey: await PqMultiRecipient.buildEntries(
+          profile: profile,
+          demKey: demKey,
+          recipients: additionalRecipients,
+        ),
+      };
     }
     final header = PqStreamingHeader(
       profile: profile,
@@ -434,6 +491,7 @@ class PqForgeStreamCipher {
     required File input,
     required File output,
     Uint8List? recipientKexSecretKey,
+    String? recipientKeyId,
     Uint8List? signerPublicKey,
     Uint8List? Function(PqStreamingHeader header)? aadResolver,
   }) async {
@@ -445,6 +503,7 @@ class PqForgeStreamCipher {
       final frames = decryptStream(
         recipientSecretKey: recipientSecretKey,
         recipientKexSecretKey: recipientKexSecretKey,
+        recipientKeyId: recipientKeyId,
         input: input,
         signerPublicKey: signerPublicKey,
         aadResolver: aadResolver,
@@ -474,11 +533,20 @@ class PqForgeStreamCipher {
   /// Hybrid containers (those whose header metadata carries the `hybridKex`
   /// marker) require [recipientKexSecretKey] — the raw 32-byte X25519 secret
   /// matching the public key the sender encrypted to; a missing key fails
-  /// before any frame is read. The key is ignored for non-hybrid containers.
+  /// before any frame is read **unless** the container also carries
+  /// `recipients[]` entries, which are then still tried. The key is ignored
+  /// for non-hybrid containers.
+  ///
+  /// Multi-recipient containers resolve the DEM key on the first frame: the
+  /// primary derivation and the `recipients[]` unwrap are trial-opened and
+  /// the authenticating one is kept. [recipientKeyId] (this key's id) routes
+  /// straight to the matching wrap entry. A non-default AEAD suite recorded
+  /// in the header (`aeadSuite`) rebuilds the engine on the same provider.
   Stream<Uint8List> decryptStream({
     required Uint8List recipientSecretKey,
     required File input,
     Uint8List? recipientKexSecretKey,
+    String? recipientKeyId,
     Uint8List? signerPublicKey,
     Uint8List? Function(PqStreamingHeader header)? aadResolver,
     void Function(PqStreamingHeader header)? onHeader,
@@ -522,74 +590,184 @@ class PqForgeStreamCipher {
       }
       onHeader?.call(header);
 
+      // The container records a non-default AEAD suite in its header
+      // metadata; rebuild the engine on the same provider to match it.
+      final suite = PqAeadSuite.of(header.metadata);
+      PqFipsMode.requireApprovedSuite(suite);
+      final aead = engine.cipherSuite == suite
+          ? engine
+          : aeadEngineForProvider(engine.provider, cipherSuite: suite);
+
       final sharedSecret = PqKemPrimitives.decapsulate(
         header.kemAlgorithm,
         recipientSecretKey,
         header.kemCiphertext,
       );
-      final Uint8List demKey;
-      if (PqHybridKemDem.isHybrid(header.metadata)) {
-        if (recipientKexSecretKey == null) {
-          throw const PqForgeException(
-            'This container uses hybrid ML-KEM + X25519 encryption; the '
-            'recipient X25519 secret key is required to decrypt it',
+      final hasEntries = PqMultiRecipient.hasEntries(header.metadata);
+
+      // Primary derivation. On a multi-recipient container its failure (e.g.
+      // a hybrid primary but no kex key — we may not BE the primary) is
+      // deferred so the recipients[] entries still get their chance.
+      Uint8List? primaryDemKey;
+      PqForgeException? primaryFailure;
+      try {
+        if (PqHybridKemDem.isHybrid(header.metadata)) {
+          if (recipientKexSecretKey == null) {
+            throw const PqForgeException(
+              'This container uses hybrid ML-KEM + X25519 encryption; the '
+              'recipient X25519 secret key is required to decrypt it',
+            );
+          }
+          primaryDemKey = await PqHybridKemDem.demKeyForOpen(
+            profile: header.profile,
+            kemSharedSecret: sharedSecret,
+            kemCiphertext: header.kemCiphertext,
+            metadata: header.metadata,
+            recipientKexSecretKey: recipientKexSecretKey,
+          );
+        } else {
+          primaryDemKey = PqForge.deriveDemKey(
+            header.profile,
+            sharedSecret,
+            header.kemCiphertext,
           );
         }
-        demKey = await PqHybridKemDem.demKeyForOpen(
-          profile: header.profile,
-          kemSharedSecret: sharedSecret,
-          kemCiphertext: header.kemCiphertext,
-          metadata: header.metadata,
-          recipientKexSecretKey: recipientKexSecretKey,
-        );
-      } else {
-        demKey = PqForge.deriveDemKey(
-          header.profile,
-          sharedSecret,
-          header.kemCiphertext,
-        );
+      } on PqForgeException catch (failure) {
+        if (!hasEntries) rethrow;
+        primaryFailure = failure;
       }
 
-      final maxBody = header.frameSize + engine.cipherSuite.tagLength;
-      var expectedSeq = 0;
-      var sawFinal = false;
-      while (true) {
+      // Candidate DEM keys, primary first unless the metadata names a
+      // different primary key id than ours. With several candidates the one
+      // that authenticates the first frame wins and is kept for the rest.
+      final candidates = <Uint8List>[];
+      if (!hasEntries) {
+        candidates.add(primaryDemKey!);
+      } else {
+        final entriesKey = await PqMultiRecipient.unwrapDemKey(
+          profile: header.profile,
+          metadata: header.metadata,
+          recipientSecretKey: recipientSecretKey,
+          recipientKexSecretKey: recipientKexSecretKey,
+          recipientKeyId: recipientKeyId,
+        );
+        final namedPrimary = header.metadata[PqMultiRecipient.primaryKeyIdKey];
+        final preferEntries =
+            recipientKeyId != null &&
+            namedPrimary is String &&
+            namedPrimary != recipientKeyId;
+        for (final key
+            in preferEntries
+                ? [entriesKey, primaryDemKey]
+                : [primaryDemKey, entriesKey]) {
+          if (key != null) candidates.add(key);
+        }
+        if (candidates.isEmpty) {
+          throw PqForgeException(
+            'This multi-recipient container is not addressed to the supplied '
+            'key: the primary derivation was unavailable '
+            '(${primaryFailure?.message}) and no recipients[] entry unwrapped',
+          );
+        }
+      }
+      // Multi-recipient containers always resolve via the first-frame trial,
+      // even with a single candidate, so a wrong key surfaces as the
+      // descriptive "not addressed" error rather than a bare tag failure.
+      var demKey = hasEntries ? null : candidates.single;
+
+      final tagLength = aead.cipherSuite.tagLength;
+      final maxBody = header.frameSize + tagLength;
+
+      // One frame of read-ahead (R9): the next frame loads from disk while
+      // the current one is opened. The observable validation order is
+      // unchanged — a prefetched frame is only inspected after every earlier
+      // frame has authenticated and been yielded.
+      Future<({int seq, bool isFinal, Uint8List body})?> readFrame() async {
         final frameHeader = await _readExactlyOrNull(
           source,
           PqStreamingEnvelope.frameHeaderBytes,
         );
-        if (frameHeader == null) break; // clean EOF at a frame boundary
+        if (frameHeader == null) return null; // clean EOF at a frame boundary
+        final parsed = PqStreamingEnvelope.parseFrameHeader(frameHeader);
+        // Bound the body length BEFORE allocating it (anti-DoS).
+        if (parsed.bodyLen < tagLength || parsed.bodyLen > maxBody) {
+          throw PqForgeException(
+            'Invalid streaming frame body length: ${parsed.bodyLen}',
+          );
+        }
+        return (
+          seq: parsed.seq,
+          isFinal: parsed.isFinal,
+          body: await _readExactly(source, parsed.bodyLen),
+        );
+      }
+
+      var expectedSeq = 0;
+      var sawFinal = false;
+      var current = await readFrame();
+      while (current != null) {
         if (sawFinal) {
           throw const PqForgeException(
             'Trailing data after the final streaming frame',
           );
         }
-        final parsed = PqStreamingEnvelope.parseFrameHeader(frameHeader);
-        if (parsed.seq != expectedSeq) {
+        if (current.seq != expectedSeq) {
           throw PqForgeException(
             'Streaming frame out of order: expected $expectedSeq, '
-            'got ${parsed.seq}',
+            'got ${current.seq}',
           );
         }
-        if (parsed.bodyLen < engine.cipherSuite.tagLength ||
-            parsed.bodyLen > maxBody) {
-          throw PqForgeException(
-            'Invalid streaming frame body length: ${parsed.bodyLen}',
-          );
+        final pending = current.isFinal ? null : readFrame();
+        Uint8List plaintext;
+        try {
+          if (demKey != null) {
+            plaintext = await PqStreamingEnvelope.openFrameBody(
+              engine: aead,
+              demKey: demKey,
+              headerHash: container.headerHash,
+              nonceSalt: header.nonceSalt,
+              seq: expectedSeq,
+              isFinal: current.isFinal,
+              body: current.body,
+            );
+          } else {
+            // First frame of a multi-recipient container: trial-open the
+            // candidates and keep the one that authenticates.
+            Uint8List? opened;
+            for (final candidate in candidates) {
+              try {
+                opened = await PqStreamingEnvelope.openFrameBody(
+                  engine: aead,
+                  demKey: candidate,
+                  headerHash: container.headerHash,
+                  nonceSalt: header.nonceSalt,
+                  seq: expectedSeq,
+                  isFinal: current.isFinal,
+                  body: current.body,
+                );
+                demKey = candidate;
+                break;
+              } on PqForgeAuthTagException {
+                continue;
+              }
+            }
+            plaintext =
+                opened ??
+                (throw const PqForgeException(
+                  'This multi-recipient container is not addressed to the '
+                  'supplied key: no candidate DEM key authenticated',
+                ));
+          }
+        } on Object {
+          // Never leave the prefetch dangling: closing the source in the
+          // finally below would fail it into an unawaited future.
+          await _drainQuietly(pending);
+          rethrow;
         }
-        final body = await _readExactly(source, parsed.bodyLen);
-        final plaintext = await PqStreamingEnvelope.openFrameBody(
-          engine: engine,
-          demKey: demKey,
-          headerHash: container.headerHash,
-          nonceSalt: header.nonceSalt,
-          seq: expectedSeq,
-          isFinal: parsed.isFinal,
-          body: body,
-        );
-        if (parsed.isFinal) sawFinal = true;
+        if (current.isFinal) sawFinal = true;
         expectedSeq++;
         yield plaintext;
+        current = pending == null ? await readFrame() : await pending;
       }
       if (!sawFinal) {
         throw const PqForgeException(
@@ -775,5 +953,17 @@ Future<void> _deleteQuietly(File file) async {
     if (file.existsSync()) await file.delete();
   } on FileSystemException {
     // Best effort: never mask the original failure with a cleanup error.
+  }
+}
+
+/// Awaits a possibly in-flight read-ahead, swallowing its error: the primary
+/// failure is already propagating, and an unawaited failing future would
+/// otherwise surface as an unhandled async error during cleanup.
+Future<void> _drainQuietly(Future<Object?>? pending) async {
+  if (pending == null) return;
+  try {
+    await pending;
+  } catch (_) {
+    // Deliberately ignored — see above.
   }
 }

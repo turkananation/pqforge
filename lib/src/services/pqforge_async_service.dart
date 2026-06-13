@@ -33,6 +33,7 @@ import '../codecs/pq_envelope.dart';
 import '../hybrid/pq_classical_hybrid.dart';
 import '../hybrid/pq_hybrid_combiner.dart';
 import '../primitives/pq_primitives.dart';
+import 'pqforge_multi_recipient.dart';
 import 'pqforge_service.dart';
 
 /// Builds an AEAD engine instance for [provider] — the one mapping shared by
@@ -46,6 +47,41 @@ PqForgeAeadEngine aeadEngineForProvider(
     cipherSuite,
   ),
 };
+
+/// The AEAD-suite container marker (R3).
+///
+/// AES-256-GCM containers carry no marker (byte-compatible with every prior
+/// output); a ChaCha20-Poly1305 container records `aeadSuite` in its
+/// metadata, and the open paths rebuild their engine to match. The marker is
+/// tamper-evident even unsigned: flipping it makes the opener run the wrong
+/// cipher over the body, which fails authentication.
+abstract final class PqAeadSuite {
+  /// Metadata key recording a non-default suite.
+  static const metadataKey = pqForgeAeadSuiteMetadataKey;
+
+  /// The suite recorded in [metadata]; absent means AES-256-GCM.
+  ///
+  /// Throws [PqForgeException] for a malformed or unknown marker (untrusted
+  /// container input).
+  static PqForgeCipherSuite of(Map<String, Object?> metadata) {
+    final raw = metadata[metadataKey];
+    if (raw == null) return PqForgeCipherSuite.aes256Gcm;
+    if (raw is! String) {
+      throw const PqForgeException('Malformed aeadSuite metadata entry');
+    }
+    try {
+      return PqForgeCipherSuite.byId(raw);
+    } on ArgumentError {
+      throw PqForgeException('Unsupported aeadSuite: $raw');
+    }
+  }
+
+  /// The metadata entry recording [suite] — empty for the default suite.
+  static Map<String, Object?> entryFor(PqForgeCipherSuite suite) =>
+      suite == PqForgeCipherSuite.aes256Gcm
+      ? const {}
+      : {metadataKey: suite.id};
+}
 
 /// The hybrid (classical + post-quantum) KEM-DEM key schedule.
 ///
@@ -218,10 +254,17 @@ extension PqForgeAsync on PqForge {
   /// holds as long as *either* assumption stands. Output is byte-compatible
   /// with [PqForge.encrypt] for the non-hybrid case — either engine's output
   /// opens under the other.
+  /// Additional recipients ([additionalRecipients]) each get a `recipients[]`
+  /// key-wrap entry instead of a re-encryption: the payload is sealed once and
+  /// the DEM key is wrapped to every extra key (see [PqMultiRecipient]).
+  /// [recipientKeyId] names the primary recipient in the metadata so openers
+  /// can route without trial decryption.
   Future<PqEnvelope> encryptAsync(
     Uint8List recipientPublicKey,
     Uint8List plaintext, {
     Uint8List? recipientKexPublicKey,
+    List<PqRecipientSpec> additionalRecipients = const [],
+    String? recipientKeyId,
     PqForgeAeadEngine? engine,
     PqForgeProfile? profile,
     Uint8List? aad,
@@ -233,19 +276,17 @@ extension PqForgeAsync on PqForge {
     final selected = profile ?? this.profile;
     final aead = engine ?? _defaultEngine();
     PqFipsMode.requireApprovedSuite(aead.cipherSuite);
-    if (PqHybridKemDem.isHybrid(metadata)) {
-      throw const PqForgeException(
-        'metadata already contains a hybridKex entry; it is reserved for the '
-        'hybrid KEM-DEM marker',
-      );
-    }
+    requireWritableEnvelopeMetadata(metadata);
 
     final encapsulated = PqKemPrimitives.encapsulate(
       selected.kem,
       recipientPublicKey,
     );
     final Uint8List demKey;
-    var effectiveMetadata = metadata;
+    var effectiveMetadata = {
+      ...metadata,
+      ...PqAeadSuite.entryFor(aead.cipherSuite),
+    };
     if (recipientKexPublicKey == null) {
       demKey = PqForge.deriveDemKey(
         selected,
@@ -260,7 +301,18 @@ extension PqForgeAsync on PqForge {
         recipientKexPublicKey: recipientKexPublicKey,
       );
       demKey = hybrid.demKey;
-      effectiveMetadata = {...metadata, ...hybrid.metadataEntry};
+      effectiveMetadata = {...effectiveMetadata, ...hybrid.metadataEntry};
+    }
+    if (additionalRecipients.isNotEmpty) {
+      effectiveMetadata = {
+        ...effectiveMetadata,
+        PqMultiRecipient.primaryKeyIdKey: ?recipientKeyId,
+        PqMultiRecipient.metadataKey: await PqMultiRecipient.buildEntries(
+          profile: selected,
+          demKey: demKey,
+          recipients: additionalRecipients,
+        ),
+      };
     }
 
     final nonce = PqBytes.randomBytes(pqForgeDefaultAeadNonceBytes);
@@ -284,22 +336,36 @@ extension PqForgeAsync on PqForge {
   }
 
   /// Decrypts a one-shot [envelope] on [engine], auto-detecting hybrid
-  /// envelopes from their `hybridKex` metadata marker.
+  /// envelopes (`hybridKex` marker), a non-default AEAD suite (`aeadSuite`
+  /// marker — the engine is rebuilt on the same provider to match), and
+  /// multi-recipient envelopes (`recipients[]` entries).
   ///
   /// Hybrid envelopes require [recipientKexSecretKey] (the raw 32-byte X25519
   /// secret matching the public key the sender encrypted to); a missing key
-  /// fails with a descriptive [PqForgeException] before any AEAD work. A
-  /// supplied kex key is ignored for non-hybrid envelopes.
+  /// fails with a descriptive [PqForgeException] before any AEAD work — unless
+  /// the envelope carries `recipients[]` entries, in which case those are
+  /// still tried. A supplied kex key is ignored for non-hybrid envelopes.
+  ///
+  /// On a multi-recipient envelope the primary derivation is tried first and
+  /// the wrap entries second; [recipientKeyId] (this key's id) routes straight
+  /// to the matching entry and skips a doomed primary attempt when the
+  /// envelope names a different primary.
   Future<Uint8List> decryptAsync(
     Uint8List recipientSecretKey,
     PqEnvelope envelope, {
     Uint8List? recipientKexSecretKey,
+    String? recipientKeyId,
     PqForgeAeadEngine? engine,
     Uint8List? aad,
     Uint8List? signerPublicKey,
   }) async {
-    final aead = engine ?? _defaultEngine();
-    PqFipsMode.requireApprovedSuite(aead.cipherSuite);
+    final requested = engine ?? _defaultEngine();
+    PqFipsMode.requireApprovedSuite(requested.cipherSuite);
+    final recordedSuite = PqAeadSuite.of(envelope.metadata);
+    PqFipsMode.requireApprovedSuite(recordedSuite);
+    final aead = requested.cipherSuite == recordedSuite
+        ? requested
+        : aeadEngineForProvider(requested.provider, cipherSuite: recordedSuite);
     verifyEnvelopeForOpen(envelope, aad: aad, signerPublicKey: signerPublicKey);
 
     final sharedSecret = PqKemPrimitives.decapsulate(
@@ -307,33 +373,85 @@ extension PqForgeAsync on PqForge {
       recipientSecretKey,
       envelope.kemCiphertext,
     );
-    final Uint8List demKey;
-    if (PqHybridKemDem.isHybrid(envelope.metadata)) {
-      if (recipientKexSecretKey == null) {
-        throw const PqForgeException(
-          'This envelope uses hybrid ML-KEM + X25519 encryption; the '
-          'recipient X25519 secret key is required to decrypt it',
+    final hasEntries = PqMultiRecipient.hasEntries(envelope.metadata);
+
+    // Primary derivation. On a multi-recipient envelope a failure here (e.g.
+    // a hybrid primary but no kex key — we may simply not BE the primary) is
+    // deferred so the wrap entries still get their chance.
+    Uint8List? primaryDemKey;
+    PqForgeException? primaryFailure;
+    try {
+      if (PqHybridKemDem.isHybrid(envelope.metadata)) {
+        if (recipientKexSecretKey == null) {
+          throw const PqForgeException(
+            'This envelope uses hybrid ML-KEM + X25519 encryption; the '
+            'recipient X25519 secret key is required to decrypt it',
+          );
+        }
+        primaryDemKey = await PqHybridKemDem.demKeyForOpen(
+          profile: envelope.profile,
+          kemSharedSecret: sharedSecret,
+          kemCiphertext: envelope.kemCiphertext,
+          metadata: envelope.metadata,
+          recipientKexSecretKey: recipientKexSecretKey,
+        );
+      } else {
+        primaryDemKey = PqForge.deriveDemKey(
+          envelope.profile,
+          sharedSecret,
+          envelope.kemCiphertext,
         );
       }
-      demKey = await PqHybridKemDem.demKeyForOpen(
-        profile: envelope.profile,
-        kemSharedSecret: sharedSecret,
-        kemCiphertext: envelope.kemCiphertext,
-        metadata: envelope.metadata,
-        recipientKexSecretKey: recipientKexSecretKey,
-      );
-    } else {
-      demKey = PqForge.deriveDemKey(
-        envelope.profile,
-        sharedSecret,
-        envelope.kemCiphertext,
-      );
+    } on PqForgeException catch (failure) {
+      if (!hasEntries) rethrow;
+      primaryFailure = failure;
     }
-    return aead.open(
+
+    Future<Uint8List> open(Uint8List demKey) => aead.open(
       key: demKey,
       nonce: envelope.nonce,
       cipherTextWithTag: envelope.payload,
       aad: aad ?? envelope.kemCiphertext,
+    );
+
+    if (!hasEntries) return open(primaryDemKey!);
+
+    // recipients[] present: trial-open, primary first unless the metadata
+    // names a different primary key id than ours.
+    final namedPrimary = envelope.metadata[PqMultiRecipient.primaryKeyIdKey];
+    final preferEntries =
+        recipientKeyId != null &&
+        namedPrimary is String &&
+        namedPrimary != recipientKeyId;
+    Future<Uint8List?> tryPrimary() async {
+      if (primaryDemKey == null) return null;
+      try {
+        return await open(primaryDemKey);
+      } on PqForgeAuthTagException {
+        return null;
+      }
+    }
+
+    Future<Uint8List?> tryEntries() async {
+      final demKey = await PqMultiRecipient.unwrapDemKey(
+        profile: envelope.profile,
+        metadata: envelope.metadata,
+        recipientSecretKey: recipientSecretKey,
+        recipientKexSecretKey: recipientKexSecretKey,
+        recipientKeyId: recipientKeyId,
+      );
+      return demKey == null ? null : open(demKey);
+    }
+
+    final plaintext = preferEntries
+        ? (await tryEntries() ?? await tryPrimary())
+        : (await tryPrimary() ?? await tryEntries());
+    if (plaintext != null) return plaintext;
+    throw PqForgeException(
+      'This multi-recipient envelope is not addressed to the supplied key: '
+      'the primary derivation '
+      '${primaryFailure == null ? 'failed authentication' : 'was unavailable (${primaryFailure.message})'} '
+      'and no recipients[] entry unwrapped with it',
     );
   }
 }

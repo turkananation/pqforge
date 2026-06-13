@@ -30,16 +30,16 @@ Status legend: ✅ **shipped** (this change) · 📋 **recommended** (open) ·
 | A5 | Four M2-pattern redundant full-file copies in `bin/src/hybrid_commands.dart` | Low | ✅ `Uint8List.fromList(await readAsBytes())` → `await readAsBytes()` |
 | A6 | Sync `decrypt` of a hybrid envelope would die deep in the AEAD with an opaque tag error | Medium | ✅ Clear `PqForgeException` guards on the sync paths; `hybridKex` metadata key reserved on every encrypt path |
 | A7 | Engine provider→instance mapping duplicated (stream cipher, CLI) | Low | ✅ Single `aeadEngineForProvider` shared by stream cipher, async one-shot, CLI |
-| R1 | `hybrid-sign`/`ecdsa-sign`/`hybrid-verify` hold the whole input in RAM (no pre-hash mode for GB-scale artifacts) | Medium | 📋 ML-DSA side supports `preHash`; Ed25519ph/streaming-SHA-256 design needed for the classical side — see §6.1 |
-| R2 | `keygen` Argon2id wraps run sequentially (~0.5 s × 5 with a passphrase) | Low | 📋 Parallel wrapping via `Isolate.run` is a ~2.5 s → ~1 s win but multiplies peak RAM by the wrap concurrency (64 MiB each) — see §6.2 |
-| R3 | CLI pins AES-256-GCM; ChaCha20-Poly1305 engines exist but are unreachable from the CLI | Medium | 📋 `--cipher chacha20-poly1305` flag; wins on no-AES-NI mobile/ARM — see §6.3 |
-| R4 | `dart run` JIT startup adds ~2–3 s to every CLI invocation | Medium | 📋 Ship `dart compile exe` release binaries (CI artifact) — see §6.4 |
-| R5 | Multi-recipient envelopes (N keys, one payload) require N full encrypts today | Medium | 📋 Wrap one DEM key to N recipients — format addition, design sketch in §6.5 |
-| R6 | Hardware-AEAD FFI engine (OpenSSL EVP / CryptoKit / Conscrypt) — the 9.5 GB/s ceiling vs 11 MiB/s today | High (servers with >10 GB workloads) | 📋 `PqForgeAeadEngine` is the seam; same supply-chain caveats as R7 — see §6.6 |
-| R7 | Native lattice (ML-KEM/ML-DSA) via FFI | Low (lattice ops are not the bottleneck) | 🚫 Deliberately not shipped (supply chain); host-build guide exists: [PHASE7_NATIVE_LATTICE_FFI.md](./PHASE7_NATIVE_LATTICE_FFI.md) |
+| R1 | `hybrid-sign`/`ecdsa-sign`/`hybrid-verify` hold the whole input in RAM (no pre-hash mode for GB-scale artifacts) | Medium | ✅ `--digest` on hybrid-sign/ecdsa-sign streams SHA-256 (O(1) memory, `PqBytes.sha256OfStream`), self-described in the signature JSON; verify re-hashes automatically — §8.1 |
+| R2 | `keygen` Argon2id wraps run sequentially (~0.5 s × 5 with a passphrase) | Low | ✅ Wraps run on a bounded isolate pool (`--wrap-concurrency`, default 2, clamp 1–4); full default keygen-with-passphrase ≈ 2.9 s wall — §8.2 |
+| R3 | CLI pins AES-256-GCM; ChaCha20-Poly1305 engines exist but are unreachable from the CLI | Medium | ✅ `--cipher chacha20-poly1305` on the 5 encrypt commands; recorded as an `aeadSuite` marker, decrypt auto-rebuilds its engine. **Pure-Dart ChaCha measures 30.4 MiB/s vs 11.5 AES — 2.6× bulk wherever hardware AES isn't dispatched** — §8.3 |
+| R4 | `dart run` JIT startup adds ~2–3 s to every CLI invocation | Medium | ✅ `.github/workflows/release.yml` builds `dart compile exe` binaries (linux-x64 / macos-arm64 / windows-x64 + SHA-256) on `v*` tags |
+| R5 | Multi-recipient envelopes (N keys, one payload) require N full encrypts today | Medium | ✅ Seal once, wrap the DEM key per extra recipient in `recipients[]` metadata — **no wire-format change**, both container formats, per-entry hybrid, keyId routing; CLI `--recipient-public` is repeatable — §8.4 |
+| R6 | Hardware-AEAD FFI engine (OpenSSL EVP) — the GB/s ceiling vs 11 MiB/s today | High (servers with >10 GB workloads) | ✅ *as a dev tool, never a package feature*: `tool/openssl_interop` (own `publish_to: none` package, the same structure as pqcrypto's OpenSSL ML-KEM interop) proves byte-compatibility and measures the ceiling. The published package contains no `dart:ffi` by design — it is pure Dart and web-first, and FFI does not exist on the web — §8.5 |
+| R7 | Native lattice (ML-KEM/ML-DSA) via FFI | Low (lattice ops are not the bottleneck) | 🚫 Deliberately not shipped (supply chain + the same pure-Dart policy as R6); host-build guide exists: [PHASE7_NATIVE_LATTICE_FFI.md](./PHASE7_NATIVE_LATTICE_FFI.md) |
 | R8 | Parsed/preprocessed public-key reuse in `pqcrypto` (folder workloads redo PK parsing per file) | Medium | 🚫 Blocked on upstream API; spec already written: [PQCRYPTO_PARSED_PK_PROPOSAL.md](./PQCRYPTO_PARSED_PK_PROPOSAL.md) (user owns `pqcrypto`) |
-| R9 | Streaming frame pipelining (overlap read → seal → write) | Low | 📋 ~1.2–1.5× *projection* on fast disks; complexity vs gain currently unfavourable — see §6.7 |
-| R10 | Web profile cannot stream (`.pqfs` uses `setUint64`, dart2js-unsafe) | Info | 📋 WASM compilation works today; a `BigInt`-based frame counter fallback would unlock dart2js streaming if ever needed — see §5.4 |
+| R9 | Streaming frame pipelining (overlap read → seal → write) | Low | ✅ `encryptFile` double-buffers (the next frame reads from disk while the current one seals/writes); `decryptStream` prefetches one frame; in-flight reads are drained on failure so cleanup semantics are unchanged — §8.6 |
+| R10 | Web profile cannot stream (`.pqfs` uses `setUint64`, dart2js-unsafe) | Info | ✅ Frame counters now encode as two uint32 halves (`PqBytes.uint64`/`readUint64` — byte-identical wire format, VM-oracle-tested); the codec is dart2js-safe and exported from the core umbrella — §8.7 |
 
 ---
 
@@ -214,9 +214,11 @@ Notes:
    the correct trade: a non-blocked UI beats raw throughput. For
    hardware-speed *and* off-UI, run the call on the root isolate behind a
    `compute`-style progress UI only for short jobs.
-3. Mobile CPUs without AES instructions favour ChaCha20-Poly1305 — blocked on
-   R3 for the CLI but available today in-library via
-   `PqForgeStreamCipher(engine: PqForgeCryptographyAeadEngine(PqForgeCipherSuite.chaCha20Poly1305))`.
+3. Mobile CPUs without AES instructions (and any path that falls back to pure
+   Dart, e.g. background isolates) favour ChaCha20-Poly1305: **30.4 MiB/s vs
+   11.5 MiB/s AES in pure Dart (2.6×)**. CLI: `--cipher chacha20-poly1305`;
+   library: pass the suite to `aeadEngineForProvider`/`forProvider`. Decrypt
+   auto-detects from the `aeadSuite` marker (R3, §8.3).
 4. Wrap/unwrap (Argon2id, 64 MiB) must also go through `Isolate.run` — it is a
    deliberate ~0.5 s CPU burn.
 5. Key custody: generate on-device (`keygen` parity via library), wrap with a
@@ -225,8 +227,12 @@ Notes:
 
 ### 5.2 Dart servers (incl. Serverpod)
 
-1. Default engine is already the fast one; for >10 GB/day workloads the FFI
-   AEAD engine (R6) is the next 100×.
+1. Default engine is already the fast one; prefer `--cipher
+   chacha20-poly1305` for bulk on hosts whose AES stays in pure Dart (2.6×,
+   §8.3). The ~100× hardware ceiling (OpenSSL ≈ 1.1 GB/s, §8.5) is
+   deliberately out of scope for the package itself — pqforge stays pure
+   Dart; shell out to `openssl` or front the storage layer with it when a
+   workload truly needs GB/s.
 2. Size worker pools by **physical cores** (`--concurrency`, default
    `min(CPU, 8)`); SMT threads add nothing to AES in pure Dart.
 3. AOT-compile entrypoints (`dart compile exe`) — JIT warmup on short-lived
@@ -252,12 +258,17 @@ Notes:
 * Import `package:pqforge/pqforge.dart` only (core is dart2js-safe). One-shot
   envelopes, signing, hybrid one-shot (`encryptAsync`) all work; `package:cryptography`
   uses WebCrypto where available.
-* `.pqfs` streaming is VM/WASM-only today (`setUint64`) — R10 tracks the
-  dart2js fallback; compile with `dart compile wasm` to stream in the browser.
+* The `.pqfs` **codec** (`PqStreamingEnvelope`) is now dart2js-safe too (R10,
+  §8.7) and ships in the core umbrella: frame counters encode as two uint32
+  halves, so a browser app can frame/seal/open `.pqfs` content over its own
+  transport. Only the `dart:io` file plumbing (`PqForgeStreamCipher`) remains
+  VM-only; `dart compile wasm` also works.
+* This web-first identity is why the package contains no `dart:ffi` by
+  design (see R6/R7): FFI does not exist on the web.
 
 ---
 
-## 6. Open recommendations (design notes)
+## 6. Design notes (as built in §8)
 
 ### 6.1 R1 — large-artifact hybrid signing
 
@@ -299,10 +310,14 @@ audit that touches the wire format.
 
 ### 6.6 R6 — FFI AEAD engine
 
-`PqForgeAeadEngine` was built as the seam. An OpenSSL EVP binding (Linux
-servers) closes the 11 MiB/s → ~9.5 GB/s gap on exactly the workloads where
-pure Dart cannot compete. Carries the same host-build/supply-chain policy as
-the lattice FFI guide; keep it an opt-in provider, never the default.
+The package contains no `dart:ffi` and acquires none through this item: the
+library is pure Dart and web-first, and FFI does not exist on the web. R6's
+substance — OpenSSL correctness verification and ceiling measurement — is
+implemented as the `tool/openssl_interop` dev-tool package (its own
+`publish_to: none` pubspec, the same structure pqcrypto uses for its OpenSSL
+EVP ML-KEM interop). As-built record in §8.5. The original sketch of an
+in-package opt-in EVP engine over the `PqForgeAeadEngine` seam is retained
+here only for context and is not a direction the library takes.
 
 ### 6.7 R9 — frame pipelining
 
@@ -318,12 +333,19 @@ the AEAD no longer the bottleneck.
 ```bash
 dart analyze                                   # 0 issues
 dart format --set-exit-if-changed lib bin test # CI-enforced
-dart test                                      # 171 passed, 4 benchmark-tagged skipped
-dart test test/pq_hybrid_encryption_test.dart  # the 14 hybrid/engine tests added here
+dart test                                      # 198 passed, 4 benchmark-tagged skipped
+dart test test/pq_hybrid_encryption_test.dart  # hybrid/engine tests
+dart test test/pq_multi_recipient_test.dart    # R5 (one-shot + streaming)
+dart test test/pq_cipher_suite_selection_test.dart  # R3 (marker, rebuild, FIPS)
+dart test test/pq_bytes_uint64_test.dart       # R10 portability + R1 stream hash
 
 # per-op probes (benchmark-tagged, opt-in)
 PQFORGE_PROBE=1 dart test -t benchmark test/performance_probe_test.dart
 PQFORGE_BENCH_MODE=streaming dart test -t benchmark test/benchmark_io_test.dart
+
+# OpenSSL byte-compatibility + ceiling measurement (dev tool, R6/§8.5)
+dart pub get --directory tool/openssl_interop
+(cd tool/openssl_interop && REQUIRE_OPENSSL=1 dart run bin/verify_interop.dart --bench)
 ```
 
 Manual hybrid smoke (mirrors what was run for this audit):
@@ -336,3 +358,140 @@ pqforge inspect --in big.bin.pqf                        # shows the hybrid suite
 pqforge decrypt --recipient-secret keys/vault.kem.secret.json \
   --in big.bin.pqf --out big.out.bin                    # auto-detects + auto-finds key
 ```
+
+---
+
+## 8. As-built record (audited 2026-06-12)
+
+Implements every 📋 item from §1: R1–R5 and R9–R10 in the package and CLI,
+R6 as the `tool/openssl_interop` dev-tool harness. Verification: 198 tests,
+repo-wide analyze/format clean, the full CLI smoke in CI, and OpenSSL 3.0.13
+byte-compatibility on all four suite × engine combinations. Implementation
+constraints worth knowing when extending these paths are collected in §8.8.
+
+### 8.1 R1 — digest-mode signing
+
+`hybrid-sign --digest` / `ecdsa-sign --digest` sign
+`lengthPrefixed("pqforge/digest-input/sha-256/v1", SHA-256(file))` where the
+hash is computed by the new `PqBytes.sha256OfStream` — one digest update per
+chunk, O(1) memory for any artifact size. The mode is recorded as
+`"digest": "sha-256"` in the signature JSON, so the verify commands re-hash
+automatically; the domain label makes raw and digest modes uncollidable.
+
+### 8.2 R2 — parallel key wrapping
+
+`keygen` wraps secrets on a bounded `Isolate.run` pool (`--wrap-concurrency`,
+default 2, clamped 1–4 because each Argon2id instance pins its own 64 MiB
+arena). Full default keygen (5 keypairs, wrapped): **≈ 2.9 s wall** on this
+host. The wrap closure lives in a top-level function so its context chain
+holds only sendable parameters (§8.8).
+
+### 8.3 R3 — `--cipher chacha20-poly1305`
+
+Available on `encrypt`, `encrypt-folder`, `encrypt-media`, `pack` (and the
+text path via the library); decrypt needs no flag — a non-default suite is
+recorded as an `aeadSuite` metadata marker and every open path rebuilds its
+engine (same provider) to match. AES output stays marker-free and
+byte-compatible with all prior releases. The marker is tamper-evident even
+unsigned: stripping it makes the opener run the wrong cipher and fail the
+tag (test-covered). FIPS mode rejects the suite at every entry point.
+
+Measured (interop tool, this host): pure-Dart `cryptography` engine —
+**ChaCha20-Poly1305 30.4 MiB/s vs AES-256-GCM 11.5 MiB/s (2.6×)**. Where
+Flutter's root-isolate hardware AES is not in play (servers, CLI, background
+isolates), ChaCha is now the bulk-throughput recommendation.
+
+### 8.4 R5 — multi-recipient encryption
+
+Implemented with **no wire-format change** (the §6.5 sketch anticipated a v2
+envelope field; none is needed). The payload is sealed once under the
+primary's DEM key (KEM-DEM or hybrid, unchanged — single-recipient output is
+byte-identical); each additional recipient gets a `recipients[]` metadata
+entry wrapping that DEM key:
+
+```text
+(ct_i, ss_i) = ML-KEM.Encaps(recipient_i.kemPk)
+kek_i        = HKDF(ss_i)   # salt = ct_i [‖ ephPk_i for hybrid entries]
+entry_i      = AES-256-GCM(kek_i, nonce_i, demKey)   # 48-byte wrap
+```
+
+Properties: ~1.6 KB + ~2 ms per extra recipient (ML-KEM-1024) instead of a
+full re-encryption; entries may individually be hybrid (own ephemeral X25519);
+`recipientKeyId` routes the opener straight to its entry; a corrupted entry
+can only deny service (each wrap is AEAD-authenticated under a KEK only that
+recipient derives); signed envelopes/headers bind the whole map. Works
+identically for one-shot envelopes and `.pqfs` streams (the stream resolves
+the winning key on the first frame). A hybrid primary never blocks a
+plain additional recipient — the hybrid-key requirement is deferred when
+entries exist. Sync `decrypt` still serves the primary and points additional
+recipients at `decryptAsync`.
+
+CLI: `--recipient-public` is repeatable on `encrypt`, `encrypt-folder`,
+`encrypt-text`, `encrypt-media`, `pack` (first = primary); decrypt side needs
+nothing new. With `--hybrid`, the X25519 key is required for the primary and
+resolved opportunistically for additional recipients (missing → that entry is
+post-quantum-only).
+
+### 8.5 R6 — OpenSSL as a dev tool, pure Dart as architecture
+
+pqforge is pure Dart and web-first; `dart:ffi` does not exist on the web, so
+no FFI engine belongs in the package. R6's substance — proving correctness
+against OpenSSL and quantifying the ceiling — is implemented as
+`tool/openssl_interop` (`openssl_pqforge_interop`, `publish_to: none`,
+`.pubignore`d out of the published archive), the same shape as pqcrypto's
+`tool/openssl_interop` ML-KEM harness:
+
+* `lib/openssl_aead.dart` — EVP AES-256-GCM/ChaCha20-Poly1305 via the
+  *system* libcrypto (`LIBCRYPTO_PATH` override, platform candidates, null on
+  absence; nothing bundled).
+* `bin/verify_interop.dart` — for every suite × engine: **byte-identical
+  seals**, cross-opens, tamper detection both ways; `--bench` for throughput.
+  CI job `openssl-interop` enforces it on every push (`REQUIRE_OPENSSL=1`).
+
+Measured (this host, OpenSSL 3.0.13, 1 MiB frames incl. FFI copies):
+AES-256-GCM **1122.8 MiB/s**, ChaCha20-Poly1305 **1049.2 MiB/s** — vs 11.5 /
+30.4 MiB/s pure Dart. That ~37–98× gap is the documented cost of the pure-Dart
+guarantee; workloads that truly need it should shell out to `openssl` or
+encrypt at the storage layer, not extend pqforge.
+
+### 8.6 R9 — frame pipelining
+
+`encryptFile` now double-buffers: the next frame's disk read overlaps the
+current frame's seal+write (separate file handles; +1 frame of memory, still
+within the 1.5× CI gate). `decryptStream` prefetches one frame while the
+current one is opened; validation order is observably unchanged and a failing
+open always drains the in-flight read before rethrowing, so the
+delete-partial-output cleanup semantics survive. Gains scale with how close
+the AEAD is to disk speed — modest today, free thereafter.
+
+### 8.7 R10 — dart2js-safe `.pqfs` codec
+
+`PqBytes.uint64`/`readUint64` encode/decode big-endian uint64 as two uint32
+halves (values ≥ 2^53 rejected — nothing legitimate produces them and they
+are not web-exact). The codec's nonce/AAD/frame-header arithmetic uses them,
+is proven byte-identical against a `ByteData.setUint64` VM oracle, and
+`pq_streaming_envelope.dart` moved into the core web-safe umbrella export.
+The wire format is unchanged.
+
+### 8.8 Implementation constraints
+
+* **Isolate closures must be hoisted.** A closure passed to `Isolate.run`
+  carries its full lexical context chain; written inline in a pooled task it
+  would capture the `Semaphore` (whose `Completer`s are unsendable) and fail
+  at send time. Every isolate entry point in the CLI is therefore a top-level
+  function whose context holds only sendable parameters
+  (`_wrapKeyInIsolate`, `_encryptFolderEntryInIsolate`,
+  `_decryptFolderEntryInIsolate`).
+* **Hybrid key resolution is strict for the primary, opportunistic
+  otherwise.** On the encrypt side, `--hybrid` requires the primary
+  recipient's X25519 key (it defines the envelope's key schedule) and
+  resolves additional recipients' keys when present, falling back to
+  post-quantum-only wrap entries. On the decrypt side, a hybrid input with
+  `recipients[]` entries resolves a missing X25519 key to null and defers to
+  the library, which either opens a wrap entry or raises its own descriptive
+  error — the CLI never pre-empts a path the library can still satisfy.
+
+The CI smoke exercises: default keygen (10 files, pooled wrapping), hybrid +
+ChaCha20-Poly1305 + two-recipient encryption in one envelope, decryption by
+both the hybrid primary and the X25519-less additional recipient, `inspect`,
+and both digest-mode signature flows with a tamper-rejection check.
