@@ -1,3 +1,5 @@
+# Changelog
+
 ## 0.2.1
 
 Documentation, discovery, and site release. No library or CLI behavior changes
