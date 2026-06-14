@@ -10,12 +10,10 @@ void main() {
   test(
     'CLI version tracks pubspec.yaml (run generate_version if this fails)',
     () {
-      final pubspecVersion = File('pubspec.yaml')
-          .readAsLinesSync()
-          .map(
-            (line) => RegExp(r'^version:\s*(\S+)').firstMatch(line)?.group(1),
-          )
-          .firstWhere((value) => value != null, orElse: () => null);
+      final pubspecVersion = RegExp(
+        r'^version:\s*(\S+)',
+        multiLine: true,
+      ).firstMatch(File('pubspec.yaml').readAsStringSync())?.group(1);
 
       expect(pubspecVersion, isNotNull, reason: 'pubspec.yaml has no version.');
       expect(

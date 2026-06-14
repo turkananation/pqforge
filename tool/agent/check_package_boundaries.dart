@@ -3,8 +3,10 @@ library;
 
 import 'dart:io';
 
+// `\s*` (not `\s+`): `import'foo';` with no space is valid Dart, so the
+// boundary check must still catch it.
 final _directive = RegExp(
-  r'''^\s*(?:import|export)\s+['"]([^'"]+)['"]''',
+  r'''^\s*(?:import|export)\s*['"]([^'"]+)['"]''',
   multiLine: true,
 );
 
@@ -41,7 +43,7 @@ void main() {
     final path = _normalize(file.path);
     if (path.startsWith('tool/openssl_interop/')) continue;
     if (RegExp(
-      r'''^\s*import\s+['"]dart:ffi['"]''',
+      r'''^\s*(?:import|export)\s*['"]dart:ffi['"]''',
       multiLine: true,
     ).hasMatch(file.readAsStringSync())) {
       violations.add('$path imports dart:ffi outside tool/openssl_interop/.');

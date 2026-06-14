@@ -89,12 +89,19 @@ class UninstallCommand extends Command<void> {
       return;
     }
 
-    final result = await Process.run(Platform.resolvedExecutable, const [
-      'pub',
-      'global',
-      'deactivate',
-      'pqforge',
-    ]);
+    final ProcessResult result;
+    try {
+      result = await Process.run(Platform.resolvedExecutable, const [
+        'pub',
+        'global',
+        'deactivate',
+        'pqforge',
+      ]);
+    } on ProcessException catch (error) {
+      console.failure('Could not run pub: ${error.message}');
+      console.hint('Run it manually: dart pub global deactivate pqforge');
+      return;
+    }
     final out = (result.stdout as String).trimRight();
     if (out.isNotEmpty) console.info(out);
 
@@ -118,12 +125,10 @@ class UninstallCommand extends Command<void> {
   /// snapshot), where `dart pub global deactivate` is meaningful. False for an
   /// AOT-compiled standalone binary.
   bool get _runningUnderDartVm {
+    // Normalize separators first: mixed-separator paths show up under Git Bash,
+    // Cygwin, and WSL on Windows.
     final exe = Platform.resolvedExecutable;
-    final sep = Platform.pathSeparator;
-    final base = exe.contains(sep)
-        ? exe.substring(exe.lastIndexOf(sep) + 1)
-        : exe;
-    final name = base.toLowerCase();
+    final name = exe.replaceAll('\\', '/').split('/').last.toLowerCase();
     return name == 'dart' || name == 'dart.exe';
   }
 
