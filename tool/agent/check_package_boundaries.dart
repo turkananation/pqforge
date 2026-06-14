@@ -27,6 +27,10 @@ void main() {
       final uri = match.group(1)!;
       if (uri == 'dart:io' || uri == 'dart:ffi') {
         violations.add('$path imports $uri through the web-safe core graph.');
+      } else if (uri.startsWith('package:pqforge/')) {
+        // A self-import (`package:pqforge/src/...`) still lives in lib/; resolve
+        // it so the traversal follows it instead of skipping it as external.
+        pending.add(_join('lib', uri.substring('package:pqforge/'.length)));
       } else if (!uri.contains(':')) {
         pending.add(_join(file.parent.path, uri));
       }

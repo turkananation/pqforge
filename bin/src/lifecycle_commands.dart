@@ -128,6 +128,9 @@ class UninstallCommand extends Command<void> {
   }
 
   bool _confirm(String prompt) {
+    // No terminal (CI, pipes, scripts): never block on input — abort safely.
+    // Callers that want to proceed unattended pass --yes.
+    if (!stdin.hasTerminal) return false;
     stdout.write('$prompt [y/N] ');
     final answer = stdin.readLineSync()?.trim().toLowerCase();
     return answer == 'y' || answer == 'yes';
