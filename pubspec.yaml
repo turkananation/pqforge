@@ -3,8 +3,10 @@ description: >-
   Pure-Dart post-quantum and classical hybrid crypto for Dart, Flutter, and
   Serverpod: ML-KEM/ML-DSA envelopes, streaming, multi-recipient encryption,
   signing, and a CLI.
-version: 0.2.1
-repository: https://github.com/turkananation/pqforge
+version: 0.2.2
+repository: https://github.com/turkananation/pqforge/
+homepage: https://turkananation.github.io/pqforge/
+documentation: https://github.com/turkananation/pqforge/wiki/
 
 environment:
   sdk: ^3.12.0

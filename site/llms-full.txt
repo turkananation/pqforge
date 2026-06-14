@@ -5,7 +5,7 @@ Canonical URL: https://turkananation.github.io/pqforge/
 Repository: https://github.com/turkananation/pqforge
 Package: https://pub.dev/packages/pqforge
 API docs: https://pub.dev/documentation/pqforge/latest/
-Version: 0.2.1
+Version: 0.2.2
 
 ## Identity
 

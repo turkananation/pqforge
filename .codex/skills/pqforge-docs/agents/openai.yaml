@@ -1,0 +1,4 @@
+interface:
+  display_name: "PQForge Documentation"
+  short_description: "Verify and synchronize pqforge documentation"
+  default_prompt: "Use $pqforge-docs to update pqforge documentation from live code evidence."

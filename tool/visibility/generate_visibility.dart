@@ -108,9 +108,7 @@ String _llms(JsonMap manifest) {
     ..writeln('# ${project['short_title']}')
     ..writeln()
     ..writeln('> ${project['tagline']}')
-    ..writeln(
-      '> Version ${project['version']}; ${project['license']} licensed.',
-    )
+    ..writeln('> Version $_packageVersion; ${project['license']} licensed.')
     ..writeln()
     ..writeln(project['summary'])
     ..writeln()
@@ -198,7 +196,7 @@ String _llmsFull(JsonMap manifest) {
     ..writeln('Repository: ${project['repository']}')
     ..writeln('Package: ${project['pub_dev']}')
     ..writeln('API docs: ${project['api_docs']}')
-    ..writeln('Version: ${project['version']}')
+    ..writeln('Version: $_packageVersion')
     ..writeln()
     ..writeln('## Identity')
     ..writeln()
@@ -311,7 +309,7 @@ String _identityJson(JsonMap manifest) {
     'programmingLanguage': 'Dart',
     'runtimePlatform': ['Dart VM', 'Flutter', 'Serverpod', 'CLI'],
     'license': project['license'],
-    'softwareVersion': project['version'],
+    'softwareVersion': _packageVersion,
     'applicationCategory': 'Cryptography composition library',
     'keywords': _strings(manifest['keywords']),
     'maintainer': {'@type': 'Organization', 'name': project['maintainer']},
@@ -1096,6 +1094,24 @@ String _sitemap(JsonMap manifest) {
 }
 
 String _mdComment() => '<!-- $_generatedNotice -->';
+
+/// The package version, read once from pubspec.yaml — the single source of
+/// truth (shared with `bin/src/version.g.dart`). Keeping it out of the manifest
+/// means the version can never drift between the package and its visibility
+/// surfaces.
+final String _packageVersion = _readPackageVersion();
+
+String _readPackageVersion() {
+  final pubspec = File('pubspec.yaml');
+  if (!pubspec.existsSync()) {
+    throw StateError('Missing pubspec.yaml');
+  }
+  for (final line in pubspec.readAsLinesSync()) {
+    final match = RegExp(r'^version:\s*(\S+)\s*$').firstMatch(line);
+    if (match != null) return match.group(1)!;
+  }
+  throw StateError('No top-level `version:` field in pubspec.yaml');
+}
 
 String _repoBlob(JsonMap project, String path) {
   return '${project['repository']}/blob/${project['repository_branch']}/$path';

@@ -1,6 +1,8 @@
 # CLAUDE.md
 
 Guidance for Claude Code and other AI agents working in this repository.
+Codex uses [AGENTS.md](AGENTS.md) as its concise entrypoint; both tools share
+the workflows under `.codex/skills/` and `.claude/skills/`.
 
 ## What pqforge is
 
@@ -47,6 +49,7 @@ wiki page.
 | `wiki/` | GitHub Wiki source, synced by `.github/workflows/sync-wiki.yml` |
 | `site/` | **Generated** GitHub Pages site (do not hand-edit) |
 | `tool/visibility/` | Visibility generator + manifest (single source for AI-discovery files) |
+| `tool/agent/` | Deterministic link, publication, and verification workflows |
 | `tool/openssl_interop/` | Dev-only OpenSSL AEAD interop harness (`publish_to: none`) |
 | `example/` | Runnable examples exercised in CI |
 | `test/` | Tests, including the streaming peak-RSS memory gate |
@@ -82,17 +85,16 @@ For the full, step-by-step documentation procedure (verification protocol,
 no-hallucination rules, the regenerate-and-link checklist), use the
 [`pqforge-docs` skill](.claude/skills/pqforge-docs/SKILL.md).
 
+For implementation and release work, use
+[`pqforge-feature`](.claude/skills/pqforge-feature/SKILL.md) and
+[`pqforge-release`](.claude/skills/pqforge-release/SKILL.md).
+
 ## Validation (run before claiming done)
 
 ```bash
-dart run tool/visibility/generate_visibility.dart --check   # generated files in sync
-dart format --output=none --set-exit-if-changed .
-dart analyze
-dart test
-dart run example/pqforge_example.dart
-dart run example/catalog_recipes_example.dart
-dart run example/hybrid_key_agreement_example.dart
-dart pub publish --dry-run
+dart run tool/agent/verify.dart quick
+dart run tool/agent/verify.dart full
+dart run tool/agent/verify.dart release  # clean release checkout
 ```
 
 The OpenSSL interop tool has its own resolution: `dart pub get --directory
@@ -106,3 +108,4 @@ tool/openssl_interop`. Branch model: work on a feature branch off `main`;
 - CLI reference: [doc/CLI.md](doc/CLI.md)
 - Performance facts (measured): [doc/technical/PERFORMANCE_AUDIT_AND_HYBRID_CLI.md](doc/technical/PERFORMANCE_AUDIT_AND_HYBRID_CLI.md)
 - Visibility generator: [tool/visibility/README.md](tool/visibility/README.md)
+- Agent verification runner: [tool/agent/verify.dart](tool/agent/verify.dart)

@@ -31,7 +31,7 @@ Read the ground truth, in this order:
 
 1. `pubspec.yaml` — current `version`, `description`, dependencies, SDK.
 2. `CHANGELOG.md` — the latest released claims (the "as-built" feature list).
-3. `CLAUDE.md` — hard constraints and the layout map.
+3. `AGENTS.md` and `CLAUDE.md` — workflow, hard constraints, and layout.
 4. The actual source for whatever you are about to document (see §2).
 
 Never document a feature from the changelog without confirming the symbol still
@@ -48,7 +48,7 @@ Edit them differently. Mixing this up breaks CI.
 - `README.md`, `CHANGELOG.md`
 - everything under `doc/`
 - everything under `wiki/`
-- `CLAUDE.md`, this skill
+- `AGENTS.md`, `CLAUDE.md`, and repository skills
 
 ### B. Generated (NEVER hand-edit)
 
@@ -96,9 +96,10 @@ grep -rnoE "name => '[a-z-]+'" bin/src/
 grep -rn "'FLAG_NAME'" bin/
 ```
 
-The 18 commands are registered in `bin/pqforge.dart`; shared encrypt flags are in
-`bin/src/support.dart`. Confirm a flag's behavior by reading its `help:` text and
-the command's `run()` — do not infer behavior from the name.
+Commands are registered in `bin/pqforge.dart`; shared encrypt flags are in
+`bin/src/support.dart`. Derive command counts from source instead of hard-coding
+them. Confirm a flag's behavior by reading its `help:` text and the command's
+`run()` — do not infer behavior from the name.
 
 ### Constants and thresholds (e.g. the 8 MiB streaming cutoff)
 
@@ -196,34 +197,17 @@ change must be regenerated **and committed** or CI fails.
    ```bash
    dart run tool/visibility/generate_visibility.dart
    ```
-4. **Sweep links** across README + doc (and wiki, with slug rules):
+4. **Sweep links** across repository-maintained Markdown:
    ```bash
-   python3 - <<'PY'
-   import os, re, glob
-   files = ['README.md', 'CLAUDE.md'] + glob.glob('doc/**/*.md', recursive=True)
-   files = [f for f in files if not f.startswith('doc/api/')]
-   rx = re.compile(r'\[[^\]]*\]\(([^)]+)\)')
-   bad = 0
-   for f in files:
-       base = os.path.dirname(f)
-       for m in rx.finditer(open(f, encoding='utf-8').read()):
-           t = m.group(1).strip()
-           if t.startswith(('http://', 'https://', 'mailto:', '#')):
-               continue
-           p = t.split('#', 1)[0]
-           if p and not os.path.exists(os.path.normpath(os.path.join(base, p))):
-               print('BROKEN', f, '->', t); bad += 1
-   print('broken:', bad)
-   PY
+   dart run tool/agent/check_links.dart
    ```
 5. **Confirm no stray branch links** (§4).
 6. **Validate**:
    ```bash
-   dart run tool/visibility/generate_visibility.dart --check
-   dart format --output=none --set-exit-if-changed .
-   dart analyze
+   dart run tool/agent/verify.dart docs
    ```
-   Run `dart test` when examples or code-adjacent docs changed.
+   Run `dart run tool/agent/verify.dart full` when examples, public APIs, CLI
+   behavior, or code-adjacent docs changed.
 7. **Cross-check consistency** — the same fact often appears in README, the
    manifest (→ llms/site/faq), doc/CLI.md, doc/API.md, and the wiki. When you
    change a capability, grep for the old wording and update every surface:
@@ -237,8 +221,11 @@ change must be regenerated **and committed** or CI fails.
 
 `tool/visibility/visibility_manifest.json` drives all generated files:
 
-- `project.*` — titles, URLs, `version`, `repository_branch` (keep `main`),
-  `last_updated` (set to today, absolute date).
+- `project.*` — titles, URLs, `repository_branch` (keep `main`), `last_updated`
+  (set to today, absolute date). The **version is not here** — it is read from
+  `pubspec.yaml` (the single source of truth) by the generator, so it can never
+  drift. The CLI version is likewise generated into `bin/src/version.g.dart` by
+  `tool/version/generate_version.dart` (verified by its own `--check`).
 - `pqcrypto_relationship.*` — the differentiation surfaced in `llms.txt`,
   `llms-full.txt`, the site footer/boundary, and `identity.json` `isBasedOn`.
 - `capabilities`, `does_not_provide`, `evidence_boundary` — boundary text reused
