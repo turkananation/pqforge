@@ -9,8 +9,12 @@ library;
 
 import 'dart:io';
 
-/// Keep in sync with `version:` in pubspec.yaml.
-const String pqforgeCliVersion = '0.2.1';
+import 'version.g.dart';
+
+// Re-exported so any file importing console.dart sees the generated
+// `pqforgeCliVersion`, which is single-sourced from pubspec.yaml by
+// `tool/version/generate_version.dart`.
+export 'version.g.dart';
 
 /// Shorthand for the shared, color-configured console used across commands.
 Console get console => Console.instance;

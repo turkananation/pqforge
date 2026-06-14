@@ -15,6 +15,7 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | Need | Document |
 | --- | --- |
 | Package overview and selling points | [../README.md](../README.md) |
+| Coding-agent workflow | [../AGENTS.md](../AGENTS.md) |
 | Full CLI usage | [CLI.md](CLI.md) |
 | API reference | [API.md](API.md) |
 | App and project catalog | [cookbook/PROJECT_CATALOG.md](cookbook/PROJECT_CATALOG.md) |
@@ -127,4 +128,4 @@ The generated root files are copied into `site/` so GitHub Pages and AI
 discovery surfaces stay consistent. The cross-repository documentation contract
 is described in the
 [`pqforge-docs` skill](../.claude/skills/pqforge-docs/SKILL.md) and
-[CLAUDE.md](../CLAUDE.md).
+[AGENTS.md](../AGENTS.md) / [CLAUDE.md](../CLAUDE.md).

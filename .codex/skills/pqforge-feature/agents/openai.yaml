@@ -1,0 +1,4 @@
+interface:
+  display_name: "PQForge Feature"
+  short_description: "Implement pqforge features with focused validation"
+  default_prompt: "Use $pqforge-feature to implement this pqforge feature end to end."

@@ -4,17 +4,32 @@ The `pqforge` executable is for local machines, server jobs, release pipelines,
 and admin workflows that need post-quantum encryption or signatures without
 writing an app first.
 
-Install from this package with:
+Install it from pub.dev:
 
 ```bash
-dart pub global activate --source path .
+dart pub global activate pqforge
 ```
 
-Or run directly inside the repository:
+Or from a local checkout, or run it in place without installing:
 
 ```bash
-dart run pqforge --help
+dart pub global activate --source path .   # from a clone
+dart run pqforge --help                    # no install, inside the repo
 ```
+
+## Uninstall
+
+`pqforge uninstall` removes the install however you set it up: for a global pub
+install it runs `dart pub global deactivate pqforge` for you; for a downloaded
+standalone binary it prints the path to delete.
+
+```bash
+pqforge uninstall            # confirm, then remove a global pub install
+pqforge uninstall --dry-run  # show what would happen, change nothing
+pqforge uninstall --yes      # skip the confirmation prompt
+```
+
+The plain pub equivalent is `dart pub global deactivate pqforge`.
 
 ## Key Storage
 
@@ -415,7 +430,8 @@ dart run pqforge ecdsa-verify \
 Run `pqforge` with no arguments (or `pqforge --help`) for a grouped command
 overview, and `pqforge <command> --help` for per-command options and examples.
 Colors auto-disable when output is piped or `NO_COLOR` is set; force them off
-with `--no-color`. `pqforge --version` prints the version.
+with `--no-color`. `pqforge --version` (or `pqforge version`) prints the
+version, which is single-sourced from `pubspec.yaml`.
 
 ## Operational Notes
 

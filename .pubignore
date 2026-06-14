@@ -1,8 +1,33 @@
+# The pub.dev archive is the consumable package, not the repository workspace.
+# Keep: lib/, bin/, example/, pubspec.yaml, README.md, CHANGELOG.md, LICENSE.
+
+# Agent, editor, and repository automation.
+.claude/
+.codex/
+.cursor/
+.github/
+.mcp.json
+.vscode/
+.windsurfrules
+AGENTS.md
+CLAUDE.md
+
+# Development-only configuration, tests, documentation sources, and tooling.
+analysis_options.yaml
+dart_test.yaml
+doc/
+test/
+tool/
 verdicts/
-doc/api/
-site/
 wiki/
-tool/visibility/
-# Dev-only OpenSSL interop harness (its own `publish_to: none` package); the
-# published pqforge package stays pure Dart — no dart:ffi ships.
-tool/openssl_interop/
+
+# Generated repository/site discovery surfaces.
+ai.txt
+developer-ai.txt
+faq-ai.txt
+identity.json
+llms-full.txt
+llms.txt
+robots-ai.txt
+robots.txt
+site/
