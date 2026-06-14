@@ -35,4 +35,4 @@
 - [ ] `dart run example/catalog_recipes_example.dart`
 - [ ] wrapped-key CLI smoke
 - [ ] `dart run tool/visibility/generate_visibility.dart --check`
-- [ ] `dart pub publish --dry-run`
+- [ ] `dart run tool/agent/check_publish_surface.dart --strict`

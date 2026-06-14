@@ -1,0 +1,4 @@
+interface:
+  display_name: "PQForge Release"
+  short_description: "Prepare and verify a pqforge release"
+  default_prompt: "Use $pqforge-release to prepare pqforge for a clean release."

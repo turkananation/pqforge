@@ -172,10 +172,14 @@ final signature = forge.signArtifact(
 | `sign` / `verify` | Sign and verify documents, text, media, and artifacts |
 | `hybrid-sign` / `hybrid-verify` | ML-DSA + Ed25519/ECDSA-P256 dual signatures (`--digest` for GB-scale) |
 | `ecdsa-sign` / `ecdsa-verify` | Standalone ECDSA-P256 signatures (RFC 6979, low-S) |
+| `version` / `uninstall` | Print the version (also `--version`); remove a global pub install or binary |
 
 `pqforge` with no arguments prints a banner and grouped command help; every
 command has `--help` with worked examples. Read the complete command guide at
 [doc/CLI.md](doc/CLI.md).
+
+Install it globally with `dart pub global activate pqforge`, and remove it any
+time with `pqforge uninstall` (or `dart pub global deactivate pqforge`).
 
 ### Shared encrypt-side flags
 
@@ -295,17 +299,13 @@ RC4 is not supported. AES is encryption, not signatures.
 - [Hybrid audit](doc/HYBRID_AUDIT.md)
 - [Key custody](doc/architecture/KEY_CUSTODY.md)
 - [Claim boundary](doc/security/CLAIM_BOUNDARY.md)
+- [Coding-agent workflow](AGENTS.md)
 - [Visibility generation](tool/visibility/README.md)
 
 ## Validation
 
 ```bash
-dart run tool/visibility/generate_visibility.dart --check
-dart format --output=none --set-exit-if-changed .
-dart analyze
-dart test
-dart run example/pqforge_example.dart
-dart run example/catalog_recipes_example.dart
-dart run example/hybrid_key_agreement_example.dart
-dart pub publish --dry-run
+dart run tool/agent/verify.dart quick
+dart run tool/agent/verify.dart full
+dart run tool/agent/verify.dart release  # run from a clean release checkout
 ```

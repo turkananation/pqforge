@@ -8,7 +8,6 @@
     "short_title": "pqforge",
     "tagline": "Post-quantum encryption, signing, hybrid sessions, gigabyte-scale streaming, and a CLI for Dart, Flutter, and Serverpod — built on pqcrypto ML-KEM/ML-DSA.",
     "summary": "pqforge turns the pqcrypto ML-KEM (FIPS 203) and ML-DSA (FIPS 204) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. The core is pure Dart and web-safe — no dart:ffi.",
-    "version": "0.2.1",
     "license": "MIT",
     "maintainer": "Turkana Nation",
     "canonical_url": "https://turkananation.github.io/pqforge/",

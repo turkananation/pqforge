@@ -1,0 +1,19 @@
+# Project-scoped Codex configuration. Loaded only after the repository is
+# trusted. Keep credentials and machine-specific paths in user configuration.
+
+project_doc_fallback_filenames = ["CLAUDE.md"]
+project_doc_max_bytes = 32768
+project_root_markers = [".git", "AGENTS.md", ".codex"]
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp@latest"]
+startup_timeout_sec = 20
+
+# Dart 3.12+ ships this server in the SDK. Flutter-only tools are disabled
+# because pqforge is a pure-Dart package.
+[mcp_servers.dart_flutter]
+command = "dart"
+args = ["mcp-server", "--disable", "flutter"]
+startup_timeout_sec = 20
+tool_timeout_sec = 120

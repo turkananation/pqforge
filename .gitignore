@@ -9,3 +9,6 @@ verdicts/
 
 # Generated `dart doc` API output.
 doc/api/
+
+# Local MCP traffic logs and scratch output.
+*.mcp.log

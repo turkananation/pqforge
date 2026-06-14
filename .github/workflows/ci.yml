@@ -59,14 +59,23 @@ jobs:
       - name: Install interop tool dependencies
         run: dart pub get --directory tool/openssl_interop
 
+      - name: Verify generated CLI version
+        run: dart run tool/version/generate_version.dart --check
+
       - name: Verify generated visibility files
         run: dart run tool/visibility/generate_visibility.dart --check
+
+      - name: Verify package boundaries
+        run: dart run tool/agent/check_package_boundaries.dart
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
 
       - name: Analyze source
         run: dart analyze
+
+      - name: Verify local documentation links
+        run: dart run tool/agent/check_links.dart
 
       - name: Run tests
         run: dart test
@@ -137,8 +146,8 @@ jobs:
           printf 'tampered\n' > "$tmp/tampered.txt"
           if dart run pqforge ecdsa-verify --public "$tmp/keys/ci.ecdsa-p256.public.json" --in "$tmp/tampered.txt" --signature "$tmp/ec.json"; then echo "tamper not detected" && exit 1; fi
 
-      - name: Package dry run
-        run: dart pub publish --dry-run
+      - name: Verify pub.dev archive
+        run: dart run tool/agent/check_publish_surface.dart --strict
 
   openssl-interop:
     name: OpenSSL EVP interop verification
