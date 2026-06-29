@@ -16,7 +16,7 @@ import '../algorithms/pq_algorithms.dart';
 import '../primitives/pq_primitives.dart';
 import '../recipes/pq_recipes.dart';
 import '../services/pqforge_service.dart';
-import 'pq_ecdsa_p256.dart';
+import 'pq_classical_provider.dart';
 import 'pq_hybrid_combiner.dart';
 
 enum PqClassicalKeyAgreementAlgorithm {
@@ -254,18 +254,8 @@ class PqForgeHybridKeyAgreement {
   /// persist keys as bytes (such as the CLI) rather than holding a live
   /// `package:cryptography` `SimpleKeyPair`.
   Future<({Uint8List publicKey, Uint8List secretKey})>
-  generateClassicalKeyPairBytes({Uint8List? seed}) async {
-    final keyPair = await generateClassicalKeyPair(seed: seed);
-    try {
-      final publicKey = await keyPair.extractPublicKey();
-      return (
-        publicKey: Uint8List.fromList(publicKey.bytes),
-        secretKey: Uint8List.fromList(await keyPair.extractPrivateKeyBytes()),
-      );
-    } finally {
-      keyPair.destroy();
-    }
-  }
+  generateClassicalKeyPairBytes({Uint8List? seed}) =>
+      PqClassical.provider.x25519GenerateKeyPair(seed: seed);
 
   /// X25519 ECDH between a raw 32-byte [secretKey] (ours) and a raw 32-byte
   /// [remotePublicKey] (theirs), returning the 32-byte shared secret.
@@ -276,25 +266,13 @@ class PqForgeHybridKeyAgreement {
   static Future<Uint8List> x25519SharedSecret({
     required Uint8List secretKey,
     required Uint8List remotePublicKey,
-  }) async {
+  }) {
     requireLength('secretKey', secretKey, 32);
     requireLength('remotePublicKey', remotePublicKey, 32);
-    final x25519 = crypto.X25519();
-    // An X25519 secret key IS its seed, so the full key pair (and the public
-    // key package:cryptography insists on) is reconstructible from it.
-    final keyPair = await x25519.newKeyPairFromSeed(secretKey);
-    try {
-      final shared = await x25519.sharedSecretKey(
-        keyPair: keyPair,
-        remotePublicKey: crypto.SimplePublicKey(
-          remotePublicKey,
-          type: crypto.KeyPairType.x25519,
-        ),
-      );
-      return Uint8List.fromList(await shared.extractBytes());
-    } finally {
-      keyPair.destroy();
-    }
+    return PqClassical.provider.x25519SharedSecret(
+      secretKey: secretKey,
+      remotePublicKey: remotePublicKey,
+    );
   }
 
   Future<PqHybridKeyAgreementResult> initiate({
@@ -506,29 +484,21 @@ class PqForgeHybridSigner {
   }) async {
     switch (classicalAlgorithm) {
       case PqClassicalSignatureAlgorithm.ed25519:
-        final ed25519 = crypto.Ed25519();
-        final keyPair = seed == null
-            ? await ed25519.newKeyPair()
-            : await ed25519.newKeyPairFromSeed(seed);
-        try {
-          final publicKey = await keyPair.extractPublicKey();
-          return PqClassicalSignatureKeyPair(
-            algorithm: PqClassicalSignatureAlgorithm.ed25519,
-            publicKey: Uint8List.fromList(publicKey.bytes),
-            secretKey: Uint8List.fromList(
-              await keyPair.extractPrivateKeyBytes(),
-            ),
-          );
-        } finally {
-          keyPair.destroy();
-        }
+        final pair = await PqClassical.provider.ed25519GenerateKeyPair(
+          seed: seed,
+        );
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ed25519,
+          publicKey: pair.publicKey,
+          secretKey: pair.secretKey,
+        );
       case PqClassicalSignatureAlgorithm.ecdsaP256:
         if (seed != null) {
           throw const PqForgeException(
             'Seeded key generation is not supported for ECDSA-P256',
           );
         }
-        final pair = PqEcdsaP256.generateKeyPair();
+        final pair = await PqClassical.provider.ecdsaP256GenerateKeyPair();
         return PqClassicalSignatureKeyPair(
           algorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
           publicKey: pair.publicKey,
@@ -543,7 +513,7 @@ class PqForgeHybridSigner {
   ///
   /// This lets callers (such as the CLI) persist only the secret key and still
   /// sign later: for Ed25519 the public key is recovered from the seed, and for
-  /// ECDSA-P256 it is recomputed as `d · G` via [PqEcdsaP256.publicKeyFromPrivate].
+  /// ECDSA-P256 it is recomputed as `d · G` by the classical provider.
   /// A supplied [publicKey] is used as-is (and length-checked by the key-pair
   /// constructor) without re-derivation.
   Future<PqClassicalSignatureKeyPair> classicalKeyPairFromSecret(
@@ -552,30 +522,21 @@ class PqForgeHybridSigner {
   }) async {
     switch (classicalAlgorithm) {
       case PqClassicalSignatureAlgorithm.ed25519:
-        final derived = publicKey ?? await _ed25519PublicKeyFromSeed(secretKey);
+        final derived = publicKey ??
+            await PqClassical.provider.ed25519PublicKeyFromSeed(secretKey);
         return PqClassicalSignatureKeyPair(
           algorithm: PqClassicalSignatureAlgorithm.ed25519,
           publicKey: derived,
           secretKey: secretKey,
         );
       case PqClassicalSignatureAlgorithm.ecdsaP256:
-        final derived =
-            publicKey ?? PqEcdsaP256.publicKeyFromPrivate(secretKey);
+        final derived = publicKey ??
+            await PqClassical.provider.ecdsaP256PublicKeyFromPrivate(secretKey);
         return PqClassicalSignatureKeyPair(
           algorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
           publicKey: derived,
           secretKey: secretKey,
         );
-    }
-  }
-
-  static Future<Uint8List> _ed25519PublicKeyFromSeed(Uint8List seed) async {
-    final keyPair = await crypto.Ed25519().newKeyPairFromSeed(seed);
-    try {
-      final publicKey = await keyPair.extractPublicKey();
-      return Uint8List.fromList(publicKey.bytes);
-    } finally {
-      keyPair.destroy();
     }
   }
 
@@ -648,24 +609,17 @@ class PqForgeHybridSigner {
   static Future<Uint8List> _signClassical(
     PqClassicalSignatureKeyPair keyPair,
     Uint8List boundMessage,
-  ) async {
+  ) {
     switch (keyPair.algorithm) {
       case PqClassicalSignatureAlgorithm.ed25519:
-        final signature = await crypto.Ed25519().sign(
-          boundMessage,
-          keyPair: crypto.SimpleKeyPairData(
-            keyPair.secretKey,
-            publicKey: crypto.SimplePublicKey(
-              keyPair.publicKey,
-              type: crypto.KeyPairType.ed25519,
-            ),
-            type: crypto.KeyPairType.ed25519,
-          ),
+        return PqClassical.provider.ed25519Sign(
+          secretKey: keyPair.secretKey,
+          publicKey: keyPair.publicKey,
+          message: boundMessage,
         );
-        return Uint8List.fromList(signature.bytes);
       case PqClassicalSignatureAlgorithm.ecdsaP256:
-        return PqEcdsaP256.sign(
-          privateKey: keyPair.secretKey,
+        return PqClassical.provider.ecdsaP256Sign(
+          secretKey: keyPair.secretKey,
           message: boundMessage,
         );
     }
@@ -676,24 +630,16 @@ class PqForgeHybridSigner {
     Uint8List publicKey,
     Uint8List boundMessage,
     Uint8List signatureBytes,
-  ) async {
+  ) {
     switch (algorithm) {
       case PqClassicalSignatureAlgorithm.ed25519:
-        if (publicKey.length != 32 || signatureBytes.length != 64) {
-          return false;
-        }
-        return crypto.Ed25519().verify(
-          boundMessage,
-          signature: crypto.Signature(
-            signatureBytes,
-            publicKey: crypto.SimplePublicKey(
-              publicKey,
-              type: crypto.KeyPairType.ed25519,
-            ),
-          ),
+        return PqClassical.provider.ed25519Verify(
+          publicKey: publicKey,
+          message: boundMessage,
+          signature: signatureBytes,
         );
       case PqClassicalSignatureAlgorithm.ecdsaP256:
-        return PqEcdsaP256.verify(
+        return PqClassical.provider.ecdsaP256Verify(
           publicKey: publicKey,
           message: boundMessage,
           signature: signatureBytes,
