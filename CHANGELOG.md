@@ -10,12 +10,15 @@ stack. Additive and backward-compatible: the default stays pure-Dart and all
   `PqLatticeProvider`): X25519 key agreement, Ed25519 and ECDSA-P256 signatures.
   Register a native backend once at startup via `PqClassical.provider = ...`; the
   default is `PqPureDartClassicalProvider` (`package:cryptography` + PointyCastle).
-- The byte-oriented classical operations of `PqForgeHybridSigner` and the static
-  `PqForgeHybridKeyAgreement.x25519SharedSecret` now delegate to
-  `PqClassical.provider`, so a host (e.g. an FFI binding to AWS-LC) can
-  hardware-accelerate the classical half of the hybrid stack — matching the
-  existing lattice seam. The live-keypair `initiate`/`accept` path still uses
-  `package:cryptography` directly.
+- The **entire** classical half of the hybrid stack now delegates to
+  `PqClassical.provider`: `PqForgeHybridSigner`, the static
+  `PqForgeHybridKeyAgreement.x25519SharedSecret`, **and** the live-keypair
+  `PqForgeHybridKeyAgreement.generateClassicalKeyPair`/`initiate`/`accept`
+  handshake (X25519 keygen + both ECDH sides). A host (e.g. an FFI binding to
+  AWS-LC) can therefore hardware-accelerate the full hybrid handshake — matching
+  the existing lattice seam. Behaviour is unchanged on the default provider
+  (same `package:cryptography` under the seam), and because X25519 ECDH is
+  deterministic a native backend agrees byte-for-byte.
 - New conformance/agreement harness `test/support/classical_conformance.dart`:
   X25519 ECDH and Ed25519 (RFC 8032) must be byte-identical across backends;
   ECDSA-P256 is cross-verified, since its signatures are implementation-dependent

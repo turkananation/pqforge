@@ -69,6 +69,46 @@ void main() {
     expect(spy.ed25519Calls, greaterThan(0),
         reason: 'Ed25519 must route through the seam');
   });
+
+  test('the full hybrid handshake (initiate/accept) routes X25519 through '
+      'the seam', () async {
+    final spy = _CountingClassicalProvider(const PqPureDartClassicalProvider());
+    PqClassical.provider = spy;
+
+    const profile = PqForgeProfile.compact;
+    final forge = PqForge(profile: profile);
+    final serverKem = forge.generateKemKeyPair();
+    const agreement = PqForgeHybridKeyAgreement(profile: profile);
+    final serverX25519 = await agreement.generateClassicalKeyPair();
+    final serverX25519Public = await serverX25519.extractPublicKey();
+    final deploymentSalt = Uint8List.fromList(List<int>.filled(32, 7));
+
+    final callsBefore = spy.x25519Calls;
+    final client = await agreement.initiate(
+      serverClassicalPublicKey: serverX25519Public,
+      serverKemPublicKey: serverKem.publicKey,
+      deploymentSalt: deploymentSalt,
+    );
+    final server = await agreement.accept(
+      serverClassicalKeyPair: serverX25519,
+      serverKemSecretKey: serverKem.secretKey,
+      request: client.request,
+      deploymentSalt: deploymentSalt,
+    );
+
+    expect(
+      PqBytes.constantTimeEquals(client.sessionKey, server),
+      isTrue,
+      reason: 'both peers must derive the same hybrid session key',
+    );
+    // initiate: ephemeral keygen + ECDH; accept: ECDH => at least 3 seam calls.
+    expect(
+      spy.x25519Calls - callsBefore,
+      greaterThanOrEqualTo(3),
+      reason: 'the ephemeral keygen and both ECDH sides must route through '
+          'the seam',
+    );
+  });
 }
 
 /// Forwards to [_inner] and counts how often each family of classical operations

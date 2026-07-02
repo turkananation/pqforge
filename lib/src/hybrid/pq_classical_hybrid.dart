@@ -242,10 +242,22 @@ class PqForgeHybridKeyAgreement {
   final PqForgeProfile profile;
   final PqClassicalKeyAgreementAlgorithm classicalAlgorithm;
 
-  Future<crypto.SimpleKeyPair> generateClassicalKeyPair({Uint8List? seed}) {
-    return seed == null
-        ? crypto.X25519().newKeyPair()
-        : crypto.X25519().newKeyPairFromSeed(seed);
+  /// Generates a long-term X25519 key-agreement key pair.
+  ///
+  /// The raw keygen delegates to [PqClassical.provider] (native-accelerated when
+  /// a backend is registered; byte-identical on the default provider), and the
+  /// result is wrapped as a `package:cryptography` [crypto.SimpleKeyPair] for the
+  /// [accept] API.
+  Future<crypto.SimpleKeyPair> generateClassicalKeyPair({Uint8List? seed}) async {
+    final pair = await PqClassical.provider.x25519GenerateKeyPair(seed: seed);
+    return crypto.SimpleKeyPairData(
+      pair.secretKey,
+      publicKey: crypto.SimplePublicKey(
+        pair.publicKey,
+        type: crypto.KeyPairType.x25519,
+      ),
+      type: crypto.KeyPairType.x25519,
+    );
   }
 
   /// Generates an X25519 key-agreement key pair as raw 32-byte arrays.
@@ -288,18 +300,17 @@ class PqForgeHybridKeyAgreement {
       serverKemPublicKey,
       profile.kem.publicKeyBytes,
     );
-    final x25519 = crypto.X25519();
-    final clientKeyPair = await x25519.newKeyPair();
+    // Route the ephemeral X25519 keygen and ECDH through the classical seam so a
+    // registered native provider accelerates the full handshake (the default
+    // provider is byte-identical). The seam hands back raw bytes, so the
+    // ephemeral secret is wiped in the `finally` below.
+    final clientKeyPair = await PqClassical.provider.x25519GenerateKeyPair();
     Uint8List? classicalSharedSecret;
     Uint8List? latticeSharedSecret;
     try {
-      final clientPublicKey = await clientKeyPair.extractPublicKey();
-      final sharedSecret = await x25519.sharedSecretKey(
-        keyPair: clientKeyPair,
-        remotePublicKey: serverClassicalPublicKey,
-      );
-      classicalSharedSecret = Uint8List.fromList(
-        await sharedSecret.extractBytes(),
+      classicalSharedSecret = await PqClassical.provider.x25519SharedSecret(
+        secretKey: clientKeyPair.secretKey,
+        remotePublicKey: Uint8List.fromList(serverClassicalPublicKey.bytes),
       );
       final kem = PqKemPrimitives.encapsulate(profile.kem, serverKemPublicKey);
       latticeSharedSecret = PqBytes.copy(kem.sharedSecret);
@@ -310,7 +321,7 @@ class PqForgeHybridKeyAgreement {
           serverClassicalPublicKey.bytes,
         ),
         serverKemPublicKey: serverKemPublicKey,
-        clientClassicalPublicKey: Uint8List.fromList(clientPublicKey.bytes),
+        clientClassicalPublicKey: Uint8List.fromList(clientKeyPair.publicKey),
         kemCiphertext: kem.ciphertext,
         transcriptContext: transcriptContext,
       );
@@ -336,7 +347,7 @@ class PqForgeHybridKeyAgreement {
         ),
       );
     } finally {
-      clientKeyPair.destroy();
+      PqForgeCombiner.wipe(clientKeyPair.secretKey);
       if (classicalSharedSecret != null) {
         PqForgeCombiner.wipe(classicalSharedSecret);
       }
@@ -373,16 +384,20 @@ class PqForgeHybridKeyAgreement {
     Uint8List? classicalSharedSecret;
     Uint8List? latticeSharedSecret;
     try {
-      final sharedSecret = await crypto.X25519().sharedSecretKey(
-        keyPair: serverClassicalKeyPair,
-        remotePublicKey: crypto.SimplePublicKey(
-          request.clientClassicalPublicKey,
-          type: crypto.KeyPairType.x25519,
-        ),
+      // ECDH via the classical seam (native-accelerated when a provider is
+      // registered). Extract the server's raw scalar for the seam and wipe it
+      // the moment the shared secret is derived.
+      final serverSecretKey = Uint8List.fromList(
+        await serverClassicalKeyPair.extractPrivateKeyBytes(),
       );
-      classicalSharedSecret = Uint8List.fromList(
-        await sharedSecret.extractBytes(),
-      );
+      try {
+        classicalSharedSecret = await PqClassical.provider.x25519SharedSecret(
+          secretKey: serverSecretKey,
+          remotePublicKey: request.clientClassicalPublicKey,
+        );
+      } finally {
+        PqForgeCombiner.wipe(serverSecretKey);
+      }
       latticeSharedSecret = PqKemPrimitives.decapsulate(
         profile.kem,
         serverKemSecretKey,
