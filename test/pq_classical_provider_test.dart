@@ -9,7 +9,9 @@ import 'support/classical_conformance.dart';
 /// [PqClassicalProvider], so a host can register an FFI-accelerated provider
 /// while the pure-Dart implementation remains the default and fallback.
 void main() {
-  tearDown(PqClassical.useDefault); // never leak a swapped provider between tests
+  tearDown(
+    PqClassical.useDefault,
+  ); // never leak a swapped provider between tests
 
   test('the default classical backend is the pure-Dart provider', () {
     expect(PqClassical.provider, isA<PqPureDartClassicalProvider>());
@@ -29,46 +31,58 @@ void main() {
     ),
   );
 
-  test('registering a provider routes the hybrid classical ops through it',
-      () async {
-    final spy = _CountingClassicalProvider(const PqPureDartClassicalProvider());
-    PqClassical.provider = spy;
+  test(
+    'registering a provider routes the hybrid classical ops through it',
+    () async {
+      final spy = _CountingClassicalProvider(
+        const PqPureDartClassicalProvider(),
+      );
+      PqClassical.provider = spy;
 
-    // X25519 shared secret routes through the seam.
-    final a = await PqClassical.provider.x25519GenerateKeyPair();
-    final b = await PqClassical.provider.x25519GenerateKeyPair();
-    final shared = await PqForgeHybridKeyAgreement.x25519SharedSecret(
-      secretKey: a.secretKey,
-      remotePublicKey: b.publicKey,
-    );
-    expect(shared, hasLength(32));
+      // X25519 shared secret routes through the seam.
+      final a = await PqClassical.provider.x25519GenerateKeyPair();
+      final b = await PqClassical.provider.x25519GenerateKeyPair();
+      final shared = await PqForgeHybridKeyAgreement.x25519SharedSecret(
+        secretKey: a.secretKey,
+        remotePublicKey: b.publicKey,
+      );
+      expect(shared, hasLength(32));
 
-    // Ed25519 hybrid sign/verify route through the seam.
-    const signer = PqForgeHybridSigner(
-      profile: PqForgeProfile.compact,
-      classicalAlgorithm: PqClassicalSignatureAlgorithm.ed25519,
-    );
-    final classicalKeyPair = await signer.generateClassicalKeyPair();
-    final pqcKeys = const PqForge(profile: PqForgeProfile.compact).generateKeys();
-    final message = Uint8List.fromList(List<int>.generate(20, (i) => i));
-    final signature = await signer.sign(
-      pqcSecretKey: pqcKeys.signatureKeyPair.secretKey,
-      classicalKeyPair: classicalKeyPair,
-      message: message,
-    );
-    final ok = await signer.verify(
-      pqcPublicKey: pqcKeys.signatureKeyPair.publicKey,
-      classicalPublicKey: classicalKeyPair.publicKey,
-      message: message,
-      signature: signature,
-    );
+      // Ed25519 hybrid sign/verify route through the seam.
+      const signer = PqForgeHybridSigner(
+        profile: PqForgeProfile.compact,
+        classicalAlgorithm: PqClassicalSignatureAlgorithm.ed25519,
+      );
+      final classicalKeyPair = await signer.generateClassicalKeyPair();
+      final pqcKeys = const PqForge(
+        profile: PqForgeProfile.compact,
+      ).generateKeys();
+      final message = Uint8List.fromList(List<int>.generate(20, (i) => i));
+      final signature = await signer.sign(
+        pqcSecretKey: pqcKeys.signatureKeyPair.secretKey,
+        classicalKeyPair: classicalKeyPair,
+        message: message,
+      );
+      final ok = await signer.verify(
+        pqcPublicKey: pqcKeys.signatureKeyPair.publicKey,
+        classicalPublicKey: classicalKeyPair.publicKey,
+        message: message,
+        signature: signature,
+      );
 
-    expect(ok, isTrue);
-    expect(spy.x25519Calls, greaterThan(0),
-        reason: 'X25519 must route through the seam');
-    expect(spy.ed25519Calls, greaterThan(0),
-        reason: 'Ed25519 must route through the seam');
-  });
+      expect(ok, isTrue);
+      expect(
+        spy.x25519Calls,
+        greaterThan(0),
+        reason: 'X25519 must route through the seam',
+      );
+      expect(
+        spy.ed25519Calls,
+        greaterThan(0),
+        reason: 'Ed25519 must route through the seam',
+      );
+    },
+  );
 
   test('the full hybrid handshake (initiate/accept) routes X25519 through '
       'the seam', () async {
@@ -105,7 +119,8 @@ void main() {
     expect(
       spy.x25519Calls - callsBefore,
       greaterThanOrEqualTo(3),
-      reason: 'the ephemeral keygen and both ECDH sides must route through '
+      reason:
+          'the ephemeral keygen and both ECDH sides must route through '
           'the seam',
     );
   });

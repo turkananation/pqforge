@@ -72,7 +72,8 @@ abstract interface class PqClassicalProvider {
 
   // --- ECDSA-P256 signatures (32-byte scalar, 65-byte SEC1 pk, 64-byte r||s) ---
 
-  Future<({Uint8List publicKey, Uint8List secretKey})> ecdsaP256GenerateKeyPair();
+  Future<({Uint8List publicKey, Uint8List secretKey})>
+  ecdsaP256GenerateKeyPair();
 
   Future<Uint8List> ecdsaP256PublicKeyFromPrivate(Uint8List secretKey);
 

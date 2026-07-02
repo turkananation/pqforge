@@ -43,14 +43,22 @@ Future<void> classicalProviderConformance(PqClassicalProvider provider) async {
   final xSeed = _pattern(32, (i) => (i * 7 + 1) & 0xFF);
   final x1 = await provider.x25519GenerateKeyPair(seed: xSeed);
   final x2 = await provider.x25519GenerateKeyPair(seed: xSeed);
-  expect(x1.publicKey, x2.publicKey, reason: 'X25519 seeded keygen deterministic');
+  expect(
+    x1.publicKey,
+    x2.publicKey,
+    reason: 'X25519 seeded keygen deterministic',
+  );
   expect(x1.secretKey, x2.secretKey);
 
   // --- Ed25519 ---
   final edSeed = _pattern(32, (i) => (i * 3 + 2) & 0xFF);
   final ed1 = await provider.ed25519GenerateKeyPair(seed: edSeed);
   final ed2 = await provider.ed25519GenerateKeyPair(seed: edSeed);
-  expect(ed1.publicKey, ed2.publicKey, reason: 'Ed25519 seeded keygen deterministic');
+  expect(
+    ed1.publicKey,
+    ed2.publicKey,
+    reason: 'Ed25519 seeded keygen deterministic',
+  );
   expect(ed1.publicKey, hasLength(32));
   expect(await provider.ed25519PublicKeyFromSeed(edSeed), ed1.publicKey);
 
@@ -88,7 +96,8 @@ Future<void> classicalProviderConformance(PqClassicalProvider provider) async {
   expect(
     await provider.ecdsaP256PublicKeyFromPrivate(ec.secretKey),
     ec.publicKey,
-    reason: 'ECDSA-P256 public key recomputed from the private scalar must match',
+    reason:
+        'ECDSA-P256 public key recomputed from the private scalar must match',
   );
 
   final ecMsg = _pattern(50, (i) => (i * 5) & 0xFF);
@@ -130,7 +139,11 @@ Future<void> assertClassicalProvidersAgree(
   final bSeed = _pattern(32, (i) => (i * 9 + 7) & 0xFF);
   final aRef = await reference.x25519GenerateKeyPair(seed: aSeed);
   final aCand = await candidate.x25519GenerateKeyPair(seed: aSeed);
-  expect(aCand.publicKey, aRef.publicKey, reason: 'X25519 seeded keygen disagrees');
+  expect(
+    aCand.publicKey,
+    aRef.publicKey,
+    reason: 'X25519 seeded keygen disagrees',
+  );
   expect(aCand.secretKey, aRef.secretKey);
   final bRef = await reference.x25519GenerateKeyPair(seed: bSeed);
   final ssRef = await reference.x25519SharedSecret(
@@ -163,7 +176,8 @@ Future<void> assertClassicalProvidersAgree(
   expect(
     sigCand,
     sigRef,
-    reason: 'Ed25519 signatures must be byte-identical (RFC 8032 is deterministic)',
+    reason:
+        'Ed25519 signatures must be byte-identical (RFC 8032 is deterministic)',
   );
 
   // ECDSA-P256 — implementation-dependent nonce ⇒ cross-verify only.

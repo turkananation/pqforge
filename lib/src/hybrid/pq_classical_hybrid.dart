@@ -248,7 +248,9 @@ class PqForgeHybridKeyAgreement {
   /// a backend is registered; byte-identical on the default provider), and the
   /// result is wrapped as a `package:cryptography` [crypto.SimpleKeyPair] for the
   /// [accept] API.
-  Future<crypto.SimpleKeyPair> generateClassicalKeyPair({Uint8List? seed}) async {
+  Future<crypto.SimpleKeyPair> generateClassicalKeyPair({
+    Uint8List? seed,
+  }) async {
     final pair = await PqClassical.provider.x25519GenerateKeyPair(seed: seed);
     return crypto.SimpleKeyPairData(
       pair.secretKey,
@@ -537,7 +539,8 @@ class PqForgeHybridSigner {
   }) async {
     switch (classicalAlgorithm) {
       case PqClassicalSignatureAlgorithm.ed25519:
-        final derived = publicKey ??
+        final derived =
+            publicKey ??
             await PqClassical.provider.ed25519PublicKeyFromSeed(secretKey);
         return PqClassicalSignatureKeyPair(
           algorithm: PqClassicalSignatureAlgorithm.ed25519,
@@ -545,7 +548,8 @@ class PqForgeHybridSigner {
           secretKey: secretKey,
         );
       case PqClassicalSignatureAlgorithm.ecdsaP256:
-        final derived = publicKey ??
+        final derived =
+            publicKey ??
             await PqClassical.provider.ecdsaP256PublicKeyFromPrivate(secretKey);
         return PqClassicalSignatureKeyPair(
           algorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
