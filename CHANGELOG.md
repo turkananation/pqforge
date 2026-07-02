@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0
+
+Swappable **classical** backend — the hardware-acceleration seam for the hybrid
+stack. Additive and backward-compatible: the default stays pure-Dart and all
+`.pqf`/`.pqfs` containers and wire formats are unchanged.
+
+- New `PqClassicalProvider` seam (the classical counterpart to
+  `PqLatticeProvider`): X25519 key agreement, Ed25519 and ECDSA-P256 signatures.
+  Register a native backend once at startup via `PqClassical.provider = ...`; the
+  default is `PqPureDartClassicalProvider` (`package:cryptography` + PointyCastle).
+- The **entire** classical half of the hybrid stack now delegates to
+  `PqClassical.provider`: `PqForgeHybridSigner`, the static
+  `PqForgeHybridKeyAgreement.x25519SharedSecret`, **and** the live-keypair
+  `PqForgeHybridKeyAgreement.generateClassicalKeyPair`/`initiate`/`accept`
+  handshake (X25519 keygen + both ECDH sides). A host (e.g. an FFI binding to
+  AWS-LC) can therefore hardware-accelerate the full hybrid handshake — matching
+  the existing lattice seam. Behaviour is unchanged on the default provider
+  (same `package:cryptography` under the seam), and because X25519 ECDH is
+  deterministic a native backend agrees byte-for-byte.
+- New conformance/agreement harness `test/support/classical_conformance.dart`:
+  X25519 ECDH and Ed25519 (RFC 8032) must be byte-identical across backends;
+  ECDSA-P256 is cross-verified, since its signatures are implementation-dependent
+  (pqforge uses RFC-6979; a native backend may be randomized).
+
 ## 0.2.2
 
 CLI lifecycle and developer tooling. No cryptographic or wire-format changes;
