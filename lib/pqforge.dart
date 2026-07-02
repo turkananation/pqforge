@@ -32,6 +32,7 @@ export 'src/cipher/pq_pointycastle_aead_engine.dart';
 export 'src/cipher/pq_secure_session.dart';
 export 'src/codecs/pq_streaming_envelope.dart';
 export 'src/hybrid/pq_classical_hybrid.dart';
+export 'src/hybrid/pq_classical_provider.dart';
 export 'src/hybrid/pq_cryptography_extensions.dart';
 export 'src/hybrid/pq_ecdsa_p256.dart';
 export 'src/hybrid/pq_hybrid_combiner.dart';
