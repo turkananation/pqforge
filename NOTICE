@@ -1,0 +1,15 @@
+pqforge — post-quantum cryptography toolkit for Dart
+Copyright (c) 2026 Turkana Nation
+
+From version 0.4.0 this software is dual-licensed: GNU Affero General Public
+License v3.0 only (see LICENSE), or a commercial license (see
+COMMERCIAL-LICENSE.md). Versions up to and including 0.3.0 were published
+under the MIT license; that grant remains valid for those versions.
+
+Companion package: pqforge_ffi (https://github.com/turkananation/pqforge_ffi)
+— hardware acceleration, same dual license; one commercial agreement can
+cover both.
+
+Third-party components remain under their own licenses — see their pub.dev
+pages: pqcrypto, pointycastle, cryptography, and the packages listed in
+pubspec.yaml.
