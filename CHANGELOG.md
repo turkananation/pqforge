@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+**BREAKING — license change.** From this version `pqforge` is dual-licensed:
+**AGPL-3.0-only** (see `LICENSE`) **or a commercial license** (see
+`COMMERCIAL-LICENSE.md`). Versions up to and including 0.3.0 remain MIT; that
+grant is irrevocable for those versions. Open-source use stays free under the
+AGPL (including its network-service clause); closed-source distribution or
+SaaS use requires a commercial license. One commercial agreement can cover
+both `pqforge` and its hardware-acceleration companion `pqforge_ffi`, which
+adopted the same dual license at its v0.1.0.
+
+No code, API, or wire-format changes in this entry.
+
 ## 0.3.0
 
 Swappable **classical** backend — the hardware-acceleration seam for the hybrid
