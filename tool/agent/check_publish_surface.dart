@@ -6,7 +6,9 @@ import 'dart:io';
 
 const _allowedTopLevel = <String>[
   'CHANGELOG.md',
+  'COMMERCIAL-LICENSE.md',
   'LICENSE',
+  'NOTICE',
   'README.md',
   'bin',
   'example',
