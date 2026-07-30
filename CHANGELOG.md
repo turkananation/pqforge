@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0
 
 **BREAKING — license change.** From this version `pqforge` is dual-licensed:
 **AGPL-3.0-only** (see `LICENSE`) **or a commercial license** (see
