@@ -309,3 +309,43 @@ dart run tool/agent/verify.dart quick
 dart run tool/agent/verify.dart full
 dart run tool/agent/verify.dart release  # run from a clean release checkout
 ```
+
+## Hardware Acceleration
+
+[`pqforge_ffi`](https://github.com/turkananation/pqforge_ffi) executes the
+lattice (ML-KEM / ML-DSA) and classical (X25519 / Ed25519) halves of this
+toolkit on [AWS-LC](https://github.com/aws/aws-lc) through `dart:ffi`.
+Register its providers once at startup and every `pqforge` API — envelopes,
+hybrid sessions, streaming, the CLI — runs accelerated, with a silent
+byte-compatible fallback to pure Dart when no native library is present:
+
+```dart
+PqLattice.provider = NativePqforgeLatticeProvider.open(libraryPath);
+PqClassical.provider = NativePqforgeClassicalProvider.open(libraryPath);
+```
+
+Prebuilt, checksum-manifested libraries ship with each
+[`pqforge_ffi` release](https://github.com/turkananation/pqforge_ffi/releases)
+— verify a download against its `SHA256SUMS` before loading it. The core
+library entrypoint (`package:pqforge/pqforge.dart`) remains pure Dart and
+web-safe regardless.
+
+## Licensing
+
+From **v0.4.0**, `pqforge` is **dual-licensed** — choose the option that fits
+how you ship:
+
+- **[AGPL-3.0-only](LICENSE)** — free, for open-source use. If you distribute
+  an application built on `pqforge`, or let users interact with one over a
+  network (SaaS, APIs, hosted apps), the AGPL requires you to make that
+  application's complete source code available under the same license.
+- **[Commercial](COMMERCIAL-LICENSE.md)** — for closed-source or proprietary
+  products and services. One agreement can cover `pqforge` and `pqforge_ffi`
+  together. Contact
+  **[turkananation@gmail.com](mailto:turkananation@gmail.com)** with subject
+  `pqforge commercial license`.
+
+Versions up to and including **0.3.0** were published under the MIT license;
+that grant remains valid for those historical versions. In plain terms:
+open-source projects use the whole stack freely; businesses that keep their
+code closed purchase a license.
