@@ -277,5 +277,5 @@ and emits a warning.
 - [`example/file_encryption_example.dart`](../example/file_encryption_example.dart) — file envelopes + key custody
 - [`example/hybrid_combiner_example.dart`](../example/hybrid_combiner_example.dart) — `PqForgeCombiner` (Options A & B)
 - [`example/secure_session_example.dart`](../example/secure_session_example.dart) — `PqForgeSecureSession` across both backends
-- [`example/hybrid_key_agreement_example.dart`](../example/hybrid_key_agreement_example.dart) — X25519 + ML-KEM and ML-DSA + Ed25519
+- [`example/hybrid_key_agreement_example.dart`](../example/hybrid_key_agreement_example.dart) — X25519 + ML-KEM, ML-DSA and SLH-DSA + Ed25519
 - [`example/catalog_recipes_example.dart`](../example/catalog_recipes_example.dart) — webhook, sealed email, and signed token recipes

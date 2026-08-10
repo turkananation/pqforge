@@ -24,7 +24,7 @@ workflows.
 [![Wiki sync](https://img.shields.io/badge/Workflow-Wiki_sync-111827?style=for-the-badge&logo=githubactions&logoColor=white)](.github/workflows/sync-wiki.yml)
 [![llms.txt](https://img.shields.io/badge/AI-llms.txt-7c3aed?style=for-the-badge)](llms.txt)
 
-`pqforge` turns `pqcrypto` ML-KEM and ML-DSA primitives into practical,
+`pqforge` turns `pqcrypto` ML-KEM, ML-DSA and SLH-DSA primitives into practical,
 domain-separated application workflows: encrypted files, folders, text, media,
 email payloads, records, signed documents, signed webhooks, signed tokens,
 release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody,
