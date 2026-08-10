@@ -24,6 +24,9 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+import 'package:pqforge/src/hybrid/pqforge_hybrid_key_agreement.dart';
+
 import '../algorithms/pq_algorithms.dart';
 import '../algorithms/pq_fips.dart';
 import '../cipher/pq_cipher_suite.dart';

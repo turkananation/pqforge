@@ -9,7 +9,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
-import 'package:pqforge/pqforge.dart';
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 import 'src/console.dart';
 import 'src/hybrid_commands.dart';
