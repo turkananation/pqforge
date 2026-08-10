@@ -2,6 +2,8 @@
 
 ## 0.4.0
 
+Prepare to land SLH-DSA from pqcrypto into pqforge. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.
+
 ## 0.3.0
 
 Swappable **classical** backend — the hardware-acceleration seam for the hybrid
