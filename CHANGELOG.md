@@ -2,16 +2,7 @@
 
 ## 0.4.0
 
-**BREAKING — license change.** From this version `pqforge` is dual-licensed:
-**AGPL-3.0-only** (see `LICENSE`) **or a commercial license** (see
-`COMMERCIAL-LICENSE.md`). Versions up to and including 0.3.0 remain MIT; that
-grant is irrevocable for those versions. Open-source use stays free under the
-AGPL (including its network-service clause); closed-source distribution or
-SaaS use requires a commercial license. One commercial agreement can cover
-both `pqforge` and its hardware-acceleration companion `pqforge_ffi`, which
-adopted the same dual license at its v0.1.0.
-
-No code, API, or wire-format changes in this entry.
+Prepare to land SLH-DSA from pqcrypto into pqforge. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.
 
 ## 0.3.0
 
@@ -218,6 +209,6 @@ faster default engine — all on the pure-Dart, web-safe core.
 - Added binary and JSON envelope v1 formats.
 - Added combined key bundles, portable key-store interfaces passphrase key wrapping, document signing, encrypted records/files, signed logs, identity bindings, artifact signing, dual-signature combiners, and isolate DTOs.
 - Added the `/doc` documentation system, CI workflow, and expanded tests.
-- Added typed ML-KEM and ML-DSA profiles for compact, balanced, and maximum parameter choices.
+- Added typed ML-KEM, ML-DSA and SLH-DSA profiles for compact, balanced, and maximum parameter choices.
 - Added ML-DSA detached signatures, ML-KEM KEM-DEM sealing/opening, signed encrypted envelopes, HKDF-SHA256 hybrid session derivation, AES-GCM helpers,transcript framing utilities, and strict byte-length checks.
 - Added segmented examples and focused composition tests.

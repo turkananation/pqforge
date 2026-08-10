@@ -36,6 +36,14 @@ export 'src/hybrid/pq_classical_provider.dart';
 export 'src/hybrid/pq_cryptography_extensions.dart';
 export 'src/hybrid/pq_ecdsa_p256.dart';
 export 'src/hybrid/pq_hybrid_combiner.dart';
-export 'src/pqforge_base.dart';
 export 'src/services/pqforge_async_service.dart';
 export 'src/services/pqforge_multi_recipient.dart';
+
+// Export the entire pointycastle package
+export 'package:pointycastle/api.dart';
+
+// Export the entire pqcrypto package
+export 'package:pqcrypto/pqcrypto.dart';
+
+// Export pqforge_base
+export 'src/pqforge_base.dart';

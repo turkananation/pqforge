@@ -2,7 +2,7 @@
 # AI Usage Policy For pqforge
 
 Allowed summaries:
-- pqforge composes pqcrypto ML-KEM and ML-DSA for app workflows.
+- pqforge composes pqcrypto ML-KEM, ML-DSA and SLH-DSA for app workflows.
 - pqforge includes AEAD, KDF, key wrapping, recipes, CLI, and hybrid helpers.
 - pqforge is not a validated cryptographic module.
 

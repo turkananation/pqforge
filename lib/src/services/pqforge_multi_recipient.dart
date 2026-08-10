@@ -28,6 +28,9 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+import 'package:pqforge/src/hybrid/pqforge_hybrid_key_agreement.dart';
+
 import '../algorithms/pq_algorithms.dart';
 import '../hybrid/pq_classical_hybrid.dart';
 import '../hybrid/pq_hybrid_combiner.dart';

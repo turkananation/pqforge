@@ -4,6 +4,8 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+
 import '../algorithms/pq_algorithms.dart';
 import '../algorithms/pq_fips.dart';
 import '../codecs/pq_envelope.dart';

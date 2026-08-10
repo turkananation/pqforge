@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge.dart';
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 import 'package:test/test.dart';
 
 void main() {

@@ -3,9 +3,8 @@ library;
 
 import 'dart:async';
 
-import '../algorithms/pq_algorithms.dart';
-import '../services/pqforge_service.dart';
-import 'pq_keys.dart';
+import 'package:pqforge/pqforge.dart';
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 typedef PqKeyCustodyPut =
     FutureOr<void> Function(String storageId, Map<String, Object?> document);

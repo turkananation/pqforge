@@ -3,6 +3,8 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+
 const pqForgeEnvelopeMagic = 'PQF1';
 
 /// Envelope format version. Signatures are computed over a pre-hashed digest —
@@ -224,15 +226,6 @@ class PqForgeProfile {
       );
     }
   }
-}
-
-class PqForgeException implements Exception {
-  const PqForgeException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => 'PqForgeException: $message';
 }
 
 void requireLength(String name, Uint8List value, int expected) {
