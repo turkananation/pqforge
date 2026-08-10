@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge.dart';
+import 'package:pqforge/src/hybrid/pqforge_hybrid_key_agreement.dart';
+import 'package:pqforge/src/hybrid/pqforge_hybrid_signer.dart';
 import 'package:test/test.dart';
 
 import 'support/classical_conformance.dart';

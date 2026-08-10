@@ -12,15 +12,8 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import '../algorithms/pq_algorithms.dart';
-import '../algorithms/pq_fips.dart';
-import '../cipher/pq_cipher_suite.dart';
-import '../cipher/pq_cryptography_aead_engine.dart';
-import '../codecs/pq_streaming_envelope.dart';
-import '../primitives/pq_primitives.dart';
-import 'pqforge_async_service.dart';
-import 'pqforge_multi_recipient.dart';
-import 'pqforge_service.dart';
+import 'package:pqforge/pqforge.dart';
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 /// Outcome of a streaming encrypt/decrypt: byte and frame counts for logging.
 class PqStreamingStats {

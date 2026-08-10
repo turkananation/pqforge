@@ -19,8 +19,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../algorithms/pq_algorithms.dart';
-import '../primitives/pq_primitives.dart';
+import '../pqforge_base.dart';
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 /// One file to pack: its archive-relative path and its on-disk source path.
 class PqPackEntry {

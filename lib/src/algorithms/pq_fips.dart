@@ -22,8 +22,9 @@
 /// `doc/technical/SCOPE_AUDIT_AND_LIMITS.md` §5.
 library;
 
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+
 import '../cipher/pq_cipher_suite.dart';
-import 'pq_algorithms.dart';
 
 /// KDF identifiers stored in wrapped-key JSON (`PqWrappedKey.kdf`).
 abstract final class PqKdf {

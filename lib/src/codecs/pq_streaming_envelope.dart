@@ -12,6 +12,8 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+
 import '../algorithms/pq_algorithms.dart';
 import '../cipher/pq_cipher_suite.dart';
 import '../primitives/pq_primitives.dart';

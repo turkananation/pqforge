@@ -6,6 +6,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 import '../algorithms/pq_algorithms.dart';
 import '../algorithms/pq_lattice_provider.dart';

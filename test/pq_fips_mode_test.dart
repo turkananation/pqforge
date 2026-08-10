@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge_io.dart';
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 import 'package:test/test.dart';
 
 /// F4: the FIPS deployment policy. Algorithms were already the approved set;

@@ -280,7 +280,7 @@
   "faq": [
     {
       "question": "What is pqforge?",
-      "answer": "pqforge is a pure-Dart post-quantum application toolkit. It turns the ML-KEM and ML-DSA primitives from pqcrypto into encrypted files, folders, text, media, email payloads, records, signed documents, signed webhooks, signed tokens, release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody, and a universal CLI."
+      "answer": "pqforge is a pure-Dart post-quantum application toolkit. It turns the ML-KEM, ML-DSA and SLH-DSA primitives from pqcrypto into encrypted files, folders, text, media, email payloads, records, signed documents, signed webhooks, signed tokens, release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody, and a universal CLI."
     },
     {
       "question": "How is pqforge different from pqcrypto?",
@@ -332,7 +332,7 @@
     },
     {
       "question": "Where does the CLI store keys?",
-      "answer": "In the directory passed to keygen --out-dir. Public keys are raw JSON. Secret keys are wrapped JSON when a passphrase source is supplied. keygen emits the full hybrid keyset by default: ML-KEM and ML-DSA plus X25519, Ed25519, and ECDSA-P256."
+      "answer": "In the directory passed to keygen --out-dir. Public keys are raw JSON. Secret keys are wrapped JSON when a passphrase source is supplied. keygen emits the full hybrid keyset by default: ML-KEM, ML-DSA and SLH-DSA plus X25519, Ed25519, and ECDSA-P256."
     },
     {
       "question": "Are CLI keys password protected?",

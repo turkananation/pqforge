@@ -8,6 +8,9 @@ import 'dart:typed_data';
 
 import 'package:args/command_runner.dart';
 import 'package:pqforge/pqforge.dart';
+import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+import 'package:pqforge/src/hybrid/pq_hybrid_signature.dart';
+import 'package:pqforge/src/hybrid/pqforge_hybrid_signer.dart';
 
 import 'console.dart';
 import 'support.dart';
