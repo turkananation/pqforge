@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:pqforge/pqforge_io.dart';
+import 'package:pqforge/pqforge.dart';
 import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 class PqHybridSignature {

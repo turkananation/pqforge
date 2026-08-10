@@ -45,5 +45,5 @@ export 'package:pointycastle/api.dart';
 // Export the entire pqcrypto package
 export 'package:pqcrypto/pqcrypto.dart';
 
-// Export the base pqforge base
+// Export pqforge_base
 export 'src/pqforge_base.dart';
