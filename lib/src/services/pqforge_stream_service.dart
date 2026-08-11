@@ -12,8 +12,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+import 'package:pqforge/pqforge_io.dart';
 
 /// Outcome of a streaming encrypt/decrypt: byte and frame counts for logging.
 class PqStreamingStats {

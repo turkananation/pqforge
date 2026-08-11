@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 import 'package:test/test.dart';
 
 /// R10: the uint64 codec arithmetic is encoded as two uint32 halves so it

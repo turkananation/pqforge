@@ -10,7 +10,6 @@ import 'dart:typed_data';
 import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
 import 'package:pqforge/pqforge_io.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 import 'console.dart';
 import 'support.dart';
