@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+Minor fixes and documentation. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.
+
 ## 0.4.0
 
 Prepare to land SLH-DSA from pqcrypto into pqforge. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.
