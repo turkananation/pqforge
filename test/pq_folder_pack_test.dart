@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge_io.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 import 'package:test/test.dart';
 
 /// Phase 8: the sequential folder packer collapses a tree into one stream

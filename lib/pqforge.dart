@@ -26,16 +26,37 @@
 /// builds, so you only pay for the APIs you actually call.
 library;
 
+export 'src/algorithms/pq_algorithms.dart';
+export 'src/algorithms/pq_fips.dart';
+export 'src/algorithms/pq_lattice_provider.dart';
+
+export 'src/keys/pq_key_custody.dart';
+export 'src/keys/pq_keys.dart';
+
+export 'src/exceptions/pqforge_exception.dart';
+export 'src/primitives/pq_primitives.dart';
+export 'src/recipes/pq_recipes.dart';
+
 export 'src/cipher/pq_cipher_suite.dart';
-export 'src/cipher/pq_cryptography_aead_engine.dart';
 export 'src/cipher/pq_pointycastle_aead_engine.dart';
+export 'src/cipher/pq_cryptography_aead_engine.dart';
 export 'src/cipher/pq_secure_session.dart';
+
+export 'src/codecs/pq_envelope.dart';
 export 'src/codecs/pq_streaming_envelope.dart';
+
+export 'src/hybrid/pq_hybrid_combiner.dart';
 export 'src/hybrid/pq_classical_hybrid.dart';
 export 'src/hybrid/pq_classical_provider.dart';
 export 'src/hybrid/pq_cryptography_extensions.dart';
 export 'src/hybrid/pq_ecdsa_p256.dart';
-export 'src/hybrid/pq_hybrid_combiner.dart';
+export 'src/hybrid/pqforge_hybrid_signer.dart';
+export 'src/hybrid/pq_hybrid_signature.dart';
+export 'src/hybrid/pqforge_hybrid_key_agreement.dart';
+export 'src/hybrid/pq_hybrid_key_agreement_request.dart';
+export 'src/hybrid/pq_hybrid_key_agreement_result.dart';
+
+export 'src/services/pqforge_service.dart';
 export 'src/services/pqforge_async_service.dart';
 export 'src/services/pqforge_multi_recipient.dart';
 
@@ -44,6 +65,3 @@ export 'package:pointycastle/api.dart';
 
 // Export the entire pqcrypto package
 export 'package:pqcrypto/pqcrypto.dart';
-
-// Export pqforge_base
-export 'src/pqforge_base.dart';

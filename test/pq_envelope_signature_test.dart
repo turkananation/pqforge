@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 import 'package:test/test.dart';
 
 /// Phase 2 (defect M1): envelope signatures are computed over a 32-byte digest

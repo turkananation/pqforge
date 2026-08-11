@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/src/hybrid/pq_hybrid_key_agreement_request.dart';
 
 class PqHybridKeyAgreementResult {
   PqHybridKeyAgreementResult({
