@@ -14,7 +14,7 @@
     "CLI"
   ],
   "license": "MIT",
-  "softwareVersion": "0.4.2",
+  "softwareVersion": "0.4.3",
   "applicationCategory": "Cryptography composition library",
   "keywords": [
     "Dart post-quantum encryption",
