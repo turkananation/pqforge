@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+
+Minor fixes and documentation: Exported more files from the library for external use. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.
+
 ## 0.4.1
 
 Minor fixes and documentation. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.

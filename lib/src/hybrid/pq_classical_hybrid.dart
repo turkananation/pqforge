@@ -10,7 +10,6 @@ library;
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 enum PqClassicalKeyAgreementAlgorithm {
   x25519(id: 'x25519', publicKeyBytes: 32, sharedSecretBytes: 32);

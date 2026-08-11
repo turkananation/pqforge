@@ -4,7 +4,6 @@ library;
 import 'dart:async';
 
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 typedef PqKeyCustodyPut =
     FutureOr<void> Function(String storageId, Map<String, Object?> document);

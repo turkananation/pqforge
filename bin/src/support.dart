@@ -12,7 +12,6 @@ import 'dart:typed_data';
 
 import 'package:args/args.dart';
 import 'package:pqforge/pqforge.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 // --- key kinds the CLI writes for classical material -----------------------
 //

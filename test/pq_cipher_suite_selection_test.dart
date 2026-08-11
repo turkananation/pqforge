@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:pqforge/pqforge_io.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 import 'package:test/test.dart';
 
 /// R3: ChaCha20-Poly1305 suite selection — non-default containers record an
