@@ -118,4 +118,52 @@ void main() {
       );
     });
   });
+
+  group('PqBytes.sha512', () {
+    test('sha512OfStream matches one-shot digest', () async {
+      final data = Uint8List.fromList(
+        List<int>.generate(4096, (i) => (i * 97 + 3) & 0xFF),
+      );
+      final whole = PqBytes.sha512(data);
+      expect(whole, hasLength(64));
+      for (final chunkSize in [1, 64, 1024, data.length]) {
+        final stream = Stream<List<int>>.fromIterable([
+          for (var i = 0; i < data.length; i += chunkSize)
+            data.sublist(
+              i,
+              i + chunkSize > data.length ? data.length : i + chunkSize,
+            ),
+        ]);
+        expect(
+          await PqBytes.sha512OfStream(stream),
+          whole,
+          reason: 'chunk size $chunkSize',
+        );
+      }
+    });
+
+    test('hashes the empty input', () async {
+      expect(
+        PqBytes.sha512(Uint8List(0)),
+        await PqBytes.sha512OfStream(const Stream<List<int>>.empty()),
+      );
+    });
+  });
+
+  group('PqBytes.hmacSha512', () {
+    test('produces 64-byte tag', () {
+      final tag = PqBytes.hmacSha512(
+        key: PqBytes.utf8Bytes('key'),
+        data: PqBytes.utf8Bytes('data'),
+      );
+      expect(tag, hasLength(64));
+      expect(
+        tag,
+        PqBytes.hmacSha512(
+          key: PqBytes.utf8Bytes('key'),
+          data: PqBytes.utf8Bytes('data'),
+        ),
+      );
+    });
+  });
 }

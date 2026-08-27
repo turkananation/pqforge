@@ -425,6 +425,45 @@ dart run pqforge ecdsa-verify \
 `verify`, `hybrid-verify`, and `ecdsa-verify` exit `0` on a valid signature and
 `1` on a failed one, so they slot directly into shell `&&` chains and CI gates.
 
+## Threshold roots (pqthreshold companion)
+
+**pqforge** covers **single-party** hybrid keys on each device (ML-KEM, ML-DSA,
+X25519, Ed25519, ECDSA-P256). **Organizational / enclave roots** that no single
+officer holds use the sibling package [**pqthreshold**](https://pub.dev/packages/pqthreshold)
+— FROST Ed25519 threshold signing, Feldman VSS, and Gennaro DKG.
+
+Use both tools with the **same custody model**: public material as JSON or `.pqth`
+files; secrets wrapped with `PqWrappedKey` (Argon2id + AES-256-GCM) and
+`--passphrase-env PQFORGE_PASSPHRASE` (or `--passphrase-file`).
+
+### Typical stack workflow
+
+```bash
+# 1) Device identity / sealing keys (each member) — pqforge
+export PQFORGE_PASSPHRASE='load-from-secret-manager'
+dart run pqforge keygen --key-id officer-alice --out-dir ~/.pq/keys/alice \
+  --passphrase-env PQFORGE_PASSPHRASE
+
+# 2) Threshold root parameters (officers) — pqthreshold CLI
+dart pub global activate pqthreshold   # or: dart run pqthreshold from a clone
+pqthreshold params export --t 3 --n 5 --out root-ceremony/params.pqth
+pqthreshold inspect --in root-ceremony/params.pqth
+
+# 3) DKG + threshold signing (Phase 3+) — pqthreshold ceremony commands
+#    Combined signatures verify as ordinary Ed25519 (hybrid-verify / PqClassical)
+```
+
+| Concern | Tool |
+| ------- | ---- |
+| Day-to-day encrypt / sign / hybrid workflows | **pqforge** (this CLI) |
+| Root DKG, shares, quorum signing | **pqthreshold** |
+| Wrapped secret storage | Same `PqWrappedKey` envelope for both |
+| Combined root signature verify | **pqforge** `verify` / Ed25519 path on joint public key |
+
+Full cross-package terminal runbook:
+[pqthreshold `doc/TERMINAL.md`](https://github.com/turkananation/pqthreshold/blob/main/doc/TERMINAL.md).
+Ceremony logic: [pqthreshold `doc/CEREMONIES.md`](https://github.com/turkananation/pqthreshold/blob/main/doc/CEREMONIES.md).
+
 ## Color And Help
 
 Run `pqforge` with no arguments (or `pqforge --help`) for a grouped command

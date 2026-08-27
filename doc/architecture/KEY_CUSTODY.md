@@ -24,6 +24,13 @@ consume secret keys accept those wrapped files and unwrap them only in process.
 If no passphrase source is provided, `keygen` writes raw secret-key JSON and
 prints a warning; use that only for disposable local tests.
 
+**Threshold roots:** the companion package
+[pqthreshold](https://pub.dev/packages/pqthreshold) uses the same
+`PqWrappedKey` envelope for threshold **share** secrets (`*.share.wrapped.json`).
+Device keys stay on pqforge; organizational DKG roots stay on pqthreshold. See
+[pqthreshold `doc/TERMINAL.md`](https://github.com/turkananation/pqthreshold/blob/main/doc/TERMINAL.md)
+and [CLI.md](../CLI.md) § Threshold roots.
+
 ```dart
 final backing = <String, Map<String, Object?>>{};
 final store = PqCallbackKeyCustodyStore(

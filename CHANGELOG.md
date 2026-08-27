@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4
+
+- **`PqBytes.sha512`**, **`PqBytes.sha512OfStream`**, and **`PqBytes.hmacSha512`** — SHA-512 helpers for protocols (e.g. FROST-Ed25519) that need a 512-bit digest facade alongside the existing SHA-256 APIs. Additive only; no wire-format changes.
+
 ## 0.4.3
 
 Update pqcrypto to the latest '^0.4.1'. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.

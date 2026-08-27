@@ -24,6 +24,7 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | Performance, memory, and engine choice | [technical/PERFORMANCE_AUDIT_AND_HYBRID_CLI.md](technical/PERFORMANCE_AUDIT_AND_HYBRID_CLI.md) |
 | Container formats (`.pqf` / `.pqfs`) | [architecture/ENVELOPE_FORMATS.md](architecture/ENVELOPE_FORMATS.md) |
 | Key custody | [architecture/KEY_CUSTODY.md](architecture/KEY_CUSTODY.md) |
+| Threshold roots / DKG (companion CLI) | [pqthreshold TERMINAL.md](https://github.com/turkananation/pqthreshold/blob/main/doc/TERMINAL.md) · [CLI.md](CLI.md) § Threshold roots |
 | Threat model | [security/THREAT_MODEL.md](security/THREAT_MODEL.md) |
 | Claim boundary | [security/CLAIM_BOUNDARY.md](security/CLAIM_BOUNDARY.md) |
 | GitHub Pages and AI discovery generation | [../tool/visibility/README.md](../tool/visibility/README.md) |

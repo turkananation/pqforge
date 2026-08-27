@@ -136,6 +136,9 @@ class PqBytes {
 
   static Uint8List sha256(Uint8List data) => pc.SHA256Digest().process(data);
 
+  /// SHA-512 one-shot digest (64 bytes).
+  static Uint8List sha512(Uint8List data) => pc.SHA512Digest().process(data);
+
   /// SHA-256 over a byte stream in O(1) memory — one digest update per chunk,
   /// never the whole input. This is what lets the CLI pre-hash gigabyte-scale
   /// artifacts for digest-mode signing without buffering them.
@@ -150,11 +153,32 @@ class PqBytes {
     return out;
   }
 
+  /// SHA-512 over a byte stream in O(1) memory.
+  static Future<Uint8List> sha512OfStream(Stream<List<int>> chunks) async {
+    final digest = pc.SHA512Digest();
+    await for (final chunk in chunks) {
+      final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+      digest.update(bytes, 0, bytes.length);
+    }
+    final out = Uint8List(digest.digestSize);
+    digest.doFinal(out, 0);
+    return out;
+  }
+
   static Uint8List hmacSha256({
     required Uint8List key,
     required Uint8List data,
   }) {
     final hmac = pc.HMac(pc.SHA256Digest(), 64)..init(pc.KeyParameter(key));
+    return hmac.process(data);
+  }
+
+  /// HMAC-SHA-512 (64-byte tag).
+  static Uint8List hmacSha512({
+    required Uint8List key,
+    required Uint8List data,
+  }) {
+    final hmac = pc.HMac(pc.SHA512Digest(), 128)..init(pc.KeyParameter(key));
     return hmac.process(data);
   }
 
@@ -184,10 +208,15 @@ class PqForgeBytes {
   static Uint8List lengthPrefixed(Iterable<Uint8List> fields) =>
       PqBytes.lengthPrefixed(fields);
   static Uint8List sha256(Uint8List data) => PqBytes.sha256(data);
+  static Uint8List sha512(Uint8List data) => PqBytes.sha512(data);
   static Uint8List hmacSha256({
     required Uint8List key,
     required Uint8List data,
   }) => PqBytes.hmacSha256(key: key, data: data);
+  static Uint8List hmacSha512({
+    required Uint8List key,
+    required Uint8List data,
+  }) => PqBytes.hmacSha512(key: key, data: data);
   static bool constantTimeEquals(Uint8List expected, Uint8List supplied) =>
       PqBytes.constantTimeEquals(expected, supplied);
 }
