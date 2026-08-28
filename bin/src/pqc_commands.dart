@@ -12,6 +12,7 @@ import 'package:args/command_runner.dart';
 import 'package:pqforge/pqforge_io.dart';
 
 import 'console.dart';
+import 'progress_reporter.dart';
 import 'support.dart';
 
 const _profiles = ['compact', 'balanced', 'maximum'];
@@ -61,6 +62,12 @@ final class KeygenCommand extends Command<void> {
         negatable: false,
         help: 'Skip the ML-KEM/ML-DSA bundle and emit only classical keys.',
       )
+      ..addFlag(
+        'quiet',
+        abbr: 'q',
+        negatable: false,
+        help: 'Mute verbose line-by-line file completion summaries.',
+      )
       ..addOption(
         'argon-iterations',
         defaultsTo: '2',
@@ -89,6 +96,7 @@ final class KeygenCommand extends Command<void> {
             'this only on machines with RAM to spare.',
       );
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -385,6 +393,7 @@ final class EncryptCommand extends Command<void> {
     addEngineOption(argParser);
     addCipherOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -538,6 +547,7 @@ final class DecryptCommand extends Command<void> {
     addHybridDecryptOptions(argParser);
     addEngineOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -687,6 +697,7 @@ final class EncryptFolderCommand extends Command<void> {
     addEngineOption(argParser);
     addCipherOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -704,67 +715,96 @@ final class EncryptFolderCommand extends Command<void> {
   @override
   Future<void> run() async {
     final results = argResults!;
-    final passphrase = await passphraseFrom(results);
-    final recipients = await recipientsFrom(results);
-    final inputDir = Directory(results['in-dir'] as String);
-    final outputDir = Directory(results['out-dir'] as String);
-    final profile = resolveProfile(results);
-    final signer = await optionalSignerSecret(results, passphrase);
-    final aad = optionalAad(results);
-    final keyId = signerKeyId(results, signer);
-    final concurrency = concurrencyFrom(results);
-    final engineProvider = engineFrom(results);
-    final cipher = cipherFrom(results);
+    final passphrase = await passphraseFrom(results); //
+    final recipients = await recipientsFrom(results); //
+    final inputDir = Directory(results['in-dir'] as String); //
+    final outputDir = Directory(results['out-dir'] as String); //
+    final profile = resolveProfile(results); //
+    final signer = await optionalSignerSecret(results, passphrase); //
+    final aad = optionalAad(results); //
+    final keyId = signerKeyId(results, signer); //
+    final concurrency = concurrencyFrom(results); //
+    final engineProvider = engineFrom(results); //
+    final cipher = cipherFrom(results); //
 
-    // Axis B: one file per background isolate, gated by a semaphore. Each file
-    // gets its own DEM key by construction, so there is no shared-nonce hazard.
-    // The walk is streamed straight into the pool — work starts on the first
-    // file found, and no sorted whole-tree list is ever materialized.
-    final pool = Semaphore(concurrency);
+    // Check for optional global `--quiet` flag definition safely
+    final quietMode = results.wasParsed('quiet')
+        ? results['quiet'] as bool
+        : false;
+
+    // List files with safe handling of unreadable entries
+    final files = await listFiles(
+      inputDir,
+      onSkipped: (path, error) {
+        if (!quietMode) console.warn('skipping $path: $error'); //
+      },
+    );
+
+    // Progress reporter for live console updates configured for metrics + throttle
+    final progress = ProgressReporter(
+      total: files.length,
+      operation: 'encrypting',
+      showPath: true,
+      quiet: quietMode,
+    );
+
+    // Axis B: Bounded concurrency isolate pipeline pool
+    final pool = Semaphore(concurrency); //
     final tasks = <Future<void>>[];
-    await for (final entity in inputDir.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is! File) continue;
-      final relativePath = safeRelativePath(inputDir, entity);
+    for (final entity in files) {
+      final relativePath = safeRelativePath(inputDir, entity); //
+
+      // Determine file metric constraints before isolate capture
+      int fileSizeBytes = 0;
+      try {
+        fileSizeBytes = entity.lengthSync();
+      } on FileSystemException {
+        // Fallback catch if stat read blocks under OS layers
+      }
+
       tasks.add(() async {
-        await pool.acquire();
+        await pool.acquire(); //
         try {
+          // Precise start hook triggered exactly when the isolate clears wait states
+          progress.startFile(relativePath, fileSizeBytes: fileSizeBytes);
+
           await _encryptFolderEntryInIsolate(
-            recipientPublicKey: recipients.primary.bytes,
-            recipientKexPublicKey: recipients.primaryKex?.bytes,
-            additionalRecipients: recipients.additional,
-            recipientKeyId: recipients.primary.keyId,
-            profile: profile,
-            inputPath: entity.path,
-            outputPath: joinPath(outputDir.path, '$relativePath.pqf'),
-            relativePath: relativePath,
-            aad: aad,
-            signerSecretKey: signer?.bytes,
-            signerKeyId: keyId,
-            engineProvider: engineProvider,
-            cipherSuite: cipher,
+            recipientPublicKey: recipients.primary.bytes, //
+            recipientKexPublicKey: recipients.primaryKex?.bytes, //
+            additionalRecipients: recipients.additional, //
+            recipientKeyId: recipients.primary.keyId, //
+            profile: profile, //
+            inputPath: entity.path, //
+            outputPath: joinPath(outputDir.path, '$relativePath.pqf'), //
+            relativePath: relativePath, //
+            aad: aad, //
+            signerSecretKey: signer?.bytes, //
+            signerKeyId: keyId, //
+            engineProvider: engineProvider, //
+            cipherSuite: cipher, //
           );
+          progress.completeFile(relativePath); //
+        } catch (e) {
+          progress.failFile(relativePath, e.toString()); //
         } finally {
-          pool.release();
+          pool.release(); //
         }
       }());
     }
-    await Future.wait(tasks);
-    console.success(
-      'Encrypted ${tasks.length} file(s) to ${profile.name} envelopes '
-      '(concurrency $concurrency)',
-    );
-    _printSuite(
-      profile: profile,
-      hybrid: recipients.hybrid,
-      suite: cipher,
-      engine: engineProvider,
-      signature: signer == null ? null : profile.signature,
-      additionalRecipients: recipients.additional.length,
-    );
-    console.detail('output', outputDir.path);
+    await Future.wait(tasks); //
+    progress.done(); //
+
+    if (!quietMode) {
+      _printSuite(
+        profile: profile, //
+        hybrid: recipients.hybrid, //
+        suite: cipher, //
+        engine: engineProvider, //
+        signature: signer == null ? null : profile.signature, //
+        additionalRecipients: recipients.additional.length, //
+      );
+      console.detail('output', outputDir.path); //
+    }
   }
 }
 
@@ -880,6 +920,7 @@ final class DecryptFolderCommand extends Command<void> {
     addHybridDecryptOptions(argParser);
     addEngineOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -899,63 +940,95 @@ final class DecryptFolderCommand extends Command<void> {
   @override
   Future<void> run() async {
     final results = argResults!;
-    final passphrase = await passphraseFrom(results);
+    final passphrase = await passphraseFrom(results); //
     final recipient = await readKey(
-      results['recipient-secret'] as String,
-      passphrase: passphrase,
+      results['recipient-secret'] as String, //
+      passphrase: passphrase, //
     );
-    requireKind(recipient, PqKeyKind.kemSecret);
-    // Trees can mix hybrid and pure-PQC entries, so the X25519 key is resolved
-    // opportunistically up front; a hybrid entry with no key fails per-file
-    // with the library's descriptive error.
-    final kexSecret = await hybridKexSecretFrom(
-      results,
-      passphrase,
-      hybridInput: false,
-      discover: true,
-    );
-    final inputDir = Directory(results['in-dir'] as String);
-    final outputDir = Directory(results['out-dir'] as String);
-    final signer = await optionalPublicKey(
-      results['signer-public'] as String?,
-      PqKeyKind.signaturePublic,
-    );
-    final aad = optionalAad(results);
-    final concurrency = concurrencyFrom(results);
-    final engineProvider = engineFrom(results);
+    requireKind(recipient, PqKeyKind.kemSecret); //
 
-    // Streamed walk into the bounded pool (mirrors encrypt-folder).
-    final pool = Semaphore(concurrency);
+    final kexSecret = await hybridKexSecretFrom(
+      results, //
+      passphrase, //
+      hybridInput: false, //
+      discover: true, //
+    );
+    final inputDir = Directory(results['in-dir'] as String); //
+    final outputDir = Directory(results['out-dir'] as String); //
+    final signer = await optionalPublicKey(
+      results['signer-public'] as String?, //
+      PqKeyKind.signaturePublic, //
+    );
+    final aad = optionalAad(results); //
+    final concurrency = concurrencyFrom(results); //
+    final engineProvider = engineFrom(results); //
+
+    final quietMode = results.wasParsed('quiet')
+        ? results['quiet'] as bool
+        : false;
+
+    // List .pqf files with safe handling of unreadable entries
+    final files = await listFiles(
+      inputDir,
+      onSkipped: (path, error) {
+        if (!quietMode) console.warn('skipping $path: $error'); //
+      },
+    );
+
+    // Filter down strictly to active payload envelopes
+    final pqfFiles = files.where((f) => f.path.endsWith('.pqf')).toList(); //
+
+    // High-performance progress reporter initialization
+    final progress = ProgressReporter(
+      total: pqfFiles.length,
+      operation: 'decrypting',
+      showPath: true,
+      quiet: quietMode,
+    );
+
+    // Bounded stream walk across independent worker blocks
+    final pool = Semaphore(concurrency); //
     final tasks = <Future<void>>[];
-    await for (final entity in inputDir.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is! File || !entity.path.endsWith('.pqf')) continue;
+    for (final entity in pqfFiles) {
+      // Determine artifact envelope sizing metrics prior to thread transfer
+      int fileSizeBytes = 0;
+      try {
+        fileSizeBytes = entity.lengthSync();
+      } on FileSystemException {
+        // Fallback safety catch
+      }
+
       tasks.add(() async {
-        await pool.acquire();
+        await pool.acquire(); //
         try {
+          // Precise start initialization sequence
+          progress.startFile(entity.path, fileSizeBytes: fileSizeBytes);
+
           await _decryptFolderEntryInIsolate(
-            recipientSecretKey: recipient.bytes,
-            recipientKexSecretKey: kexSecret?.bytes,
-            recipientKeyId: recipient.keyId,
-            inputPath: entity.path,
-            outputDirPath: outputDir.path,
-            aad: aad,
-            signerPublicKey: signer?.bytes,
-            engineProvider: engineProvider,
+            recipientSecretKey: recipient.bytes, //
+            recipientKexSecretKey: kexSecret?.bytes, //
+            recipientKeyId: recipient.keyId, //
+            inputPath: entity.path, //
+            outputDirPath: outputDir.path, //
+            aad: aad, //
+            signerPublicKey: signer?.bytes, //
+            engineProvider: engineProvider, //
           );
+          progress.completeFile(entity.path); //
+        } catch (e) {
+          progress.failFile(entity.path, e.toString()); //
         } finally {
-          pool.release();
+          pool.release(); //
         }
       }());
     }
-    await Future.wait(tasks);
-    console.success(
-      'Decrypted ${tasks.length} file(s) (concurrency $concurrency)',
-    );
-    console.detail('engine', engineLabel(engineProvider));
-    console.detail('output', outputDir.path);
+    await Future.wait(tasks); //
+    progress.done(); //
+
+    if (!quietMode) {
+      console.detail('engine', engineLabel(engineProvider)); //
+      console.detail('output', outputDir.path); //
+    }
   }
 }
 
@@ -1059,6 +1132,7 @@ final class EncryptTextCommand extends Command<void> {
       );
     addHybridEncryptOptions(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -1142,6 +1216,7 @@ final class DecryptTextCommand extends Command<void> {
       );
     addHybridDecryptOptions(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -1248,6 +1323,7 @@ final class EncryptMediaCommand extends Command<void> {
     addEngineOption(argParser);
     addCipherOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -1388,6 +1464,7 @@ final class DecryptMediaCommand extends Command<void> {
     addHybridDecryptOptions(argParser);
     addEngineOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -1530,6 +1607,7 @@ final class PackCommand extends Command<void> {
     addEngineOption(argParser);
     addCipherOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -1637,6 +1715,7 @@ final class UnpackCommand extends Command<void> {
     addHybridDecryptOptions(argParser);
     addEngineOption(argParser);
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -1912,6 +1991,7 @@ final class SignCommand extends Command<void> {
         help: 'Artifact version for kind=artifact.',
       );
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override

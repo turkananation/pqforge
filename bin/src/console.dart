@@ -102,6 +102,24 @@ class Console {
   /// A dim hint line, typically a "next step" suggestion.
   void hint(String message) => _out.writeln(ansi.gray(message));
 
+  /// Overwrites the current line on stdout with [message] (uses carriage
+  /// return). Use for live progress updates. When not a terminal, falls back
+  /// to a regular writeln so piped output stays clean.
+  void progress(String message) {
+    if (stdout.hasTerminal && ansi.enabled) {
+      _out.write('\r${ansi.cyan('⟳')} $message');
+    } else {
+      _out.writeln(message);
+    }
+  }
+
+  /// Clears the current progress line.
+  void progressDone() {
+    if (stdout.hasTerminal && ansi.enabled) {
+      _out.write('\r\x1B[2K');
+    }
+  }
+
   /// Raw, undecorated stdout — for pipeable data (e.g. decrypted text).
   void raw(String text) => _out.writeln(text);
 

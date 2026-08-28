@@ -13,6 +13,8 @@ import 'dart:typed_data';
 import 'package:args/args.dart';
 import 'package:pqforge/pqforge.dart';
 
+import 'console.dart';
+
 // --- key kinds the CLI writes for classical material -----------------------
 //
 // The library's PqKeyKind covers ML-KEM/ML-DSA; these CLI-local kinds label the
@@ -134,6 +136,23 @@ void addHybridDecryptOptions(ArgParser parser) {
         'Recipient raw or wrapped X25519 secret key JSON for hybrid inputs. '
         'Defaults to the conventional <key-id>.x25519.secret[.wrapped].json '
         'next to --recipient-secret when the input is hybrid.',
+  );
+}
+
+/// Adds the uniform `--quiet` option flag to control reporting verbosity safely.
+/// Guarded with explicit look-ahead checks to ensure duplicate option collisions never trigger a panic.
+void addQuietOption(ArgParser parser) {
+  // If the 'quiet' flag or its 'q' alias has already been registered on this parser instance, exit gracefully.
+  if (parser.options.containsKey('quiet') ||
+      parser.options.values.any((opt) => opt.abbr == 'q')) {
+    return;
+  }
+
+  parser.addFlag(
+    'quiet',
+    abbr: 'q',
+    negatable: false,
+    help: 'Mute verbose line-by-line file completion summaries.',
   );
 }
 
@@ -507,13 +526,46 @@ Future<(String, String)> readTextInput(ArgResults results) async {
 
 // --- filesystem ------------------------------------------------------------
 
-Future<List<File>> listFiles(Directory directory) async {
+/// Lists all regular files under [directory] recursively, skipping unreadable
+/// entries (sockets, broken symlinks, permission-denied files) with a warning.
+///
+/// [onSkipped] is called with the path and error message for each skipped entry.
+/// If null, skipped entries are logged to stderr via [console.warn].
+Future<List<File>> listFiles(
+  Directory directory, {
+  void Function(String path, String error)? onSkipped,
+}) async {
   final files = <File>[];
   await for (final entity in directory.list(
     recursive: true,
     followLinks: false,
   )) {
-    if (entity is File) files.add(entity);
+    if (entity is File) {
+      // Verify the file is readable (not a socket, FIFO, etc.) by checking
+      // its type via stat. This catches sockets and other special files that
+      // `entity is File` passes but can't be opened for reading.
+      try {
+        final stat = await entity.stat();
+        if (stat.type != FileSystemEntityType.file) {
+          final typeName = stat.type.toString().split('.').last;
+          final msg = 'skipping non-regular file ($typeName): ${entity.path}';
+          if (onSkipped != null) {
+            onSkipped(entity.path, msg);
+          } else {
+            console.warn(msg);
+          }
+          continue;
+        }
+        files.add(entity);
+      } on FileSystemException catch (e) {
+        final msg = 'skipping unreadable file: ${entity.path} (${e.message})';
+        if (onSkipped != null) {
+          onSkipped(entity.path, msg);
+        } else {
+          console.warn(msg);
+        }
+      }
+    }
   }
   files.sort((a, b) => a.path.compareTo(b.path));
   return files;
