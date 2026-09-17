@@ -17,11 +17,13 @@ wiki page.
 building blocks, and zero runtime dependencies. It does not expose classical
 KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
 
-`pqforge` supplies the composition layer around that boundary. It **re-exports**
-the full `pqcrypto` API (`export 'package:pqcrypto/pqcrypto.dart'`), including
-`SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash`. It **composes** ML-KEM and ML-DSA
-into envelopes, recipes, `keygen`, and hybrid signatures. It **composes**
-SLH-DSA into `keygen`, key custody, and detached `sign`/`verify`. It does **not**
+`pqforge` supplies the composition layer around that boundary. It does
+**not** re-export the full `pqcrypto` API from `pqforge.dart` (that
+breaks `dart doc` via pqcrypto's Cookbook category). Import
+`package:pqcrypto/pqcrypto.dart` for `SlhDsa` / `SlhDsaParams` /
+`SlhDsaPreHash`. pqforge **composes** ML-KEM and ML-DSA into envelopes,
+recipes, `keygen`, and hybrid signatures. It **composes** SLH-DSA into
+`keygen`, key custody, and detached `sign`/`verify`. It does **not**
 compose SLH-DSA into envelope headers, streaming signatures, or `hybrid-sign`.
 
 | Dimension | Current pqforge coverage |
@@ -83,9 +85,9 @@ as a sibling signature family of ML-DSA:
 
 ```dart
 import 'package:pqforge/pqforge.dart';
+import 'package:pqcrypto/pqcrypto.dart';
 
 final keys = PqForge(profile: PqForgeProfile.compact).generateSlhDsaKeyPair();
-// or, equivalently, the re-export:
 final raw = SlhDsa.generateKeyPair(SlhDsaParams.shake128f);
 ```
 

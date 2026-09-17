@@ -18,6 +18,13 @@ Sync ChaCha20-Poly1305 is dart2js-safe. No `.pqf` / `.pqfs` /
   `PqForgeEngineProvider.nativeCryptography` on dart2js.
 - Chrome CI runs the sync ChaCha group under dart2js (RFC vector, round-trip,
   bit-flip, capability). Tests are not skipped.
+- **pub.dev score** — `pubspec.yaml` description is 60–180 characters.
+  `LICENSE` is SPDX MIT (`TORT`, not `TITLE`; no duplicated "to persons").
+  `NOTICE` matches MIT (stale AGPL dual-license text removed).
+  `package:pqcrypto/pqcrypto.dart` and `package:pointycastle/api.dart` are
+  **not** re-exported from `pqforge.dart` (that pulled 180k APIs and
+  pqcrypto's Cookbook category into `dart doc`). Import those packages
+  directly. HashSLH-DSA pre-hash is `PqSlhDsaPreHash`.
 
 ## 0.4.4
 

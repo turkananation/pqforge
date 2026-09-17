@@ -1,12 +1,17 @@
 name: pqforge
 description: >-
-  Pure-Dart post-quantum and classical hybrid crypto for Dart, Flutter, and
-  Serverpod: ML-KEM|ML-DSA|SLH-DSA + X25519|Ed25519|ECDSA-P256 + AEAD (AES-GCM-256/ChaCha20-Poly1305) + HKDF
-  envelopes, streaming, multi-recipient encryption, decryption, FIPS Mode, signing, and a CLI.
+  Pure-Dart post-quantum crypto for Dart, Flutter, and Serverpod: ML-KEM,
+  ML-DSA, SLH-DSA, AES-256-GCM, ChaCha20-Poly1305, hybrids, streaming, and a CLI.
 version: 0.4.5
 repository: https://github.com/turkananation/pqforge/
 homepage: https://turkananation.github.io/pqforge/
 documentation: https://github.com/turkananation/pqforge/wiki/
+topics:
+  - cryptography
+  - post-quantum
+  - security
+  - encryption
+  - flutter
 
 environment:
   sdk: ^3.12.0

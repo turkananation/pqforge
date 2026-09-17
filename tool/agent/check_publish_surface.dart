@@ -10,6 +10,7 @@ const _allowedTopLevel = <String>[
   'NOTICE',
   'README.md',
   'bin',
+  'dartdoc_options.yaml',
   'doc',
   'example',
   'lib',

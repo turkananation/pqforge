@@ -415,7 +415,7 @@ class PqSlhDsaPrimitives {
     Uint8List message, {
     Uint8List? context,
     bool preHash = false,
-    SlhDsaPreHash hash = SlhDsaPreHash.sha256,
+    PqSlhDsaPreHash hash = PqSlhDsaPreHash.sha256,
     bool allowSlowSigning = false,
   }) {
     requireLength('secretKey', secretKey, algorithm.secretKeyBytes);
@@ -426,7 +426,7 @@ class PqSlhDsaPrimitives {
           ? SlhDsa.hashSign(
               secretKey,
               message,
-              hash,
+              _preHash(hash),
               params,
               context: context,
               allowSlowSigning: allowSlowSigning,
@@ -450,7 +450,7 @@ class PqSlhDsaPrimitives {
     Uint8List signature, {
     Uint8List? context,
     bool preHash = false,
-    SlhDsaPreHash hash = SlhDsaPreHash.sha256,
+    PqSlhDsaPreHash hash = PqSlhDsaPreHash.sha256,
   }) {
     if (publicKey.length != algorithm.publicKeyBytes ||
         signature.length != algorithm.signatureBytes ||
@@ -463,7 +463,7 @@ class PqSlhDsaPrimitives {
             publicKey,
             message,
             signature,
-            hash,
+            _preHash(hash),
             params,
             context: context,
           )
@@ -491,6 +491,21 @@ class PqSlhDsaPrimitives {
         PqSlhDsaAlgorithm.shake256s => SlhDsaParams.shake256s,
         PqSlhDsaAlgorithm.shake256f => SlhDsaParams.shake256f,
       };
+
+  static SlhDsaPreHash _preHash(PqSlhDsaPreHash hash) => switch (hash) {
+    PqSlhDsaPreHash.sha224 => SlhDsaPreHash.sha224,
+    PqSlhDsaPreHash.sha256 => SlhDsaPreHash.sha256,
+    PqSlhDsaPreHash.sha384 => SlhDsaPreHash.sha384,
+    PqSlhDsaPreHash.sha512 => SlhDsaPreHash.sha512,
+    PqSlhDsaPreHash.sha512224 => SlhDsaPreHash.sha512224,
+    PqSlhDsaPreHash.sha512256 => SlhDsaPreHash.sha512256,
+    PqSlhDsaPreHash.sha3224 => SlhDsaPreHash.sha3224,
+    PqSlhDsaPreHash.sha3256 => SlhDsaPreHash.sha3256,
+    PqSlhDsaPreHash.sha3384 => SlhDsaPreHash.sha3384,
+    PqSlhDsaPreHash.sha3512 => SlhDsaPreHash.sha3512,
+    PqSlhDsaPreHash.shake128 => SlhDsaPreHash.shake128,
+    PqSlhDsaPreHash.shake256 => SlhDsaPreHash.shake256,
+  };
 }
 
 class PqSymmetricPrimitives {
