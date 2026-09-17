@@ -8,7 +8,8 @@ wrapped key custody — plus a universal CLI.
 
 It is the **application layer** built on
 [`pqcrypto`](https://pub.dev/packages/pqcrypto) (FIPS 203 ML-KEM, FIPS 204
-ML-DSA). See [pqforge vs pqcrypto](pqforge-vs-pqcrypto) for the boundary.
+ML-DSA, FIPS 205 SLH-DSA). See [pqforge vs pqcrypto](pqforge-vs-pqcrypto)
+for the boundary.
 
 ## Pages
 
@@ -27,7 +28,7 @@ ML-DSA). See [pqforge vs pqcrypto](pqforge-vs-pqcrypto) for the boundary.
 ```bash
 export PQFORGE_PASSPHRASE='load-this-from-a-secret-manager'
 
-# Emits the full keyset by default: ML-KEM + ML-DSA + X25519 + Ed25519 + ECDSA-P256.
+# Emits the full keyset by default: ML-KEM + ML-DSA + SLH-DSA + X25519 + Ed25519 + ECDSA-P256.
 dart run pqforge keygen --profile maximum --key-id vault --out-dir keys \
   --passphrase-env PQFORGE_PASSPHRASE
 
@@ -46,12 +47,13 @@ dart run pqforge decrypt-folder \
 
 - ML-KEM KEM-DEM envelopes (`.pqf` one-shot, `.pqfs` streaming).
 - ML-DSA signatures, plus hybrid ML-DSA + Ed25519/ECDSA-P256 and standalone ECDSA-P256.
+- SLH-DSA (FIPS 205, all 12 sets) composed into `keygen`, custody, and detached `sign`/`verify`. Not used for envelopes or `hybrid-sign`.
 - AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart or native engine.
-- X25519 + ML-KEM hybrid key agreement and hybrid KEM-DEM.
+- X25519 + ML-KEM hybrid key agreement, P-256/P-384 ECDH (`PqNistEcdh`), and hybrid KEM-DEM.
 - Bounded-memory gigabyte streaming and whole-folder `pack`/`unpack`.
 - Multi-recipient envelopes — one sealed payload, key-wrapped per recipient.
 - Argon2id + AES-GCM wrapped key custody (PBKDF2 under FIPS mode).
-- Named recipes and a universal CLI (18 commands) with AOT release binaries.
+- Named recipes and a universal CLI (18 commands) with AOT release binaries. File, folder, text, media, pack, unpack, sign, verify, hybrid-sign, and ecdsa-sign commands report live progress (folder jobs include isolate-forwarded byte progress); `--quiet` mutes per-file lines.
 
 ## Important boundary
 

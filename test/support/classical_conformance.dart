@@ -125,6 +125,56 @@ Future<void> classicalProviderConformance(PqClassicalProvider provider) async {
     isFalse,
     reason: 'ECDSA-P256 must reject a tampered message',
   );
+
+  // --- P-256 ECDH ---
+  final p256a = await provider.p256GenerateKeyPair();
+  final p256b = await provider.p256GenerateKeyPair();
+  expect(p256a.publicKey, hasLength(65));
+  expect(p256a.publicKey.first, 0x04);
+  expect(p256a.secretKey, hasLength(32));
+  final p256ab = await provider.p256SharedSecret(
+    secretKey: p256a.secretKey,
+    remotePublicKey: p256b.publicKey,
+  );
+  final p256ba = await provider.p256SharedSecret(
+    secretKey: p256b.secretKey,
+    remotePublicKey: p256a.publicKey,
+  );
+  expect(p256ab, p256ba, reason: 'P-256 ECDH must be symmetric');
+  expect(p256ab, hasLength(32));
+  expect(p256ab.any((b) => b != 0), isTrue);
+
+  final p256Seed = _pattern(32, (i) => (i * 13 + 5) & 0xFF);
+  // Seeded keygen is only defined when the seed is a valid scalar; skip if not.
+  try {
+    final s1 = await provider.p256GenerateKeyPair(seed: p256Seed);
+    final s2 = await provider.p256GenerateKeyPair(seed: p256Seed);
+    expect(
+      s1.publicKey,
+      s2.publicKey,
+      reason: 'P-256 seeded keygen deterministic',
+    );
+    expect(s1.secretKey, s2.secretKey);
+  } on ArgumentError {
+    // Pattern may land outside [1, n); random keygen already covered.
+  }
+
+  // --- P-384 ECDH ---
+  final p384a = await provider.p384GenerateKeyPair();
+  final p384b = await provider.p384GenerateKeyPair();
+  expect(p384a.publicKey, hasLength(97));
+  expect(p384a.publicKey.first, 0x04);
+  expect(p384a.secretKey, hasLength(48));
+  final p384ab = await provider.p384SharedSecret(
+    secretKey: p384a.secretKey,
+    remotePublicKey: p384b.publicKey,
+  );
+  final p384ba = await provider.p384SharedSecret(
+    secretKey: p384b.secretKey,
+    remotePublicKey: p384a.publicKey,
+  );
+  expect(p384ab, p384ba, reason: 'P-384 ECDH must be symmetric');
+  expect(p384ab, hasLength(48));
 }
 
 /// Asserts [candidate] agrees with [reference]: byte-identity on the deterministic
@@ -200,5 +250,38 @@ Future<void> assertClassicalProvidersAgree(
     await candidate.ecdsaP256PublicKeyFromPrivate(ecRef.secretKey),
     ecRef.publicKey,
     reason: 'ECDSA-P256 public-key recovery disagrees with the reference',
+  );
+
+  // P-256 / P-384 ECDH — deterministic ⇒ byte-identical.
+  final p256Ref = await reference.p256GenerateKeyPair();
+  final p256Peer = await reference.p256GenerateKeyPair();
+  final p256SsRef = await reference.p256SharedSecret(
+    secretKey: p256Ref.secretKey,
+    remotePublicKey: p256Peer.publicKey,
+  );
+  final p256SsCand = await candidate.p256SharedSecret(
+    secretKey: p256Ref.secretKey,
+    remotePublicKey: p256Peer.publicKey,
+  );
+  expect(
+    p256SsCand,
+    p256SsRef,
+    reason: 'P-256 ECDH disagrees with the reference',
+  );
+
+  final p384Ref = await reference.p384GenerateKeyPair();
+  final p384Peer = await reference.p384GenerateKeyPair();
+  final p384SsRef = await reference.p384SharedSecret(
+    secretKey: p384Ref.secretKey,
+    remotePublicKey: p384Peer.publicKey,
+  );
+  final p384SsCand = await candidate.p384SharedSecret(
+    secretKey: p384Ref.secretKey,
+    remotePublicKey: p384Peer.publicKey,
+  );
+  expect(
+    p384SsCand,
+    p384SsRef,
+    reason: 'P-384 ECDH disagrees with the reference',
   );
 }

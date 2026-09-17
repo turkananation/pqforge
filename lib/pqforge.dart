@@ -8,8 +8,8 @@
 ///
 /// From here you get the full stack:
 ///
-/// * the [PqForge] facade — key generation, ML-KEM/ML-DSA, KEM-DEM envelopes,
-///   document/artifact signing, key custody, and recipes;
+/// * the [PqForge] facade — key generation (ML-KEM, ML-DSA, SLH-DSA), KEM-DEM
+///   envelopes, document/artifact signing, key custody, and recipes;
 /// * hybrid key derivation — [PqForgeCombiner] (raw bytes) and the
 ///   [PqForgeCryptographyExtensions] `SecretKey.deriveHybridSecretKey` ergonomic;
 /// * batteries-included classical + post-quantum hybrid —
@@ -50,6 +50,7 @@ export 'src/hybrid/pq_classical_hybrid.dart';
 export 'src/hybrid/pq_classical_provider.dart';
 export 'src/hybrid/pq_cryptography_extensions.dart';
 export 'src/hybrid/pq_ecdsa_p256.dart';
+export 'src/hybrid/pq_nist_ecdh.dart';
 export 'src/hybrid/pqforge_hybrid_signer.dart';
 export 'src/hybrid/pq_hybrid_signature.dart';
 export 'src/hybrid/pqforge_hybrid_key_agreement.dart';

@@ -83,6 +83,9 @@ abstract final class PqFolderPack {
   static Stream<List<int>> packStream(
     List<PqPackEntry> entries, {
     int chunkSize = 1 << 20,
+    void Function(PqPackEntry entry, int contentLength)? onEntryStart,
+    void Function(PqPackEntry entry, int bytesProcessed, int contentLength)?
+    onEntryProgress,
   }) async* {
     for (final entry in entries) {
       _requireSafeRelativePath(entry.relativePath);
@@ -94,6 +97,7 @@ abstract final class PqFolderPack {
       }
       final source = File(entry.sourcePath);
       final length = await source.length();
+      onEntryStart?.call(entry, length);
       yield (BytesBuilder(copy: false)
             ..add(PqBytes.uint32(pathBytes.length))
             ..add(pathBytes)
@@ -118,6 +122,7 @@ abstract final class PqFolderPack {
           }
           remaining -= want;
           yield chunk;
+          onEntryProgress?.call(entry, length - remaining, length);
         }
       } finally {
         await reader.close();
@@ -136,6 +141,10 @@ abstract final class PqFolderPack {
   static Future<int> unpackFromStream(
     Stream<Uint8List> source, {
     required String outputDirPath,
+    void Function(String relativePath, int contentLength)? onEntryStart,
+    void Function(String relativePath, int bytesProcessed, int contentLength)?
+    onEntryProgress,
+    void Function(String relativePath)? onEntryDone,
   }) async {
     final reader = _StreamByteReader(source);
     final created = <File>[];
@@ -151,6 +160,7 @@ abstract final class PqFolderPack {
         final relativePath = _decodeUtf8(await reader.readExactly(pathLen));
         _requireSafeRelativePath(relativePath);
         final contentLen = _readUint64(await reader.readExactly(8));
+        onEntryStart?.call(relativePath, contentLen);
 
         final output = File(_join(outputDirPath, relativePath));
         await output.parent.create(recursive: true);
@@ -167,10 +177,16 @@ abstract final class PqFolderPack {
             }
             await sink.writeFrom(chunk);
             remaining -= chunk.length;
+            onEntryProgress?.call(
+              relativePath,
+              contentLen - remaining,
+              contentLen,
+            );
           }
         } finally {
           await sink.close();
         }
+        onEntryDone?.call(relativePath);
         count++;
       }
       return count;

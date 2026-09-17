@@ -1,9 +1,10 @@
 /// FIPS deployment policy (FIPS 140-3 oriented) for pqforge.
 ///
 /// pqforge's algorithm set is FIPS-approved end to end — ML-KEM (FIPS 203),
-/// ML-DSA / HashML-DSA (FIPS 204), AES-256-GCM with deterministic IVs
-/// (SP 800-38D), SHA-256 (FIPS 180-4), HKDF (SP 800-56C rev 2) — but two
-/// defaults are deliberately *better-than-FIPS* and therefore not approved:
+/// ML-DSA / HashML-DSA (FIPS 204), SLH-DSA / HashSLH-DSA (FIPS 205), AES-256-GCM
+/// with deterministic IVs (SP 800-38D), SHA-256 (FIPS 180-4), HKDF (SP 800-56C
+/// rev 2) — but two defaults are deliberately *better-than-FIPS* and therefore
+/// not approved:
 /// ChaCha20-Poly1305 as an alternative AEAD suite, and Argon2id as the
 /// passphrase KDF. [PqFipsMode] lets a deployment refuse those at runtime.
 ///

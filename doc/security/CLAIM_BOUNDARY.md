@@ -4,6 +4,9 @@ Allowed wording:
 
 - FIPS 203-aligned ML-KEM through `pqcrypto`.
 - FIPS 204-aligned ML-DSA through `pqcrypto`.
+- FIPS 205-aligned SLH-DSA through `pqcrypto`. `pqforge` composes it into
+  `keygen`, key custody, and detached `sign`/`verify`. Envelope headers,
+  streaming signatures, and `hybrid-sign` remain ML-DSA-only.
 - Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key
   custody, signatures, recipes, hybrid helpers, and CLI workflows.
 - Best-effort cleanup in Dart.
