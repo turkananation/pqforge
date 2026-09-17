@@ -17,11 +17,13 @@ wiki page.
 building blocks, and zero runtime dependencies. It does not expose classical
 KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
 
-`pqforge` supplies the composition layer around that boundary. It **re-exports**
-the full `pqcrypto` API (`export 'package:pqcrypto/pqcrypto.dart'`), including
-`SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash`. It **composes** ML-KEM and ML-DSA
-into envelopes, recipes, `keygen`, and hybrid signatures. It **composes**
-SLH-DSA into `keygen`, key custody, and detached `sign`/`verify`. It does **not**
+`pqforge` supplies the composition layer around that boundary. It does
+**not** re-export the full `pqcrypto` API from `pqforge.dart` (that
+breaks `dart doc` via pqcrypto's Cookbook category). Import
+`package:pqcrypto/pqcrypto.dart` for `SlhDsa` / `SlhDsaParams` /
+`SlhDsaPreHash`. pqforge **composes** ML-KEM and ML-DSA into envelopes,
+recipes, `keygen`, and hybrid signatures. It **composes** SLH-DSA into
+`keygen`, key custody, and detached `sign`/`verify`. It does **not**
 compose SLH-DSA into envelope headers, streaming signatures, or `hybrid-sign`.
 
 | Dimension | Current pqforge coverage |
@@ -36,7 +38,7 @@ compose SLH-DSA into envelope headers, streaming signatures, or `hybrid-sign`.
 | Built-in hybrid signatures | ML-DSA + Ed25519 **or ECDSA-P256** through `PqForgeHybridSigner` |
 | Built-in classical signatures | ECDSA-P256 (`PqEcdsaP256`, pure-Dart PointyCastle, RFC 6979, low-S) — `ecdsa-sign`/`ecdsa-verify` |
 | App-supplied hybrid signatures | `dualSign` / `dualVerify` for any other classical verifier callback |
-| AEAD | AES-256-GCM and ChaCha20-Poly1305 on a pure-Dart or native (`package:cryptography`) engine; sync caller-nonce helpers (`PqSymmetricPrimitives.chacha20Poly1305Encrypt`) distinct from `PqForgeSecureSession` |
+| AEAD | AES-256-GCM and ChaCha20-Poly1305 on a pure-Dart or native (`package:cryptography`) engine; sync caller-nonce helpers (`PqSymmetricPrimitives.chacha20Poly1305Encrypt`, Dart engine, dart2js-safe) distinct from `PqForgeSecureSession` |
 | KDF / digests | HKDF-SHA-256/384 Extract+Expand (RFC 5869); SHA-256/384/512 and HMAC-SHA-256/384/512 facades |
 | KEM check | `PqKemPrimitives.checkEncapsulationKey` — FIPS 203 §7.2 via pqcrypto, no lattice reimplementation |
 | Large files | Bounded-memory `.pqfs` streaming (auto ≥ 8 MiB) and `pack`/`unpack` whole-folder archives |
@@ -83,9 +85,9 @@ as a sibling signature family of ML-DSA:
 
 ```dart
 import 'package:pqforge/pqforge.dart';
+import 'package:pqcrypto/pqcrypto.dart';
 
 final keys = PqForge(profile: PqForgeProfile.compact).generateSlhDsaKeyPair();
-// or, equivalently, the re-export:
 final raw = SlhDsa.generateKeyPair(SlhDsaParams.shake128f);
 ```
 

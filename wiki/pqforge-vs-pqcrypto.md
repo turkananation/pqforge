@@ -21,7 +21,7 @@ post-quantum primitives.
 
 | You want to… | Use |
 | --- | --- |
-| Call ML-KEM / ML-DSA / SLH-DSA directly over `Uint8List` | **pqcrypto** (or the pqforge re-export of `SlhDsa`) |
+| Call ML-KEM / ML-DSA / SLH-DSA directly over `Uint8List` | **pqcrypto** |
 | Build your own protocol from the raw KEM/signature | **pqcrypto** |
 | Encrypt a file, folder, or gigabyte media stream | **pqforge** |
 | Sign a document, release artifact, webhook, or token | **pqforge** |

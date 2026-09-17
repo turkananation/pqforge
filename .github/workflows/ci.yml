@@ -149,6 +149,26 @@ jobs:
       - name: Verify pub.dev archive
         run: dart run tool/agent/check_publish_surface.dart --strict
 
+  chrome:
+    name: dart2js ChaCha (Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: dart pub get
+
+      # Pin: sync ChaCha20-Poly1305 must run on dart2js. PointyCastle Poly1305
+      # does not; the helper uses the cryptography Dart engine. Do not skip.
+      - name: Run sync ChaCha tests in Chrome
+        run: dart test -p chrome test/pq_kdf_aead_exports_test.dart --name "sync ChaCha20-Poly1305"
+
   openssl-interop:
     name: OpenSSL EVP interop verification
     runs-on: ubuntu-latest

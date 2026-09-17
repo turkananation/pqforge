@@ -14,7 +14,7 @@
     "CLI"
   ],
   "license": "MIT",
-  "softwareVersion": "0.4.4",
+  "softwareVersion": "0.4.5",
   "applicationCategory": "Cryptography composition library",
   "keywords": [
     "Dart post-quantum encryption",
@@ -65,7 +65,7 @@
     "Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change",
     "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
     "NIST P-256 and P-384 ECDH (uncompressed SEC1, x-coordinate secret) for TLS hybrid groups",
-    "RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384), SHA-384/SHA-512 digest facades, and sync ChaCha20-Poly1305 with a caller-supplied nonce",
+    "RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384), SHA-384/SHA-512 digest facades, and dart2js-safe sync ChaCha20-Poly1305 with a caller-supplied nonce (`supportsChaCha20Poly1305`)",
     "ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S)",
     "Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory",
     "pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)",

@@ -24,6 +24,11 @@
 /// only PointyCastle internally; the hybrid, native-AEAD, and `SecretKey` pieces
 /// use `package:cryptography`. Unused backends are tree-shaken from release
 /// builds, so you only pay for the APIs you actually call.
+///
+/// Lattice primitives and PointyCastle types are **not** re-exported from this
+/// library. Import `package:pqcrypto/pqcrypto.dart` and
+/// `package:pointycastle/api.dart` when you need those APIs directly. That keeps
+/// `dart doc` (and pub.dev documentation points) on the pqforge surface.
 library;
 
 export 'src/algorithms/pq_algorithms.dart';
@@ -60,9 +65,3 @@ export 'src/hybrid/pq_hybrid_key_agreement_result.dart';
 export 'src/services/pqforge_service.dart';
 export 'src/services/pqforge_async_service.dart';
 export 'src/services/pqforge_multi_recipient.dart';
-
-// Export the entire pointycastle package
-export 'package:pointycastle/api.dart';
-
-// Export the entire pqcrypto package
-export 'package:pqcrypto/pqcrypto.dart';

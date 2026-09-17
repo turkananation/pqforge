@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.5
+
+Sync ChaCha20-Poly1305 is dart2js-safe. No `.pqf` / `.pqfs` /
+`PqForgeSecureSession` wire-format changes.
+
+- **`PqSymmetricPrimitives.chacha20Poly1305Encrypt` / `Decrypt`** now use
+  `package:cryptography`'s Dart engine (`DartChacha20.poly1305Aead`, 32-bit
+  Poly1305) instead of PointyCastle `Poly1305()`. Wire layout is unchanged:
+  32-byte key, caller-supplied 12-byte nonce, `ciphertext || tag`. RFC 8439
+  §2.8.2 still holds. dart2js can run the helper; PointyCastle cannot
+  (IEEE-754 mantissa, `2^53 + 1 == 2^53`).
+- **`PqSymmetricPrimitives.supportsChaCha20Poly1305`** — always `true`.
+  Callers must not copy PointyCastle's full-width-integer check. The
+  PointyCastle **session** engine (`PqForgePointyCastleAeadEngine` ChaCha)
+  still needs 64-bit integers; use this helper or
+  `PqForgeEngineProvider.nativeCryptography` on dart2js.
+- Chrome CI runs the sync ChaCha group under dart2js (RFC vector, round-trip,
+  bit-flip, capability). Tests are not skipped.
+- **pub.dev score** — `pubspec.yaml` description is 60–180 characters.
+  `LICENSE` is SPDX MIT (`TORT`, not `TITLE`; no duplicated "to persons").
+  `NOTICE` matches MIT (stale AGPL dual-license text removed).
+- **`pqcrypto: ^0.4.2`.** That version ships `doc/cookbook/README.md` in
+  the pub.dev archive, so `dart doc` no longer crashes while initializing
+  pqcrypto's Cookbook category. Required for pqforge's own documentation
+  points.
+
 ## 0.4.4
 
 Additive library surface, CLI progress across file operations, and first-class
