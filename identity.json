@@ -3,7 +3,7 @@
   "@type": "SoftwareSourceCode",
   "name": "pqforge",
   "alternateName": "pqforge: Post-Quantum Application Recipes for Dart",
-  "description": "pqforge turns the pqcrypto ML-KEM (FIPS 203) and ML-DSA (FIPS 204) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. The core is pure Dart and web-safe — no dart:ffi.",
+  "description": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.",
   "url": "https://turkananation.github.io/pqforge/",
   "codeRepository": "https://github.com/turkananation/pqforge",
   "programmingLanguage": "Dart",
@@ -14,7 +14,7 @@
     "CLI"
   ],
   "license": "MIT",
-  "softwareVersion": "0.4.3",
+  "softwareVersion": "0.4.4",
   "applicationCategory": "Cryptography composition library",
   "keywords": [
     "Dart post-quantum encryption",
@@ -32,6 +32,7 @@
     "multi-recipient encryption",
     "FIPS 203 ML-KEM",
     "FIPS 204 ML-DSA",
+    "FIPS 205 SLH-DSA",
     "quantum-safe Dart",
     "hybrid signatures Ed25519 ECDSA",
     "pqcrypto composition layer",
@@ -51,23 +52,26 @@
   "isBasedOn": {
     "@type": "SoftwareSourceCode",
     "name": "pqcrypto",
-    "description": "pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM and FIPS 204 ML-DSA, plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.",
+    "description": "pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM, FIPS 204 ML-DSA, and FIPS 205 SLH-DSA (all 12 parameter sets), plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.",
     "url": "https://pub.dev/packages/pqcrypto",
     "codeRepository": "https://github.com/turkananation/pqcrypto"
   },
   "capabilities": [
     "ML-KEM-512/768/1024 KEM-DEM envelopes through pqcrypto (FIPS 203-aligned)",
     "ML-DSA-44/65/87 detached and pre-hash signatures through pqcrypto (FIPS 204-aligned)",
+    "SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign",
     "AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine",
     "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
     "Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change",
     "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
+    "NIST P-256 and P-384 ECDH (uncompressed SEC1, x-coordinate secret) for TLS hybrid groups",
+    "RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384), SHA-384/SHA-512 digest facades, and sync ChaCha20-Poly1305 with a caller-supplied nonce",
     "ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S)",
     "Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory",
     "pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)",
     "Argon2id plus AES-256-GCM wrapped key custody with pluggable stores; PBKDF2 wrapping under FIPS mode",
     "Named recipes for files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, and identity bindings",
-    "Universal CLI plus AOT-compiled release binaries for local, server, and release-pipeline workflows",
+    "Universal CLI plus AOT-compiled release binaries for local, server, and release-pipeline workflows; encrypt/decrypt/text/media/folder/pack/unpack/sign/verify/hybrid-sign/ecdsa-sign report live progress (folder jobs forward byte progress from isolates; keygen reports wrapping progress), --quiet mutes per-file lines (and keygen listings), and non-regular files are skipped",
     "FIPS deployment layer (PqFipsMode), swappable lattice backend (PqLatticeProvider), and a swappable DRBG (PqRandom.generator)",
     "Pure-Dart, web-safe core (no dart:ffi); dart:io file streaming behind package:pqforge/pqforge_io.dart"
   ],
@@ -83,6 +87,7 @@
     "allowed_claims": [
       "FIPS 203-aligned ML-KEM through pqcrypto.",
       "FIPS 204-aligned ML-DSA through pqcrypto.",
+      "FIPS 205-aligned SLH-DSA through pqcrypto. pqforge composes it into keygen, custody, and detached sign/verify. Envelopes and hybrid-sign remain ML-DSA-only.",
       "Application-layer composition helpers for KEM-DEM, AEAD sessions, hybrid key agreement, streaming, multi-recipient envelopes, wrapped key custody, signatures, recipes, and CLI workflows.",
       "Best-effort zeroization in Dart."
     ],
@@ -207,5 +212,5 @@
     }
   ],
   "generatedBy": "Generated by dart run tool/visibility/generate_visibility.dart. Edit tool/visibility/visibility_manifest.json instead.",
-  "dateModified": "2026-06-13"
+  "dateModified": "2026-09-17"
 }

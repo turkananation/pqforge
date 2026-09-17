@@ -84,6 +84,24 @@ void main() {
     },
   );
 
+  test('NIST-curve ECDH helpers route through the classical seam', () async {
+    final spy = _CountingClassicalProvider(const PqPureDartClassicalProvider());
+    PqClassical.provider = spy;
+    final a = await PqForgeHybridKeyAgreement.generateP256KeyPairBytes();
+    final b = await PqForgeHybridKeyAgreement.generateP384KeyPairBytes();
+    final p256 = await PqForgeHybridKeyAgreement.p256SharedSecret(
+      secretKey: a.secretKey,
+      remotePublicKey: a.publicKey,
+    );
+    final p384 = await PqForgeHybridKeyAgreement.p384SharedSecret(
+      secretKey: b.secretKey,
+      remotePublicKey: b.publicKey,
+    );
+    expect(p256, hasLength(32));
+    expect(p384, hasLength(48));
+    expect(spy.nistEcdhCalls, greaterThanOrEqualTo(4));
+  });
+
   test('the full hybrid handshake (initiate/accept) routes X25519 through '
       'the seam', () async {
     final spy = _CountingClassicalProvider(const PqPureDartClassicalProvider());
@@ -135,6 +153,7 @@ class _CountingClassicalProvider implements PqClassicalProvider {
   int x25519Calls = 0;
   int ed25519Calls = 0;
   int ecdsaCalls = 0;
+  int nistEcdhCalls = 0;
 
   @override
   String get name => 'counting(${_inner.name})';
@@ -234,6 +253,46 @@ class _CountingClassicalProvider implements PqClassicalProvider {
       publicKey: publicKey,
       message: message,
       signature: signature,
+    );
+  }
+
+  @override
+  Future<({Uint8List publicKey, Uint8List secretKey})> p256GenerateKeyPair({
+    Uint8List? seed,
+  }) {
+    nistEcdhCalls++;
+    return _inner.p256GenerateKeyPair(seed: seed);
+  }
+
+  @override
+  Future<Uint8List> p256SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) {
+    nistEcdhCalls++;
+    return _inner.p256SharedSecret(
+      secretKey: secretKey,
+      remotePublicKey: remotePublicKey,
+    );
+  }
+
+  @override
+  Future<({Uint8List publicKey, Uint8List secretKey})> p384GenerateKeyPair({
+    Uint8List? seed,
+  }) {
+    nistEcdhCalls++;
+    return _inner.p384GenerateKeyPair(seed: seed);
+  }
+
+  @override
+  Future<Uint8List> p384SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) {
+    nistEcdhCalls++;
+    return _inner.p384SharedSecret(
+      secretKey: secretKey,
+      remotePublicKey: remotePublicKey,
     );
   }
 }

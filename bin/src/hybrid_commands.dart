@@ -10,6 +10,7 @@ import 'package:args/command_runner.dart';
 import 'package:pqforge/pqforge.dart';
 
 import 'console.dart';
+import 'progress_reporter.dart';
 import 'support.dart';
 
 /// `hybrid-sign` — one ML-DSA signature plus one classical signature
@@ -65,6 +66,7 @@ final class HybridSignCommand extends Command<void> {
             'signature JSON; hybrid-verify re-hashes automatically.',
       );
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -88,12 +90,14 @@ final class HybridSignCommand extends Command<void> {
   Future<void> run() async {
     final results = argResults!;
     final passphrase = await passphraseFrom(results);
+    final quiet = quietFrom(results);
 
     final pqcSecret = await readKey(
       results['signer-secret'] as String,
       passphrase: passphrase,
     );
     requireKind(pqcSecret, PqKeyKind.signatureSecret);
+    requireMlDsaSignatureKey(pqcSecret);
     final classicalSecret = await readKey(
       results['classical-secret'] as String,
       passphrase: passphrase,
@@ -117,33 +121,49 @@ final class HybridSignCommand extends Command<void> {
     // returns a fresh Uint8List — M2: no redundant copy).
     final digestMode = results['digest'] as bool;
     final input = File(results['in'] as String);
-    final message = digestMode
-        ? await digestMessageOfFile(input)
-        : await input.readAsBytes();
+    final fileName = input.uri.pathSegments.last;
+    final length = await input.length();
     final context = optionalContext(results);
     final policy = _policyFrom(results['policy'] as String);
-
-    final signature = await signer.sign(
-      pqcSecretKey: pqcSecret.bytes,
-      classicalKeyPair: classicalKeyPair,
-      message: message,
-      context: context,
-      pqcAlgorithm: pqcAlgorithm,
-      policy: policy,
-    );
-
-    final json = {
-      ...signature.toJson(),
-      if (digestMode) 'digest': 'sha-256',
-      if (context != null) 'context': base64Encode(context),
-    };
     final output = File(results['out'] as String);
-    await writeJson(output, json);
-    console.success(
-      'Hybrid signed (${pqcAlgorithm.name} + ${classicalAlgorithm.id}, '
-      '${policy.name})',
+
+    await withFileProgress(
+      quiet: quiet,
+      operation: digestMode ? 'digest-signing' : 'signing',
+      path: fileName,
+      bytes: length,
+      action: (progress) async {
+        final message = digestMode
+            ? await digestMessageOfFile(
+                input,
+                onProgress: (processed, total) => progress.updateBytes(
+                  processed: processed,
+                  totalBytes: total,
+                ),
+              )
+            : await input.readAsBytes();
+        final signature = await signer.sign(
+          pqcSecretKey: pqcSecret.bytes,
+          classicalKeyPair: classicalKeyPair,
+          message: message,
+          context: context,
+          pqcAlgorithm: pqcAlgorithm,
+          policy: policy,
+        );
+        await writeJson(output, {
+          ...signature.toJson(),
+          if (digestMode) 'digest': 'sha-256',
+          if (context != null) 'context': base64Encode(context),
+        });
+      },
     );
-    console.created(output.path);
+    if (!quiet) {
+      console.detail(
+        'algorithm',
+        '${pqcAlgorithm.name} + ${classicalAlgorithm.id}, ${policy.name}',
+      );
+      console.created(output.path);
+    }
   }
 }
 
@@ -180,6 +200,7 @@ final class HybridVerifyCommand extends Command<void> {
         valueHelp: 'string',
         help: 'Override the context stored in the signature JSON.',
       );
+    addQuietOption(argParser);
   }
 
   @override
@@ -200,8 +221,10 @@ final class HybridVerifyCommand extends Command<void> {
   @override
   Future<void> run() async {
     final results = argResults!;
+    final quiet = quietFrom(results);
     final pqcPublic = await readKey(results['signer-public'] as String);
     requireKind(pqcPublic, PqKeyKind.signaturePublic);
+    requireMlDsaSignatureKey(pqcPublic);
     final classicalPublic = await readKey(
       results['classical-public'] as String,
     );
@@ -224,29 +247,50 @@ final class HybridVerifyCommand extends Command<void> {
       profile: profileForSignature(signature.pqcAlgorithm),
       classicalAlgorithm: signature.classicalAlgorithm,
     );
-    // The signature JSON self-describes digest mode; re-hash the input the
-    // same way (streamed, O(1) memory) before verifying.
     final input = File(results['in'] as String);
-    final message = sigJson['digest'] == 'sha-256'
-        ? await digestMessageOfFile(input)
-        : await input.readAsBytes();
+    final fileName = input.uri.pathSegments.last;
+    final digestMode = sigJson['digest'] == 'sha-256';
     final context = optionalContext(results) ?? _storedContext(sigJson);
-
-    final ok = await signer.verify(
-      pqcPublicKey: pqcPublic.bytes,
-      classicalPublicKey: classicalPublic.bytes,
-      message: message,
-      signature: signature,
-      context: context,
-    );
     final label =
         '${signature.pqcAlgorithm.name} + ${signature.classicalAlgorithm.id}, '
         '${signature.policy.name}';
-    if (ok) {
-      console.success('Hybrid signature verified ($label)');
-    } else {
-      console.failure('Hybrid signature verification FAILED ($label)');
-      exitCode = 1;
+
+    final progress = ProgressReporter(
+      total: 1,
+      operation: digestMode ? 'digest-verifying' : 'verifying',
+      quiet: quiet,
+    );
+    progress.startFile(fileName, fileSizeBytes: await input.length());
+    late final bool ok;
+    try {
+      final message = digestMode
+          ? await digestMessageOfFile(
+              input,
+              onProgress: (processed, total) =>
+                  progress.updateBytes(processed: processed, totalBytes: total),
+            )
+          : await input.readAsBytes();
+      ok = await signer.verify(
+        pqcPublicKey: pqcPublic.bytes,
+        classicalPublicKey: classicalPublic.bytes,
+        message: message,
+        signature: signature,
+        context: context,
+      );
+      if (ok) {
+        progress.completeFile(fileName);
+      } else {
+        progress.failFile(fileName, 'signature mismatch ($label)');
+        exitCode = 1;
+      }
+    } catch (error) {
+      progress.failFile(fileName, error.toString());
+      rethrow;
+    } finally {
+      progress.done();
+    }
+    if (ok && !quiet) {
+      console.detail('algorithm', label);
     }
   }
 
@@ -289,6 +333,7 @@ final class EcdsaSignCommand extends Command<void> {
             'signature JSON; ecdsa-verify re-hashes automatically.',
       );
     addPassphraseOptions(argParser);
+    addQuietOption(argParser);
   }
 
   @override
@@ -308,6 +353,7 @@ final class EcdsaSignCommand extends Command<void> {
   Future<void> run() async {
     final results = argResults!;
     final passphrase = await passphraseFrom(results);
+    final quiet = quietFrom(results);
     final secret = await readKey(
       results['secret'] as String,
       passphrase: passphrase,
@@ -317,22 +363,39 @@ final class EcdsaSignCommand extends Command<void> {
 
     final digestMode = results['digest'] as bool;
     final input = File(results['in'] as String);
-    final message = digestMode
-        ? await digestMessageOfFile(input)
-        : await input.readAsBytes();
-    final signature = PqEcdsaP256.sign(
-      privateKey: secret.bytes,
-      message: message,
-    );
+    final fileName = input.uri.pathSegments.last;
     final output = File(results['out'] as String);
-    await writeJson(output, {
-      'version': 1,
-      'scheme': 'ecdsa-p256',
-      if (digestMode) 'digest': 'sha-256',
-      'signature': base64Encode(signature),
-    });
-    console.success('ECDSA-P256 signed');
-    console.created(output.path);
+    await withFileProgress(
+      quiet: quiet,
+      operation: digestMode ? 'digest-signing' : 'signing',
+      path: fileName,
+      bytes: await input.length(),
+      action: (progress) async {
+        final message = digestMode
+            ? await digestMessageOfFile(
+                input,
+                onProgress: (processed, total) => progress.updateBytes(
+                  processed: processed,
+                  totalBytes: total,
+                ),
+              )
+            : await input.readAsBytes();
+        final signature = PqEcdsaP256.sign(
+          privateKey: secret.bytes,
+          message: message,
+        );
+        await writeJson(output, {
+          'version': 1,
+          'scheme': 'ecdsa-p256',
+          if (digestMode) 'digest': 'sha-256',
+          'signature': base64Encode(signature),
+        });
+      },
+    );
+    if (!quiet) {
+      console.detail('algorithm', 'ECDSA-P256');
+      console.created(output.path);
+    }
   }
 }
 
@@ -358,6 +421,7 @@ final class EcdsaVerifyCommand extends Command<void> {
         valueHelp: 'file',
         help: 'ECDSA signature JSON file.',
       );
+    addQuietOption(argParser);
   }
 
   @override
@@ -375,6 +439,7 @@ final class EcdsaVerifyCommand extends Command<void> {
   @override
   Future<void> run() async {
     final results = argResults!;
+    final quiet = quietFrom(results);
     final public = await readKey(results['public'] as String);
     requireKind(public, classicalSignaturePublicKind);
     requireEcdsaKey(public);
@@ -382,20 +447,43 @@ final class EcdsaVerifyCommand extends Command<void> {
     final sigJson = await readJsonMap(File(results['signature'] as String));
     final signature = base64Decode(sigJson['signature'] as String);
     final input = File(results['in'] as String);
-    final message = sigJson['digest'] == 'sha-256'
-        ? await digestMessageOfFile(input)
-        : await input.readAsBytes();
+    final fileName = input.uri.pathSegments.last;
+    final digestMode = sigJson['digest'] == 'sha-256';
 
-    final ok = PqEcdsaP256.verify(
-      publicKey: public.bytes,
-      message: message,
-      signature: signature,
+    final progress = ProgressReporter(
+      total: 1,
+      operation: digestMode ? 'digest-verifying' : 'verifying',
+      quiet: quiet,
     );
-    if (ok) {
-      console.success('ECDSA-P256 signature verified');
-    } else {
-      console.failure('ECDSA-P256 signature verification FAILED');
-      exitCode = 1;
+    progress.startFile(fileName, fileSizeBytes: await input.length());
+    late final bool ok;
+    try {
+      final message = digestMode
+          ? await digestMessageOfFile(
+              input,
+              onProgress: (processed, total) =>
+                  progress.updateBytes(processed: processed, totalBytes: total),
+            )
+          : await input.readAsBytes();
+      ok = PqEcdsaP256.verify(
+        publicKey: public.bytes,
+        message: message,
+        signature: signature,
+      );
+      if (ok) {
+        progress.completeFile(fileName);
+      } else {
+        progress.failFile(fileName, 'signature mismatch');
+        exitCode = 1;
+      }
+    } catch (error) {
+      progress.failFile(fileName, error.toString());
+      rethrow;
+    } finally {
+      progress.done();
+    }
+    if (ok && !quiet) {
+      console.detail('algorithm', 'ECDSA-P256');
     }
   }
 }

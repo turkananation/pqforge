@@ -16,11 +16,14 @@ dart run pqforge keygen --profile maximum --key-id vault --out-dir keys --passph
 ```
 
 By default `keygen` emits the **full hybrid keyset** — ML-KEM + ML-DSA plus
-X25519, Ed25519, and ECDSA-P256 — so hybrid encryption and signing work out of
-the box. `--classical <algo>` narrows the classical set, `--no-classical` keeps
-the post-quantum bundle only, and `--classical-only` emits classical keys alone.
+profile-matched SLH-DSA and X25519, Ed25519, and ECDSA-P256 — so hybrid
+encryption, hybrid signing, and hash-based signatures work out of the box.
+`--classical <algo>` narrows the classical set, `--no-classical` keeps the
+post-quantum bundle only, `--classical-only` emits classical keys alone,
+`--slh-dsa` / `--no-slh-dsa` / `--slh-dsa-only` control hash-based keys.
 
 Public keys: `vault.kem.public.json`, `vault.sign.public.json`,
+`vault.slh-dsa-shake-256f.public.json` (maximum profile),
 `vault.x25519.public.json`, `vault.ed25519.public.json`,
 `vault.ecdsa-p256.public.json`.
 
@@ -42,6 +45,18 @@ dart run pqforge encrypt-media --recipient-public keys/vault.kem.public.json --i
 
 The decrypt commands need no format flags — every choice is recorded in the
 self-describing container and auto-detected on read.
+
+`encrypt`, `decrypt`, `encrypt-text`, `decrypt-text` (with `--out`),
+`encrypt-media`, `decrypt-media`, `encrypt-folder`, `decrypt-folder`, `pack`,
+`unpack`, `sign`, `verify`, `hybrid-sign`, `hybrid-verify`, `ecdsa-sign`, and
+`ecdsa-verify` print a live progress line. Folder jobs forward byte progress
+from background isolates; pack/unpack add per-file SUCCESS/FAILED with
+in-entry bytes. `--digest` reports hashing progress. `keygen` reports wrapping
+progress when a passphrase is used. `--quiet` / `-q` mutes those per-file lines
+and skip warnings; the completion summary still prints. Listing skips sockets,
+FIFOs, broken symlinks, and unreadable files instead of failing the tree.
+`keygen --quiet` mutes the created-file listing but still warns if secrets were
+written unwrapped. `decrypt-text` without `--out` writes only plaintext.
 
 ## Large files and packing
 

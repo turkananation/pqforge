@@ -46,6 +46,7 @@ Future<void> main(List<String> args) async {
       failures += await _verify(openSsl, suite, engine);
     }
   }
+  failures += _verifySyncHelpers(openSsl);
 
   if (args.contains('--bench')) await _bench(openSsl);
 
@@ -140,6 +141,60 @@ Future<int> _verify(
   stdout.writeln(
     '  ${failures == 0 ? 'ok  ' : 'FAIL'} $label '
     '(sizes 0/1/17/4096/1MiB, cross-open + tamper)',
+  );
+  return failures;
+}
+
+int _verifySyncHelpers(OpenSslAead openSsl) {
+  var failures = 0;
+  void fail(String what) {
+    failures++;
+    stdout.writeln('  FAIL [sync-helpers] $what');
+  }
+
+  for (final size in const [0, 1, 17, 4096]) {
+    final key = PqBytes.randomBytes(32);
+    final nonce = PqBytes.randomBytes(12);
+    final aad = PqBytes.randomBytes(size == 0 ? 0 : 32);
+    final plaintext = PqBytes.randomBytes(size);
+
+    final chacha = PqSymmetricPrimitives.chacha20Poly1305Encrypt(
+      key: key,
+      nonce: nonce,
+      plaintext: plaintext,
+      aad: aad,
+    );
+    final opensslChaCha = openSsl.seal(
+      suiteId: PqForgeCipherSuite.chaCha20Poly1305.id,
+      key: key,
+      nonce: nonce,
+      plaintext: plaintext,
+      aad: aad,
+    );
+    if (!_equal(chacha, opensslChaCha)) {
+      fail('ChaCha20-Poly1305 mismatch at $size bytes');
+    }
+
+    final gcm = PqSymmetricPrimitives.aesGcmEncrypt(
+      key: key,
+      nonce: nonce,
+      plaintext: plaintext,
+      aad: aad,
+    );
+    final opensslGcm = openSsl.seal(
+      suiteId: PqForgeCipherSuite.aes256Gcm.id,
+      key: key,
+      nonce: nonce,
+      plaintext: plaintext,
+      aad: aad,
+    );
+    if (!_equal(gcm, opensslGcm)) {
+      fail('AES-256-GCM mismatch at $size bytes');
+    }
+  }
+  stdout.writeln(
+    '  ${failures == 0 ? 'ok  ' : 'FAIL'} sync helpers '
+    '(ChaCha20-Poly1305 + AES-256-GCM vs OpenSSL)',
   );
   return failures;
 }

@@ -11,6 +11,7 @@ void main() {
 
       expect(profile.kem, PqKemAlgorithm.mlKem768);
       expect(profile.signature, PqSignatureAlgorithm.mlDsa65);
+      expect(profile.slhDsa, PqSlhDsaAlgorithm.shake192f);
       expect(profile.sessionKeyBytes, 32);
       expect(profile.kem.publicKeyBytes, 1184);
       expect(profile.signature.signatureBytes, 3309);

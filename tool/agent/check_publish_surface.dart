@@ -10,6 +10,7 @@ const _allowedTopLevel = <String>[
   'NOTICE',
   'README.md',
   'bin',
+  'doc',
   'example',
   'lib',
   'pubspec.yaml',

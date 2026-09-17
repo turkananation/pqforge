@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-06-13",
+  "last_updated": "2026-09-17",
   "generated_by": "dart run tool/visibility/generate_visibility.dart",
   "project": {
     "name": "pqforge",
     "title": "pqforge: Post-Quantum Application Recipes for Dart",
     "short_title": "pqforge",
-    "tagline": "Post-quantum encryption, signing, hybrid sessions, gigabyte-scale streaming, and a CLI for Dart, Flutter, and Serverpod — built on pqcrypto ML-KEM/ML-DSA.",
-    "summary": "pqforge turns the pqcrypto ML-KEM (FIPS 203) and ML-DSA (FIPS 204) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. The core is pure Dart and web-safe — no dart:ffi.",
+    "tagline": "Post-quantum encryption, signing, hybrid sessions, gigabyte-scale streaming, and a CLI for Dart, Flutter, and Serverpod — built on pqcrypto ML-KEM/ML-DSA/SLH-DSA.",
+    "summary": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.",
     "license": "MIT",
     "maintainer": "Turkana Nation",
     "canonical_url": "https://turkananation.github.io/pqforge/",
@@ -22,31 +22,34 @@
   },
   "pqcrypto_relationship": {
     "summary": "pqforge is the application layer built on top of pqcrypto. pqcrypto provides the post-quantum primitives; pqforge provides everything you need to ship a feature with them.",
-    "pqcrypto_is": "pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM and FIPS 204 ML-DSA, plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.",
-    "pqforge_is": "pqforge is the composition package: KEM-DEM envelopes, AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts), and a CLI.",
+    "pqcrypto_is": "pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM, FIPS 204 ML-DSA, and FIPS 205 SLH-DSA (all 12 parameter sets), plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.",
+    "pqforge_is": "pqforge is the composition package: KEM-DEM envelopes, AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts), and a CLI. It composes pqcrypto SLH-DSA into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only.",
     "pqcrypto_pub_dev": "https://pub.dev/packages/pqcrypto",
     "pqcrypto_repository": "https://github.com/turkananation/pqcrypto",
     "differentiation": [
-      "Use pqcrypto when you need the raw ML-KEM/ML-DSA algorithms and nothing else.",
+      "Use pqcrypto when you need the raw ML-KEM/ML-DSA/SLH-DSA algorithms and nothing else.",
       "Use pqforge when you need to ship a feature: encrypt a file, sign a release, run a hybrid session, wrap a key, or expose a CLI.",
       "pqforge depends on pqcrypto and never reimplements the lattice primitives; the post-quantum security claim is inherited from pqcrypto.",
       "Both are pure Dart and web-safe; neither ships dart:ffi in its published package.",
-      "pqforge adds the classical hybrid tier (X25519, Ed25519, ECDSA-P256) and the symmetric/AEAD/KDF stack that pqcrypto deliberately leaves out."
+      "pqforge adds the classical hybrid tier (X25519, Ed25519, ECDSA-P256, P-256/P-384 ECDH) and the symmetric/AEAD/KDF stack that pqcrypto deliberately leaves out."
     ]
   },
   "capabilities": [
     "ML-KEM-512/768/1024 KEM-DEM envelopes through pqcrypto (FIPS 203-aligned)",
     "ML-DSA-44/65/87 detached and pre-hash signatures through pqcrypto (FIPS 204-aligned)",
+    "SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign",
     "AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine",
     "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
     "Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change",
     "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
+    "NIST P-256 and P-384 ECDH (uncompressed SEC1, x-coordinate secret) for TLS hybrid groups",
+    "RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384), SHA-384/SHA-512 digest facades, and sync ChaCha20-Poly1305 with a caller-supplied nonce",
     "ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S)",
     "Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory",
     "pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)",
     "Argon2id plus AES-256-GCM wrapped key custody with pluggable stores; PBKDF2 wrapping under FIPS mode",
     "Named recipes for files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, and identity bindings",
-    "Universal CLI plus AOT-compiled release binaries for local, server, and release-pipeline workflows",
+    "Universal CLI plus AOT-compiled release binaries for local, server, and release-pipeline workflows; encrypt/decrypt/text/media/folder/pack/unpack/sign/verify/hybrid-sign/ecdsa-sign report live progress (folder jobs forward byte progress from isolates; keygen reports wrapping progress), --quiet mutes per-file lines (and keygen listings), and non-regular files are skipped",
     "FIPS deployment layer (PqFipsMode), swappable lattice backend (PqLatticeProvider), and a swappable DRBG (PqRandom.generator)",
     "Pure-Dart, web-safe core (no dart:ffi); dart:io file streaming behind package:pqforge/pqforge_io.dart"
   ],
@@ -62,6 +65,7 @@
     "allowed_claims": [
       "FIPS 203-aligned ML-KEM through pqcrypto.",
       "FIPS 204-aligned ML-DSA through pqcrypto.",
+      "FIPS 205-aligned SLH-DSA through pqcrypto. pqforge composes it into keygen, custody, and detached sign/verify. Envelopes and hybrid-sign remain ML-DSA-only.",
       "Application-layer composition helpers for KEM-DEM, AEAD sessions, hybrid key agreement, streaming, multi-recipient envelopes, wrapped key custody, signatures, recipes, and CLI workflows.",
       "Best-effort zeroization in Dart."
     ],
@@ -239,7 +243,7 @@
     {
       "title": "Hybrid Audit",
       "url": "doc/HYBRID_AUDIT.md",
-      "description": "Coverage audit against pqcrypto building blocks and explicit rejections."
+      "description": "Coverage audit against pqcrypto: composed ML-KEM/ML-DSA, SLH-DSA keygen and detached signatures, and explicit rejections."
     },
     {
       "title": "Performance And Hybrid CLI",
@@ -280,11 +284,15 @@
   "faq": [
     {
       "question": "What is pqforge?",
-      "answer": "pqforge is a pure-Dart post-quantum application toolkit. It turns the ML-KEM, ML-DSA and SLH-DSA primitives from pqcrypto into encrypted files, folders, text, media, email payloads, records, signed documents, signed webhooks, signed tokens, release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody, and a universal CLI."
+      "answer": "pqforge is a pure-Dart post-quantum application toolkit. It turns the ML-KEM, ML-DSA, and SLH-DSA primitives from pqcrypto into encrypted files, folders, text, media, email payloads, records, signed documents, signed webhooks, signed tokens, release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody, and a universal CLI. SLH-DSA (FIPS 205) is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only."
     },
     {
       "question": "How is pqforge different from pqcrypto?",
-      "answer": "pqcrypto is the primitives layer: FIPS 203 ML-KEM, FIPS 204 ML-DSA, SHA-2, and SHA-3/SHAKE with zero runtime dependencies. pqforge is the application layer built on top of it: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, key custody, streaming, multi-recipient envelopes, named recipes, and a CLI. Use pqcrypto for raw algorithms; use pqforge to ship a feature."
+      "answer": "pqcrypto is the primitives layer: FIPS 203 ML-KEM, FIPS 204 ML-DSA, FIPS 205 SLH-DSA (all 12 parameter sets), SHA-2, and SHA-3/SHAKE with zero runtime dependencies. pqforge is the application layer built on top of it: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, key custody, streaming, multi-recipient envelopes, named recipes, and a CLI. SLH-DSA is composed into keygen and detached sign/verify, and is not used for envelopes or hybrid-sign. Use pqcrypto for raw algorithms; use pqforge to ship a feature."
+    },
+    {
+      "question": "Does pqforge compose SLH-DSA?",
+      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.1 (current on pub.dev) ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
     },
     {
       "question": "Is pqforge post-quantum / quantum-safe?",
@@ -312,11 +320,11 @@
     },
     {
       "question": "Is pqforge FIPS validated?",
-      "answer": "No. pqforge composes FIPS 203/204-aligned primitives from pqcrypto but is not a CMVP or FIPS 140 validated cryptographic module. A PqFipsMode deployment layer restricts suites to AES-256-GCM and PBKDF2-HMAC-SHA256 key wrapping (SP 800-132) and allows a swappable DRBG for validated-module deployments."
+      "answer": "No. pqforge composes FIPS 203/204/205-aligned primitives from pqcrypto, but is not a CMVP or FIPS 140 validated cryptographic module. A PqFipsMode deployment layer restricts suites to AES-256-GCM and PBKDF2-HMAC-SHA256 key wrapping (SP 800-132) and allows a swappable DRBG for validated-module deployments."
     },
     {
       "question": "Can pqforge sign and verify documents and releases?",
-      "answer": "Yes. It provides ML-DSA detached signatures, recipe-bound signatures for documents, text, media, artifacts, tokens, and webhooks, hybrid ML-DSA + Ed25519/ECDSA-P256 signatures, and standalone ECDSA-P256 (RFC 6979 deterministic nonces, canonical low-S). AES never signs."
+      "answer": "Yes. It provides ML-DSA detached signatures, recipe-bound signatures for documents, text, media, artifacts, tokens, and webhooks, SLH-DSA (FIPS 205) detached signatures via keygen and sign/verify, hybrid ML-DSA + Ed25519/ECDSA-P256 signatures, and standalone ECDSA-P256 (RFC 6979 deterministic nonces, canonical low-S). AES never signs."
     },
     {
       "question": "Can I sign a gigabyte artifact without reading it all into memory?",
@@ -328,11 +336,11 @@
     },
     {
       "question": "What does hybrid mean in pqforge?",
-      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message."
+      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256."
     },
     {
       "question": "Where does the CLI store keys?",
-      "answer": "In the directory passed to keygen --out-dir. Public keys are raw JSON. Secret keys are wrapped JSON when a passphrase source is supplied. keygen emits the full hybrid keyset by default: ML-KEM, ML-DSA and SLH-DSA plus X25519, Ed25519, and ECDSA-P256."
+      "answer": "In the directory passed to keygen --out-dir. Public keys are raw JSON. Secret keys are wrapped JSON when a passphrase source is supplied. keygen emits the full hybrid keyset by default: ML-KEM and ML-DSA, a profile-matched SLH-DSA SHAKE-f key, plus X25519, Ed25519, and ECDSA-P256. --no-slh-dsa skips hash-based keys; --slh-dsa selects specific FIPS 205 sets; --slh-dsa-only emits only SLH-DSA."
     },
     {
       "question": "Are CLI keys password protected?",
@@ -359,6 +367,10 @@
       "answer": "No. AES encrypts; ML-DSA, hybrid signatures, or ECDSA-P256 sign and verify. Encryption and signing are distinct operations with distinct keys."
     },
     {
+      "question": "Can encrypt/decrypt/pack/unpack report progress, and what does --quiet do?",
+      "answer": "encrypt, decrypt, encrypt-text, decrypt-text (when --out is set), encrypt-media, decrypt-media, encrypt-folder, decrypt-folder, pack, unpack, sign, verify, hybrid-sign, hybrid-verify, ecdsa-sign, and ecdsa-verify print a live, throttled progress line. Folder jobs forward streaming byte progress from background isolates over a SendPort so concurrent files keep separate live totals; pack/unpack add per-file SUCCESS or FAILED with in-entry byte progress. hybrid-sign/ecdsa-sign --digest reports hashing progress. keygen reports per-key wrapping progress when a passphrase is used. --quiet / -q mutes those per-file lines, skip warnings, and keygen created-file listings; the completion summary still prints. keygen --quiet still warns if raw secret-key JSON was written. A folder job that fails any file exits non-zero. Pack/unpack failures before the first entry report a job-level failure. Listing skips sockets, FIFOs, broken symlinks, and unreadable files instead of failing the whole tree. decrypt-text without --out writes plaintext to stdout and does not attach a progress line."
+    },
+    {
       "question": "Which apps can use pqforge?",
       "answer": "Local file vaults, folder and pack archives, server export jobs, gigabyte media and dataset pipelines, multi-recipient shared vaults, webhook systems, token issuers, document workflows, email payload protection, government and medical record systems, signed release and firmware pipelines, tamper-evident logs, and hybrid Serverpod/API server sessions."
     }
@@ -379,6 +391,7 @@
     "multi-recipient encryption",
     "FIPS 203 ML-KEM",
     "FIPS 204 ML-DSA",
+    "FIPS 205 SLH-DSA",
     "quantum-safe Dart",
     "hybrid signatures Ed25519 ECDSA",
     "pqcrypto composition layer",
