@@ -153,6 +153,7 @@ nonce; no session object):
 
 ```dart
 PqBytes.sha384 / hmacSha384 / sha384OfStream
+PqBytes.sha512 / hmacSha512 / sha512OfStream
 
 PqSymmetricPrimitives.hkdfExtractSha256({required ikm, Uint8List? salt});
 PqSymmetricPrimitives.hkdfExpandSha256({required prk, required info, required outputBytes});
@@ -171,8 +172,6 @@ PqKemPrimitives.checkEncapsulationKey(PqKemAlgorithm kem, Uint8List ek);
 
 Do **not** use `PqForgeSecureSession.encrypt` for TLS records: that path is
 async, generates its own nonce, and prepends it.
-
-### ML-DSA + Ed25519 / ECDSA-P256 dual signatures
 
 ### ML-DSA + Ed25519 / ECDSA-P256 dual signatures
 
@@ -308,10 +307,15 @@ Methods, grouped:
 
 ## 5. Supporting types
 
-- **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqForgeProfile` (`compact`, `balanced`, `maximum`) · `PqForgeException`
-- **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `sha384`, `hmacSha256`, `hmacSha384`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqNistEcdh` · `PqForgeBytes` (compatibility alias)
+- **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqForgeProfile` (`compact`, `balanced`, `maximum`) · `PqForgeException`. SLH-DSA (`SlhDsa`, `SlhDsaParams`, `SlhDsaPreHash`) is re-exported from `pqcrypto` and is **not** a `PqSignatureAlgorithm` value.
+- **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `sha384`, `sha512`, `hmacSha256`, `hmacSha384`, `hmacSha512`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqNistEcdh` · `PqForgeBytes` (compatibility alias)
 - **Keys & custody:** `PqKeyPair` · `PqKeyBundle` · `PqKemEncapsulation` · `PqExportedKey` · `PqWrappedKey` · `PqPassphraseKeyCustody` · `PqKeyCustodyStore` / `PqMemoryKeyCustodyStore` / `PqCallbackKeyCustodyStore` · `PqKeyStore` / `PqKeyResolver`
 - **Codecs, recipes & DTOs:** `PqEnvelope` (`toBinary` / `fromBinary`, `toJson` / `fromJson`) · `PqIdentityBinding` · `PqSignedLogEntry` · `PqArtifactSignature` · `PqSignedToken` · `PqDualSignature` / `PqDualSignaturePolicy` · `PqHybridKeyAgreementRequest` / `PqHybridKeyAgreementResult` · `PqHybridSignature` · `PqRecipeMessages` · `PqOffloadRequest` / `PqOffloadResponse`
+
+`package:pqforge/pqforge.dart` re-exports `package:pqcrypto/pqcrypto.dart`, so
+`SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` are importable from the same barrel.
+`PqForge.generateKeys`, envelopes, recipes, and `PqForgeHybridSigner` stay
+ML-DSA-only. See [HYBRID_AUDIT.md](HYBRID_AUDIT.md).
 
 ---
 
@@ -346,5 +350,5 @@ and emits a warning.
 - [`example/file_encryption_example.dart`](../example/file_encryption_example.dart) — file envelopes + key custody
 - [`example/hybrid_combiner_example.dart`](../example/hybrid_combiner_example.dart) — `PqForgeCombiner` (Options A & B)
 - [`example/secure_session_example.dart`](../example/secure_session_example.dart) — `PqForgeSecureSession` across both backends
-- [`example/hybrid_key_agreement_example.dart`](../example/hybrid_key_agreement_example.dart) — X25519 + ML-KEM, ML-DSA and SLH-DSA + Ed25519
+- [`example/hybrid_key_agreement_example.dart`](../example/hybrid_key_agreement_example.dart) — X25519 + ML-KEM, ML-DSA + Ed25519
 - [`example/catalog_recipes_example.dart`](../example/catalog_recipes_example.dart) — webhook, sealed email, and signed token recipes

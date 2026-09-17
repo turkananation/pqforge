@@ -43,6 +43,11 @@ dart run pqforge encrypt-media --recipient-public keys/vault.kem.public.json --i
 The decrypt commands need no format flags — every choice is recorded in the
 self-describing container and auto-detected on read.
 
+`encrypt-folder` and `decrypt-folder` print a live progress line plus per-file
+SUCCESS/FAILED with throughput. `--quiet` / `-q` mutes those per-file lines and
+skip warnings; the completion summary still prints. Listing skips sockets,
+FIFOs, broken symlinks, and unreadable files instead of failing the tree.
+
 ## Large files and packing
 
 Inputs ≥ 8 MiB **auto-stream** through the bounded-memory `.pqfs` container

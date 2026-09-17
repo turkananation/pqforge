@@ -2,6 +2,11 @@
 
 ## 0.4.4
 
+Additive library surface, CLI progress, and an honest SLH-DSA boundary. No
+`.pqf` / `.pqfs` / `PqForgeSecureSession` wire-format changes.
+
+### Library (pqtransport uplink)
+
 - **`PqBytes.sha512`**, **`PqBytes.sha512OfStream`**, and **`PqBytes.hmacSha512`** — SHA-512 helpers for protocols (e.g. FROST-Ed25519) that need a 512-bit digest facade alongside the existing SHA-256 APIs. Additive only; no wire-format changes.
 - **NIST-curve ECDH** — `PqNistEcdh` plus `PqClassicalProvider.p256*` / `p384*` and `PqForgeHybridKeyAgreement.p256SharedSecret` / `p384SharedSecret`. Uncompressed SEC1 (`0x04 || X || Y`); shared secret is the x-coordinate (RFC 8446 / SP 800-56A). Full public-key validation: rejects infinity, all-zero x, missing `0x04`, off-curve points, and out-of-range scalars. Does **not** overload `PqEcdsaP256` (signatures only). Unlocks TLS hybrid groups SecP256r1MLKEM768 / SecP384r1MLKEM1024 for `pqtransport`. Additive; no `.pqf`/`.pqfs` changes. Custom `PqClassicalProvider` implementors must add the four ECDH methods.
 - **RFC 5869 HKDF-Extract / Expand** — `PqSymmetricPrimitives.hkdfExtractSha256` / `hkdfExpandSha256` / `hkdfExtractSha384` / `hkdfExpandSha384`, plus `PqBytes.sha384` / `hmacSha384` / `sha384OfStream` and combined `hkdfSha384`. Existing `hkdfSha256` is unchanged. Expand-Label stays in the protocol layer.
@@ -9,9 +14,28 @@
 - **Concat-only hybrid join** — `PqForgeCombiner.concatenateSharedSecrets` with `PqHybridConcatOrder`. Does not HKDF. `combine()` still always does `classical || PQ` then HKDF. RFC 10024 X25519MLKEM768 must use `pqThenClassical` and must **not** call `combine()`.
 - **`PqKemPrimitives.checkEncapsulationKey`** — FIPS 203 §7.2 modulus check as a `bool` before encapsulate (length + pqcrypto validation). Does not reimplement ML-KEM.
 
+### SLH-DSA (FIPS 205) — re-export, not composition
+
+`pqcrypto` `^0.4.1` (dependency bump in 0.4.3) ships all 12 FIPS 205 parameter sets: `SlhDsa`, `SlhDsaParams`, and `SlhDsaPreHash` covering SHA2/SHAKE × 128s/128f/192s/192f/256s/256f. `package:pqforge/pqforge.dart` re-exports `package:pqcrypto/pqcrypto.dart`, so those types are importable from pqforge.
+
+**pqforge does not compose SLH-DSA** into `PqSignatureAlgorithm`, `keygen`, envelopes, recipes, or `hybrid-sign`. Those remain ML-DSA-only. Use `SlhDsa` directly for hash-based signatures; composition into pqforge workflows is not in 0.4.4.
+
+### CLI
+
+- **Folder progress** — `encrypt-folder` and `decrypt-folder` print a live, throttled progress line plus per-file SUCCESS/FAILED with throughput.
+- **`--quiet` / `-q`** — on those two commands, mutes line-by-line file summaries and skip warnings. The completion summary still prints.
+- **Skippable entries** — folder listing skips sockets, FIFOs, broken symlinks, and unreadable files (warns unless `--quiet`) instead of failing the whole tree.
+
+### What 0.4.4 enables
+
+- `pqtransport` TLS 1.3 hybrid groups (SecP256r1MLKEM768, SecP384r1MLKEM1024, RFC 10024 X25519MLKEM768) without reimplementing ECDH, HKDF-Extract/Expand, sync ChaCha20-Poly1305, concat combiners, or ML-KEM encapsulation-key checks.
+- Protocol facades (SHA-384/SHA-512, HMAC-SHA-384/512) for TLS, QUIC, and FROST-style constructions.
+- Direct `SlhDsa` access from the pqforge import for apps that need hash-based signatures alongside composed ML-DSA workflows.
+- Quieter, more robust folder jobs in CI and on trees that contain special files.
+
 ## 0.4.3
 
-Update pqcrypto to the latest '^0.4.1'. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.
+Update pqcrypto to `^0.4.1`. That version ships FIPS 205 SLH-DSA (all 12 parameter sets). pqforge re-exports them through `package:pqcrypto/pqcrypto.dart` but does not compose them into `keygen`, envelopes, recipes, or `hybrid-sign`. No cryptographic or wire-format changes; existing `.pqf`/`.pqfs` containers and library APIs are unchanged.
 
 ## 0.4.2
 

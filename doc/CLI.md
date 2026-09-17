@@ -122,6 +122,20 @@ dart run pqforge decrypt-folder \
 Each relative path is bound into `pqforge/folder-entry/v1` AAD, so a folder entry
 cannot be moved to another path and still authenticate.
 
+Folder commands print a live, throttled progress line plus a per-file SUCCESS or
+FAILED summary with throughput. `--quiet` / `-q` mutes those per-file lines and
+skip warnings; the completion summary still prints.
+
+```bash
+dart run pqforge encrypt-folder --quiet \
+  --recipient-public keys/vault.kem.public.json \
+  --in-dir ./records --out-dir ./records.pqf
+```
+
+Listing skips sockets, FIFOs, broken symlinks, and unreadable files instead of
+failing the whole tree (a warning is printed unless `--quiet`). `--quiet`
+currently takes effect on `encrypt-folder` and `decrypt-folder`.
+
 ## Text Encryption
 
 Use text commands for short UTF-8 strings, prompts, notes, and secrets.
@@ -464,13 +478,17 @@ Full cross-package terminal runbook:
 [pqthreshold `doc/TERMINAL.md`](https://github.com/turkananation/pqthreshold/blob/main/doc/TERMINAL.md).
 Ceremony logic: [pqthreshold `doc/CEREMONIES.md`](https://github.com/turkananation/pqthreshold/blob/main/doc/CEREMONIES.md).
 
-## Color And Help
+## Color, Quiet, And Help
 
 Run `pqforge` with no arguments (or `pqforge --help`) for a grouped command
 overview, and `pqforge <command> --help` for per-command options and examples.
 Colors auto-disable when output is piped or `NO_COLOR` is set; force them off
 with `--no-color`. `pqforge --version` (or `pqforge version`) prints the
 version, which is single-sourced from `pubspec.yaml`.
+
+`--quiet` / `-q` on `encrypt-folder` and `decrypt-folder` mutes line-by-line
+file completion summaries and skip warnings. The final "complete: N file(s)"
+line still prints.
 
 ## Operational Notes
 

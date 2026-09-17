@@ -12,27 +12,35 @@ wiki page.
 
 ## Evidence Summary
 
-`pqcrypto` 0.3.1 is pure post-quantum cryptography: ML-KEM, ML-DSA, SHA-2,
-SHA-3/SHAKE building blocks, and zero runtime dependencies. It does not expose
-classical KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
+`pqcrypto` 0.4.1 is pure post-quantum cryptography: ML-KEM (FIPS 203), ML-DSA
+(FIPS 204), SLH-DSA (FIPS 205, all 12 parameter sets), SHA-2, SHA-3/SHAKE
+building blocks, and zero runtime dependencies. It does not expose classical
+KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
 
-`pqforge` supplies the composition layer around that boundary:
+`pqforge` supplies the composition layer around that boundary. It **re-exports**
+the full `pqcrypto` API (`export 'package:pqcrypto/pqcrypto.dart'`), including
+`SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash`. It **composes** ML-KEM and ML-DSA
+into envelopes, recipes, `keygen`, and hybrid signatures. It does **not**
+compose SLH-DSA into those workflows.
 
 | Dimension | Current pqforge coverage |
 | --- | --- |
 | ML-KEM | 512, 768, 1024 through `PqKemAlgorithm` |
 | ML-DSA | 44, 65, 87 through `PqSignatureAlgorithm` |
+| SLH-DSA | Re-exported from `pqcrypto` (`SlhDsa`). **Not** in `PqSignatureAlgorithm`, `keygen`, envelopes, recipes, or `hybrid-sign` |
 | KEM-DEM encryption | `encrypt`, `decrypt`, `sealToKemPublicKey`, file/record/email/text/media/folder helpers |
-| Signatures | raw signatures, documents, text, media, webhooks, artifacts, logs, tokens |
-| Hybrid KDF | `PqForgeCombiner`, `deriveHybridSessionKey` |
+| Signatures | raw ML-DSA signatures, documents, text, media, webhooks, artifacts, logs, tokens |
+| Hybrid KDF | `PqForgeCombiner` (`combine` = classical\|\|PQ then HKDF); `concatenateSharedSecrets` (concat only, for RFC 10024) |
 | Built-in hybrid KEX | X25519 + ML-KEM through `PqForgeHybridKeyAgreement`; P-256/P-384 ECDH through `PqNistEcdh` (TLS hybrid groups, not the X25519 handshake) |
 | Built-in hybrid signatures | ML-DSA + Ed25519 **or ECDSA-P256** through `PqForgeHybridSigner` |
 | Built-in classical signatures | ECDSA-P256 (`PqEcdsaP256`, pure-Dart PointyCastle, RFC 6979, low-S) — `ecdsa-sign`/`ecdsa-verify` |
 | App-supplied hybrid signatures | `dualSign` / `dualVerify` for any other classical verifier callback |
-| AEAD | AES-256-GCM and ChaCha20-Poly1305 on a pure-Dart or native (`package:cryptography`) engine |
+| AEAD | AES-256-GCM and ChaCha20-Poly1305 on a pure-Dart or native (`package:cryptography`) engine; sync caller-nonce helpers (`PqSymmetricPrimitives.chacha20Poly1305Encrypt`) distinct from `PqForgeSecureSession` |
+| KDF / digests | HKDF-SHA-256/384 Extract+Expand (RFC 5869); SHA-256/384/512 and HMAC-SHA-256/384/512 facades |
+| KEM check | `PqKemPrimitives.checkEncapsulationKey` — FIPS 203 §7.2 via pqcrypto, no lattice reimplementation |
 | Large files | Bounded-memory `.pqfs` streaming (auto ≥ 8 MiB) and `pack`/`unpack` whole-folder archives |
 | Multi-recipient | One sealed payload, DEM key wrapped per recipient (`PqMultiRecipient`), no wire-format change |
-| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/pack/unpack/inspect/sign/verify/hybrid-sign/hybrid-verify/ecdsa-sign/ecdsa-verify` |
+| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/pack/unpack/inspect/sign/verify/hybrid-sign/hybrid-verify/ecdsa-sign/ecdsa-verify`. `encrypt-folder`/`decrypt-folder` report live progress; `--quiet`/`-q` mutes per-file lines; non-regular files are skipped. |
 
 ## Rejections And Boundaries
 
@@ -54,26 +62,47 @@ AES is not a signature algorithm. Helpers are named by operation:
 
 ### ECDSA P-256
 
-`cryptography 2.9.0` exposes `Ecdsa.p256`, but on the Dart VM its key generation
-path throws `UnimplementedError`. Since `pqforge` targets local CLI and servers,
-ECDSA is not advertised as a built-in path. Projects that already have an ECDSA
-stack can still use `dualSign` / `dualVerify` by supplying the classical
-signature and verifier.
+ECDSA-P256 **is** a built-in path: `PqEcdsaP256` (pure-Dart PointyCastle, RFC
+6979 deterministic nonces, canonical low-S), CLI `ecdsa-sign`/`ecdsa-verify`,
+and `PqForgeHybridSigner` with `classicalAlgorithm: ecdsaP256`. `keygen` emits
+an ECDSA-P256 keypair in the default hybrid set.
+
+`package:cryptography` `Ecdsa.p256` is **not** used for this path — its Dart VM
+key generation throws `UnimplementedError`. pqforge's implementation is the
+PointyCastle one. `dualSign` / `dualVerify` remain for other app-supplied
+classical schemes.
+
+ECDH over P-256/P-384 is a separate type, `PqNistEcdh`. It does not overload
+`PqEcdsaP256`.
 
 ### SLH-DSA
 
-The local `pqcrypto` roadmap lists SLH-DSA (FIPS 205) for future releases. It is
-not shipped in `pqcrypto` 0.3.1, so `pqforge` cannot expose it yet. When
-`pqcrypto` ships it, add it as a new signature family with explicit docs and
-tests; do not overclaim ahead of the dependency.
+`pqcrypto` 0.4.1 ships all 12 FIPS 205 parameter sets. Because pqforge re-exports
+`package:pqcrypto/pqcrypto.dart`, this works:
+
+```dart
+import 'package:pqforge/pqforge.dart';
+
+final keys = SlhDsa.generateKeyPair(SlhDsaParams.sha2128s);
+```
+
+What pqforge does **not** do in 0.4.4:
+
+- `PqSignatureAlgorithm` has only `mlDsa44` / `mlDsa65` / `mlDsa87`.
+- `PqPureDartLatticeProvider` signs with `MlDsa` only.
+- `keygen` emits ML-KEM + ML-DSA (+ classical), never SLH-DSA.
+- Envelopes, recipes, `sign`/`verify`, and `hybrid-sign` are ML-DSA-only.
+
+Do not document SLH-DSA as a composed pqforge workflow. When composition lands,
+add it as a new signature family with explicit docs and tests.
 
 ## Building Blocks Mapping
 
 | pqcrypto block | pqforge surface |
 | --- | --- |
-| BB1 detached signatures | `sign`, `verify`, `signDocument`, `signText`, `signMedia`, `signWebhook`, `issueToken` |
+| BB1 detached signatures | `sign`, `verify`, `signDocument`, `signText`, `signMedia`, `signWebhook`, `issueToken` (ML-DSA). `SlhDsa` is available as a re-export. |
 | BB2 encrypt to public key | `encrypt`, `decrypt`, `sealToKemPublicKey`, `PqEnvelope` |
-| BB3 hybrid authenticated handshake | `PqForgeHybridKeyAgreement`, `PqForgeCombiner` |
+| BB3 hybrid authenticated handshake | `PqForgeHybridKeyAgreement`, `PqForgeCombiner`, `PqNistEcdh` |
 | BB4 identity enrollment | `createIdentityBinding`, `verifyIdentityBinding` |
 | BB5 deterministic keys | `generateSignatureKeyPairFromSeed`, key export/wrapping |
 | BB6 signed log | `appendSignedLogEntry`, `verifySignedLogEntry` |

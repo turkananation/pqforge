@@ -14,7 +14,7 @@ workflows.
 
 [![ML-KEM](https://img.shields.io/badge/FIPS_203-ML--KEM_512_768_1024-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
 [![ML-DSA](https://img.shields.io/badge/FIPS_204-ML--DSA_44_65_87-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
-[![SLH-DSA](https://img.shields.io/badge/FIPS_205-SLH--DSA-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
+[![SLH-DSA](https://img.shields.io/badge/FIPS_205-SLH--DSA_re--export-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
 [![AEAD](https://img.shields.io/badge/AEAD-AES--GCM_%7C_ChaCha20--Poly1305-7c3aed?style=for-the-badge)](doc/API.md)
 [![Hybrid](https://img.shields.io/badge/Hybrid-X25519_%2B_ML--KEM-f97316?style=for-the-badge)](doc/decisions/ADR-0002-optional-classical-hybrid-tier.md)
 
@@ -25,11 +25,13 @@ workflows.
 [![Wiki sync](https://img.shields.io/badge/Workflow-Wiki_sync-111827?style=for-the-badge&logo=githubactions&logoColor=white)](.github/workflows/sync-wiki.yml)
 [![llms.txt](https://img.shields.io/badge/AI-llms.txt-7c3aed?style=for-the-badge)](llms.txt)
 
-`pqforge` turns `pqcrypto` ML-KEM, ML-DSA and SLH-DSA primitives into practical,
+`pqforge` turns `pqcrypto` ML-KEM and ML-DSA primitives into practical,
 domain-separated application workflows: encrypted files, folders, text, media,
 email payloads, records, signed documents, signed webhooks, signed tokens,
 release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody,
-and a reusable CLI.
+and a reusable CLI. It also **re-exports** `pqcrypto` SLH-DSA (FIPS 205, all 12
+parameter sets) so `SlhDsa` is importable from `package:pqforge/pqforge.dart`.
+`keygen`, envelopes, recipes, and `hybrid-sign` remain **ML-DSA-only**.
 
 It is deliberately more than "call a primitive." It gives users named,
 auditable operations they can explain in a code review.
@@ -45,13 +47,16 @@ the `dart:io` entrypoint `package:pqforge/pqforge_io.dart`.
 [`pqcrypto`](https://pub.dev/packages/pqcrypto)
 ([repo](https://github.com/turkananation/pqcrypto)) is the **primitives layer**.
 
-- **`pqcrypto`** gives you pure-Dart FIPS 203 ML-KEM and FIPS 204 ML-DSA (plus
-  SHA-2/3) with zero runtime dependencies — raw keygen, encaps/decaps, sign/verify
-  over bytes. Reach for it when you need the algorithms and nothing else.
+- **`pqcrypto`** gives you pure-Dart FIPS 203 ML-KEM, FIPS 204 ML-DSA, and
+  FIPS 205 SLH-DSA (plus SHA-2/3) with zero runtime dependencies — raw keygen,
+  encaps/decaps, sign/verify over bytes. Reach for it when you need the
+  algorithms and nothing else.
 - **`pqforge`** depends on `pqcrypto` and never reimplements the lattice
   primitives. It adds everything you need to *ship a feature*: KEM-DEM envelopes,
   AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids,
-  streaming, multi-recipient envelopes, key custody, recipes, and a CLI.
+  P-256/P-384 ECDH, streaming, multi-recipient envelopes, key custody, recipes,
+  and a CLI. SLH-DSA is re-exported for direct use; it is not composed into
+  `keygen` or the recipe/envelope stack.
 
 `pqforge`'s post-quantum security claim is inherited from `pqcrypto`. Full
 breakdown: [pqforge vs pqcrypto](https://github.com/turkananation/pqforge/wiki/pqforge-vs-pqcrypto)
@@ -105,7 +110,7 @@ Every row is post-quantum where it counts. The **Powered by** column names the
 engine doing the work — read `🛡️ → 🔒` as "wrap a quantum-safe key, then encrypt
 the bytes with it":
 
-- 🛡️ **`pqcrypto`** — pure-Dart PQC: ML-KEM (FIPS 203), ML-DSA (FIPS 204)
+- 🛡️ **`pqcrypto`** — pure-Dart PQC: ML-KEM (FIPS 203), ML-DSA (FIPS 204), SLH-DSA (FIPS 205, re-exported)
 - 🔒 **`PointyCastle`** — pure-Dart classical: AES-256-GCM, ChaCha20-Poly1305, HKDF, Argon2id, ECDSA-P256
 - 🤝 **`cryptography`** — native/optimized classical: X25519, Ed25519
 
@@ -126,7 +131,9 @@ the bytes with it":
 | Medical, government, and registry records | `encryptRecord`, `appendSignedLogEntry` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · log 🛡️ ML-DSA hash chain |
 | Release bundles and firmware | `sign --kind artifact`, `hybrid-sign --digest` | 🛡️ ML-DSA (pre-hash) [+ 🤝 Ed25519 \| 🔒 ECDSA-P256] |
 | Serverpod/API hybrid sessions | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` | 🤝 X25519 + 🛡️ ML-KEM → 🔒 AEAD |
+| TLS 1.3 hybrid groups (`pqtransport`) | `PqNistEcdh`, `hkdfExtract`/`Expand`, `chacha20Poly1305Encrypt`, `concatenateSharedSecrets`, `checkEncapsulationKey` | P-256/P-384 ECDH + 🛡️ ML-KEM |
 | Hybrid signatures (PQC + classical) | `PqForgeHybridSigner` | 🛡️ ML-DSA + (🤝 Ed25519 \| 🔒 ECDSA-P256) |
+| Hash-based signatures (primitive) | `SlhDsa` (re-exported from `pqcrypto`) | 🛡️ SLH-DSA (FIPS 205); not composed into `keygen`/envelopes |
 
 The full app catalog is in [doc/cookbook/PROJECT_CATALOG.md](doc/cookbook/PROJECT_CATALOG.md).
 

@@ -391,7 +391,7 @@ String _aiGuidance(JsonMap manifest) {
     ..writeln()
     ..writeln('Allowed summaries:')
     ..writeln(
-      '- pqforge composes pqcrypto ML-KEM, ML-DSA and SLH-DSA for app workflows.',
+      '- pqforge composes pqcrypto ML-KEM and ML-DSA for app workflows, and re-exports pqcrypto SLH-DSA (FIPS 205) without composing it into keygen or envelopes.',
     )
     ..writeln(
       '- pqforge includes AEAD, KDF, key wrapping, recipes, CLI, and hybrid helpers.',
