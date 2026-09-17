@@ -12,7 +12,8 @@ Use:
 - `PqForgeHybridSigner` for ML-DSA + Ed25519 or ECDSA-P256 dual signatures;
 - `PqForgeSecureSession` for AES-256-GCM or ChaCha20-Poly1305 packets;
 - `PqSymmetricPrimitives.chacha20Poly1305Encrypt` when the caller owns the
-  nonce (TLS/QUIC records);
+  nonce (TLS/QUIC records). Dart engine; dart2js-safe. Check
+  `supportsChaCha20Poly1305` rather than PointyCastle's mantissa test.
 - `SecretKey.deriveHybridSecretKey()` for `package:cryptography` users.
 
 RFC 10024 X25519MLKEM768 concatenation is `ss_mlkem || ss_x25519` with **no**

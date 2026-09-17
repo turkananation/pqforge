@@ -159,6 +159,8 @@ PqSymmetricPrimitives.hkdfExtractSha256({required ikm, Uint8List? salt});
 PqSymmetricPrimitives.hkdfExpandSha256({required prk, required info, required outputBytes});
 PqSymmetricPrimitives.hkdfExtractSha384 / hkdfExpandSha384 / hkdfSha384
 
+PqSymmetricPrimitives.supportsChaCha20Poly1305; // always true (Dart engine)
+
 PqSymmetricPrimitives.chacha20Poly1305Encrypt({ // ciphertext || tag
   required key,   // 32
   required nonce, // 12, uniqueness is the caller's
@@ -166,6 +168,7 @@ PqSymmetricPrimitives.chacha20Poly1305Encrypt({ // ciphertext || tag
   Uint8List? aad,
 });
 PqSymmetricPrimitives.chacha20Poly1305Decrypt(...); // throws PqForgeAuthTagException
+// dart2js-safe. PointyCastle session ChaCha is not; do not copy its 2^53 check.
 
 PqKemPrimitives.checkEncapsulationKey(PqKemAlgorithm kem, Uint8List ek);
 ```
