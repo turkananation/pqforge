@@ -21,10 +21,10 @@ Sync ChaCha20-Poly1305 is dart2js-safe. No `.pqf` / `.pqfs` /
 - **pub.dev score** — `pubspec.yaml` description is 60–180 characters.
   `LICENSE` is SPDX MIT (`TORT`, not `TITLE`; no duplicated "to persons").
   `NOTICE` matches MIT (stale AGPL dual-license text removed).
-  `package:pqcrypto/pqcrypto.dart` and `package:pointycastle/api.dart` are
-  **not** re-exported from `pqforge.dart` (that pulled 180k APIs and
-  pqcrypto's Cookbook category into `dart doc`). Import those packages
-  directly. HashSLH-DSA pre-hash is `PqSlhDsaPreHash`.
+- **`pqcrypto: ^0.4.2`.** That version ships `doc/cookbook/README.md` in
+  the pub.dev archive, so `dart doc` no longer crashes while initializing
+  pqcrypto's Cookbook category. Required for pqforge's own documentation
+  points.
 
 ## 0.4.4
 

@@ -1,9 +1,6 @@
 # dartdoc configuration — https://dart.dev/tools/dartdoc
 # Cookbook landing page for `{@category Cookbook}` on this package.
-# pqcrypto 0.4.1 declares the same category but does not ship
-# `doc/cookbook/README.md` in its pub.dev tarball; `dart doc` then crashes
-# while initializing that package. Fix is in pqcrypto (.pubignore currently
-# drops `doc/`). Until that ships, pub.dev documentation points stay at 0/10.
+# Requires pqcrypto >= 0.4.2 (Cookbook markdown in the pub.dev tarball).
 dartdoc:
   categories:
     "Cookbook":
