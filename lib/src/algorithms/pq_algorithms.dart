@@ -344,6 +344,26 @@ enum PqSlhDsaAlgorithm {
   }
 }
 
+/// Pre-hash for HashSLH-DSA (FIPS 205 Algorithm 23).
+///
+/// Mirrors `pqcrypto`'s `SlhDsaPreHash` so that type does not appear on the
+/// pqforge public API (re-exporting it pulls pqcrypto's Cookbook category and
+/// crashes `dart doc`).
+enum PqSlhDsaPreHash {
+  sha224,
+  sha256,
+  sha384,
+  sha512,
+  sha512224,
+  sha512256,
+  sha3224,
+  sha3256,
+  sha3384,
+  sha3512,
+  shake128,
+  shake256,
+}
+
 /// A named composition profile for common post-quantum choices.
 class PqForgeProfile {
   const PqForgeProfile({

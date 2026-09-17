@@ -309,8 +309,38 @@ void main() {
       );
     });
 
+    test('supportsChaCha20Poly1305 is true on this runtime', () {
+      expect(PqSymmetricPrimitives.supportsChaCha20Poly1305, isTrue);
+    });
+
     test(
-      'matches the PointyCastle session engine for the same nonce',
+      'matches the cryptography session engine for the same nonce',
+      () async {
+        final key = PqBytes.randomBytes(32);
+        final nonce = PqBytes.randomBytes(12);
+        final plain = Uint8List.fromList(List<int>.generate(40, (i) => i));
+        final aad = Uint8List.fromList([1, 2, 3]);
+        final sync = PqSymmetricPrimitives.chacha20Poly1305Encrypt(
+          key: key,
+          nonce: nonce,
+          plaintext: plain,
+          aad: aad,
+        );
+        final engine = PqForgeCryptographyAeadEngine(
+          PqForgeCipherSuite.chaCha20Poly1305,
+        );
+        final asyncSeal = await engine.seal(
+          key: key,
+          nonce: nonce,
+          plaintext: plain,
+          aad: aad,
+        );
+        expect(sync, orderedEquals(asyncSeal));
+      },
+    );
+
+    test(
+      'matches the PointyCastle session engine when 64-bit integers exist',
       () async {
         final key = PqBytes.randomBytes(32);
         final nonce = PqBytes.randomBytes(12);
@@ -325,13 +355,29 @@ void main() {
         const engine = PqForgePointyCastleAeadEngine(
           PqForgeCipherSuite.chaCha20Poly1305,
         );
-        final asyncSeal = await engine.seal(
-          key: key,
-          nonce: nonce,
-          plaintext: plain,
-          aad: aad,
-        );
-        expect(sync, orderedEquals(asyncSeal));
+        // PointyCastle Poly1305 needs integers wider than the IEEE-754
+        // mantissa. dart2js does not; do not skip — assert the known throw.
+        const two53 = 9007199254740992;
+        final fullWidth = two53 + 1 != two53;
+        if (fullWidth) {
+          final asyncSeal = await engine.seal(
+            key: key,
+            nonce: nonce,
+            plaintext: plain,
+            aad: aad,
+          );
+          expect(sync, orderedEquals(asyncSeal));
+        } else {
+          await expectLater(
+            engine.seal(key: key, nonce: nonce, plaintext: plain, aad: aad),
+            throwsA(
+              predicate(
+                (error) => error.toString().contains('full width integer'),
+                'PointyCastle Poly1305 platform check',
+              ),
+            ),
+          );
+        }
       },
     );
   });

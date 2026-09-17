@@ -1,0 +1,9 @@
+# dartdoc configuration — https://dart.dev/tools/dartdoc
+# Cookbook landing page for `{@category Cookbook}` on this package.
+# Requires pqcrypto >= 0.4.2 (Cookbook markdown in the pub.dev tarball).
+dartdoc:
+  categories:
+    "Cookbook":
+      markdown: doc/cookbook/README.md
+  categoryOrder:
+    - "Cookbook"

@@ -159,6 +159,8 @@ PqSymmetricPrimitives.hkdfExtractSha256({required ikm, Uint8List? salt});
 PqSymmetricPrimitives.hkdfExpandSha256({required prk, required info, required outputBytes});
 PqSymmetricPrimitives.hkdfExtractSha384 / hkdfExpandSha384 / hkdfSha384
 
+PqSymmetricPrimitives.supportsChaCha20Poly1305; // always true (Dart engine)
+
 PqSymmetricPrimitives.chacha20Poly1305Encrypt({ // ciphertext || tag
   required key,   // 32
   required nonce, // 12, uniqueness is the caller's
@@ -166,6 +168,7 @@ PqSymmetricPrimitives.chacha20Poly1305Encrypt({ // ciphertext || tag
   Uint8List? aad,
 });
 PqSymmetricPrimitives.chacha20Poly1305Decrypt(...); // throws PqForgeAuthTagException
+// dart2js-safe. PointyCastle session ChaCha is not; do not copy its 2^53 check.
 
 PqKemPrimitives.checkEncapsulationKey(PqKemAlgorithm kem, Uint8List ek);
 ```
@@ -307,13 +310,13 @@ Methods, grouped:
 
 ## 5. Supporting types
 
-- **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqSlhDsaAlgorithm` (all 12 FIPS 205 sets) · `PqForgeProfile` (`compact`, `balanced`, `maximum`; each carries a matching SHAKE-f `slhDsa`) · `PqForgeException`. `SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` remain re-exported from `pqcrypto`.
+- **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqSlhDsaAlgorithm` (all 12 FIPS 205 sets) · `PqSlhDsaPreHash` · `PqForgeProfile` (`compact`, `balanced`, `maximum`; each carries a matching SHAKE-f `slhDsa`) · `PqForgeException`. `SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` live in `package:pqcrypto/pqcrypto.dart` — they are not re-exported.
 - **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `sha384`, `sha512`, `hmacSha256`, `hmacSha384`, `hmacSha512`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqSlhDsaPrimitives` · `PqNistEcdh` · `PqForgeBytes` (compatibility alias)
 - **Keys & custody:** `PqKeyPair` · `PqKeyBundle` · `PqKemEncapsulation` · `PqExportedKey` · `PqWrappedKey` · `PqPassphraseKeyCustody` · `PqKeyCustodyStore` / `PqMemoryKeyCustodyStore` / `PqCallbackKeyCustodyStore` · `PqKeyStore` / `PqKeyResolver`
 - **Codecs, recipes & DTOs:** `PqEnvelope` (`toBinary` / `fromBinary`, `toJson` / `fromJson`) · `PqIdentityBinding` · `PqSignedLogEntry` · `PqArtifactSignature` · `PqSignedToken` · `PqDualSignature` / `PqDualSignaturePolicy` · `PqHybridKeyAgreementRequest` / `PqHybridKeyAgreementResult` · `PqHybridSignature` · `PqRecipeMessages` · `PqOffloadRequest` / `PqOffloadResponse`
 
-`package:pqforge/pqforge.dart` re-exports `package:pqcrypto/pqcrypto.dart`, so
-`SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` are importable from the same barrel.
+Import `package:pqcrypto/pqcrypto.dart` for `SlhDsa` / `SlhDsaParams` /
+`SlhDsaPreHash`. They are not re-exported from `pqforge.dart`.
 `PqForge.generateSlhDsaKeyPair` and CLI `keygen` emit SLH-DSA keys; detached
 `sign`/`verify` (`document`, `text`, `media`, `artifact`) and recipe helpers
 (`signDocument`, `signText`, `signMedia`, `signWebhook`, `signArtifact`) accept

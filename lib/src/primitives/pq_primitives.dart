@@ -1,10 +1,12 @@
-/// Thin adapters over pqcrypto and Pointy Castle.
+/// Thin adapters over pqcrypto, PointyCastle, and `package:cryptography`.
 library;
 
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart' as crypto;
+import 'package:cryptography/dart.dart' as crypto_dart;
 import 'package:pointycastle/export.dart' as pc;
 import 'package:pqcrypto/pqcrypto.dart';
 import 'package:pqforge/src/exceptions/pqforge_exception.dart';
@@ -413,7 +415,7 @@ class PqSlhDsaPrimitives {
     Uint8List message, {
     Uint8List? context,
     bool preHash = false,
-    SlhDsaPreHash hash = SlhDsaPreHash.sha256,
+    PqSlhDsaPreHash hash = PqSlhDsaPreHash.sha256,
     bool allowSlowSigning = false,
   }) {
     requireLength('secretKey', secretKey, algorithm.secretKeyBytes);
@@ -424,7 +426,7 @@ class PqSlhDsaPrimitives {
           ? SlhDsa.hashSign(
               secretKey,
               message,
-              hash,
+              _preHash(hash),
               params,
               context: context,
               allowSlowSigning: allowSlowSigning,
@@ -448,7 +450,7 @@ class PqSlhDsaPrimitives {
     Uint8List signature, {
     Uint8List? context,
     bool preHash = false,
-    SlhDsaPreHash hash = SlhDsaPreHash.sha256,
+    PqSlhDsaPreHash hash = PqSlhDsaPreHash.sha256,
   }) {
     if (publicKey.length != algorithm.publicKeyBytes ||
         signature.length != algorithm.signatureBytes ||
@@ -461,7 +463,7 @@ class PqSlhDsaPrimitives {
             publicKey,
             message,
             signature,
-            hash,
+            _preHash(hash),
             params,
             context: context,
           )
@@ -489,10 +491,36 @@ class PqSlhDsaPrimitives {
         PqSlhDsaAlgorithm.shake256s => SlhDsaParams.shake256s,
         PqSlhDsaAlgorithm.shake256f => SlhDsaParams.shake256f,
       };
+
+  static SlhDsaPreHash _preHash(PqSlhDsaPreHash hash) => switch (hash) {
+    PqSlhDsaPreHash.sha224 => SlhDsaPreHash.sha224,
+    PqSlhDsaPreHash.sha256 => SlhDsaPreHash.sha256,
+    PqSlhDsaPreHash.sha384 => SlhDsaPreHash.sha384,
+    PqSlhDsaPreHash.sha512 => SlhDsaPreHash.sha512,
+    PqSlhDsaPreHash.sha512224 => SlhDsaPreHash.sha512224,
+    PqSlhDsaPreHash.sha512256 => SlhDsaPreHash.sha512256,
+    PqSlhDsaPreHash.sha3224 => SlhDsaPreHash.sha3224,
+    PqSlhDsaPreHash.sha3256 => SlhDsaPreHash.sha3256,
+    PqSlhDsaPreHash.sha3384 => SlhDsaPreHash.sha3384,
+    PqSlhDsaPreHash.sha3512 => SlhDsaPreHash.sha3512,
+    PqSlhDsaPreHash.shake128 => SlhDsaPreHash.shake128,
+    PqSlhDsaPreHash.shake256 => SlhDsaPreHash.shake256,
+  };
 }
 
 class PqSymmetricPrimitives {
   const PqSymmetricPrimitives._();
+
+  /// Sync ChaCha20-Poly1305 (RFC 8439) is available on this runtime.
+  ///
+  /// Always `true`. The helper uses `package:cryptography`'s Dart engine
+  /// (32-bit Poly1305), not PointyCastle's 64-bit Poly1305. dart2js can
+  /// run it. Callers must **not** copy PointyCastle's `2^53` mantissa check.
+  static bool get supportsChaCha20Poly1305 => true;
+
+  /// Dart ChaCha20-Poly1305. Pinned so dart2js does not go through
+  /// `Cryptography.instance` (browser Web Crypto has no ChaCha).
+  static const _syncChaCha = crypto_dart.DartChacha20.poly1305Aead();
 
   static Uint8List hkdfSha256({
     required Uint8List ikm,
@@ -661,8 +689,11 @@ class PqSymmetricPrimitives {
   /// Sync ChaCha20-Poly1305 (RFC 8439). [key] is 32 bytes, [nonce] is 12 bytes
   /// and **caller-supplied**. Returns `ciphertext || tag` (16-byte tag).
   ///
-  /// Distinct from [PqForgeSecureSession.encrypt], which is async, generates
-  /// its own nonce, and prepends it.
+  /// Uses the cryptography Dart engine (32-bit Poly1305), so this runs on
+  /// dart2js. Distinct from [PqForgeSecureSession.encrypt], which is async,
+  /// generates its own nonce, and prepends it. The PointyCastle session
+  /// engine's ChaCha path still needs 64-bit integers; do not treat that
+  /// engine as this helper.
   static Uint8List chacha20Poly1305Encrypt({
     required Uint8List key,
     required Uint8List nonce,
@@ -703,17 +734,10 @@ class PqSymmetricPrimitives {
         data: ciphertext,
         aad: aad ?? Uint8List(0),
       );
-    } on pc.InvalidCipherTextException {
+    } on crypto.SecretBoxAuthenticationError {
       throw const PqForgeAuthTagException(
         'chacha20-poly1305 authentication tag verification failed',
       );
-    } on ArgumentError catch (error) {
-      if (error.message?.toString().contains('mac check') == true) {
-        throw const PqForgeAuthTagException(
-          'chacha20-poly1305 authentication tag verification failed',
-        );
-      }
-      rethrow;
     }
   }
 
@@ -724,22 +748,29 @@ class PqSymmetricPrimitives {
     required Uint8List data,
     required Uint8List aad,
   }) {
-    final cipher = pc.ChaCha20Poly1305(pc.ChaCha7539Engine(), pc.Poly1305())
-      ..init(
-        forEncryption,
-        pc.AEADParameters(pc.KeyParameter(key), 128, nonce, aad),
+    final secretKey = crypto.SecretKeyData(key);
+    if (forEncryption) {
+      final box = _syncChaCha.encryptSync(
+        data,
+        secretKey: secretKey,
+        nonce: nonce,
+        aad: aad,
       );
-    final out = Uint8List(cipher.getOutputSize(data.length));
-    try {
-      final n = cipher.processBytes(data, 0, data.length, out, 0);
-      final written = n + cipher.doFinal(out, n);
-      return written == out.length
-          ? out
-          : Uint8List.fromList(out.sublist(0, written));
-    } catch (error) {
-      out.fillRange(0, out.length, 0);
-      rethrow;
+      final cipherText = box.cipherText;
+      final tag = box.mac.bytes;
+      return Uint8List(cipherText.length + tag.length)
+        ..setRange(0, cipherText.length, cipherText)
+        ..setRange(cipherText.length, cipherText.length + tag.length, tag);
     }
+    final tagLength = 16;
+    final split = data.length - tagLength;
+    final box = crypto.SecretBox(
+      Uint8List.sublistView(data, 0, split),
+      nonce: nonce,
+      mac: crypto.Mac(Uint8List.sublistView(data, split)),
+    );
+    final clear = _syncChaCha.decryptSync(box, secretKey: secretKey, aad: aad);
+    return Uint8List.fromList(clear);
   }
 
   static Uint8List argon2id({
