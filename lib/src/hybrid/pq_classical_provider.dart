@@ -14,6 +14,8 @@
 ///
 /// **Determinism contract (what a native backend must match byte-for-byte):**
 /// * **X25519 ECDH** — deterministic; the shared secret must be identical.
+/// * **P-256 / P-384 ECDH** — deterministic given the same scalar and remote
+///   point; the x-coordinate shared secret must be identical.
 /// * **Ed25519** — deterministic per RFC 8032; seeded keygen *and* signatures
 ///   must be identical.
 /// * **ECDSA-P256** — implementation-dependent (pqforge uses RFC-6979 + low-S;
@@ -30,6 +32,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart' as crypto;
 
 import 'pq_ecdsa_p256.dart';
+import 'pq_nist_ecdh.dart';
 
 /// The raw classical operations behind the hybrid layer. Implementations own
 /// only the cryptography; the callers keep their own length/validation checks.
@@ -46,6 +49,30 @@ abstract interface class PqClassicalProvider {
   /// X25519 ECDH between our 32-byte [secretKey] (which is also its seed) and a
   /// 32-byte [remotePublicKey], returning the 32-byte shared secret.
   Future<Uint8List> x25519SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  });
+
+  // --- NIST-curve ECDH (uncompressed SEC1, x-coordinate secret) ---
+
+  Future<({Uint8List publicKey, Uint8List secretKey})> p256GenerateKeyPair({
+    Uint8List? seed,
+  });
+
+  /// P-256 ECDH. [secretKey] is a 32-byte scalar; [remotePublicKey] is 65-byte
+  /// uncompressed SEC1 (`0x04 || X || Y`). Returns the 32-byte x-coordinate.
+  Future<Uint8List> p256SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  });
+
+  Future<({Uint8List publicKey, Uint8List secretKey})> p384GenerateKeyPair({
+    Uint8List? seed,
+  });
+
+  /// P-384 ECDH. [secretKey] is a 48-byte scalar; [remotePublicKey] is 97-byte
+  /// uncompressed SEC1. Returns the 48-byte x-coordinate.
+  Future<Uint8List> p384SharedSecret({
     required Uint8List secretKey,
     required Uint8List remotePublicKey,
   });
@@ -138,6 +165,34 @@ final class PqPureDartClassicalProvider implements PqClassicalProvider {
       keyPair.destroy();
     }
   }
+
+  @override
+  Future<({Uint8List publicKey, Uint8List secretKey})> p256GenerateKeyPair({
+    Uint8List? seed,
+  }) async => PqNistEcdh.p256GenerateKeyPair(seed: seed);
+
+  @override
+  Future<Uint8List> p256SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) async => PqNistEcdh.p256SharedSecret(
+    secretKey: secretKey,
+    remotePublicKey: remotePublicKey,
+  );
+
+  @override
+  Future<({Uint8List publicKey, Uint8List secretKey})> p384GenerateKeyPair({
+    Uint8List? seed,
+  }) async => PqNistEcdh.p384GenerateKeyPair(seed: seed);
+
+  @override
+  Future<Uint8List> p384SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) async => PqNistEcdh.p384SharedSecret(
+    secretKey: secretKey,
+    remotePublicKey: remotePublicKey,
+  );
 
   @override
   Future<({Uint8List publicKey, Uint8List secretKey})> ed25519GenerateKeyPair({

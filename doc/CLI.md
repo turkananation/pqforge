@@ -35,22 +35,28 @@ The plain pub equivalent is `dart pub global deactivate pqforge`.
 
 `keygen` writes reusable keys into the directory passed to `--out-dir`.
 
-By default `keygen` emits the **full hybrid keyset** — ML-KEM + ML-DSA plus the
-classical X25519, Ed25519, and ECDSA-P256 keypairs — so hybrid encryption and
-hybrid signing work out of the box. `--classical <algo>` narrows the classical
-set, `--no-classical` keeps the post-quantum bundle only, and `--classical-only`
-emits just the classical keys (see [Classical Keys](#classical-keys)).
+By default `keygen` emits the **full hybrid keyset** — ML-KEM + ML-DSA, a
+profile-matched SLH-DSA SHAKE-f key, plus the classical X25519, Ed25519, and
+ECDSA-P256 keypairs — so hybrid encryption, hybrid signing, and hash-based
+signatures work out of the box. `--classical <algo>` narrows the classical
+set, `--no-classical` keeps the post-quantum bundle, `--classical-only`
+emits just the classical keys, `--slh-dsa <set>` selects specific FIPS 205
+parameter sets, `--no-slh-dsa` skips hash-based keys, and `--slh-dsa-only`
+emits only SLH-DSA (see [Classical Keys](#classical-keys) and
+[SLH-DSA Keys](#slh-dsa-keys)).
 
 Public keys are not secret:
 
 - `<key-id>.kem.public.json`
 - `<key-id>.sign.public.json`
+- `<key-id>.slh-dsa-shake-128f.public.json` (compact; balanced uses `192f`, maximum `256f`)
 - `<key-id>.x25519.public.json`, `<key-id>.ed25519.public.json`, `<key-id>.ecdsa-p256.public.json`
 
 Secret keys should be wrapped:
 
 - `<key-id>.kem.secret.wrapped.json`
 - `<key-id>.sign.secret.wrapped.json`
+- `<key-id>.slh-dsa-shake-128f.secret.wrapped.json`
 - `<key-id>.x25519.secret.wrapped.json`, `<key-id>.ed25519.secret.wrapped.json`, `<key-id>.ecdsa-p256.secret.wrapped.json`
 
 Wrapped secret keys use `PqWrappedKey`: Argon2id derives a wrapping key from the
@@ -121,6 +127,27 @@ dart run pqforge decrypt-folder \
 
 Each relative path is bound into `pqforge/folder-entry/v1` AAD, so a folder entry
 cannot be moved to another path and still authenticate.
+
+Folder, pack, unpack, encrypt, decrypt, text, media, sign, verify, hybrid-sign,
+hybrid-verify, ecdsa-sign, and ecdsa-verify commands print a live, throttled
+progress line. Folder and pack/unpack jobs add a per-file SUCCESS or FAILED
+summary with throughput, including byte progress inside a large entry — folder
+jobs forward those bytes from background isolates so concurrent files cannot
+overwrite each other's totals. `--digest` hybrid/ECDSA signing reports hashing
+progress. `keygen` reports per-key wrapping progress when a passphrase is used.
+`--quiet` / `-q` mutes those per-file lines and skip warnings; the completion
+summary still prints. A folder job that fails any file exits non-zero.
+`decrypt-text` without `--out` writes plaintext to stdout and does not attach a
+progress line.
+
+```bash
+dart run pqforge encrypt-folder --quiet \
+  --recipient-public keys/vault.kem.public.json \
+  --in-dir ./records --out-dir ./records.pqf
+```
+
+Listing skips sockets, FIFOs, broken symlinks, and unreadable files instead of
+failing the whole tree (a warning is printed unless `--quiet`).
 
 ## Text Encryption
 
@@ -258,7 +285,9 @@ dart run pqforge inspect --in report.pqf
 
 ## Signatures
 
-The `sign` command supports recipe-specific signature containers.
+The `sign` command supports recipe-specific signature containers. The signer
+key may be ML-DSA (`<key-id>.sign.secret.wrapped.json`) or SLH-DSA
+(`<key-id>.slh-dsa-….secret.wrapped.json`).
 
 ```bash
 dart run pqforge sign \
@@ -348,9 +377,9 @@ ML-KEM/ML-DSA bundle, so hybrid workflows need no extra step. Narrow or opt out:
 
 | Flag | Result |
 | --- | --- |
-| (none) | ML-KEM + ML-DSA **and** X25519 + Ed25519 + ECDSA-P256 |
-| `--classical ed25519 --classical ecdsa-p256` | ML-KEM + ML-DSA plus only the listed classical keys (repeatable) |
-| `--no-classical` | Post-quantum bundle only |
+| (none) | ML-KEM + ML-DSA + profile SLH-DSA **and** X25519 + Ed25519 + ECDSA-P256 |
+| `--classical ed25519 --classical ecdsa-p256` | ML-KEM + ML-DSA + profile SLH-DSA plus only the listed classical keys (repeatable) |
+| `--no-classical` | Post-quantum bundle only (ML-KEM + ML-DSA + profile SLH-DSA) |
 | `--classical-only` | Classical keys only, no post-quantum bundle |
 
 ```bash
@@ -368,6 +397,41 @@ Classical keys follow the `<key-id>.<algo>.public.json` /
 Argon2id + AES-256-GCM when a passphrase source is supplied — the same custody
 path as ML-KEM/ML-DSA secrets. Only the secret key is stored; the public key is
 recomputed from it when signing.
+
+## SLH-DSA Keys
+
+`keygen` emits one **profile-matched SHAKE-f** SLH-DSA keypair by default, using
+the same `signature-public` / `signature-secret` kinds as ML-DSA and an
+`algorithmId` such as `slh-dsa-shake-128f`. Files are named
+`<key-id>.slh-dsa-<hash>-<size><s|f>.{public,secret}.json`.
+
+| Flag | Result |
+| --- | --- |
+| (none) | Profile default: compact `slh-dsa-shake-128f`, balanced `192f`, maximum `256f` |
+| `--slh-dsa slh-dsa-sha2-128s --slh-dsa slh-dsa-shake-128f` | Exactly the listed FIPS 205 sets (repeatable; all 12 ids are allowed) |
+| `--no-slh-dsa` | Skip hash-based keys |
+| `--slh-dsa-only` | SLH-DSA keys only (no ML-KEM/ML-DSA, no classical) |
+
+```bash
+# Hash-based archival key (SHAKE-128f) next to the compact ML-DSA bundle
+dart run pqforge keygen \
+  --profile compact \
+  --key-id archive \
+  --out-dir keys \
+  --no-classical \
+  --passphrase-env PQFORGE_PASSPHRASE
+
+dart run pqforge sign \
+  --signer-secret keys/archive.slh-dsa-shake-128f.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --kind document \
+  --in firmware.bin \
+  --out firmware.slh.sig.json
+```
+
+`s` (small signature) sets are slow by design; `pqcrypto` requires an explicit
+opt-in to sign with them. The CLI passes that opt-in when you hand it an `s`-set
+secret. Envelope `--signer-secret` and `hybrid-sign` still reject SLH-DSA keys.
 
 ## Hybrid Signatures
 
@@ -425,13 +489,59 @@ dart run pqforge ecdsa-verify \
 `verify`, `hybrid-verify`, and `ecdsa-verify` exit `0` on a valid signature and
 `1` on a failed one, so they slot directly into shell `&&` chains and CI gates.
 
-## Color And Help
+## Threshold roots (pqthreshold companion)
+
+**pqforge** covers **single-party** hybrid keys on each device (ML-KEM, ML-DSA,
+X25519, Ed25519, ECDSA-P256). **Organizational / enclave roots** that no single
+officer holds use the sibling package [**pqthreshold**](https://pub.dev/packages/pqthreshold)
+— FROST Ed25519 threshold signing, Feldman VSS, and Gennaro DKG.
+
+Use both tools with the **same custody model**: public material as JSON or `.pqth`
+files; secrets wrapped with `PqWrappedKey` (Argon2id + AES-256-GCM) and
+`--passphrase-env PQFORGE_PASSPHRASE` (or `--passphrase-file`).
+
+### Typical stack workflow
+
+```bash
+# 1) Device identity / sealing keys (each member) — pqforge
+export PQFORGE_PASSPHRASE='load-from-secret-manager'
+dart run pqforge keygen --key-id officer-alice --out-dir ~/.pq/keys/alice \
+  --passphrase-env PQFORGE_PASSPHRASE
+
+# 2) Threshold root parameters (officers) — pqthreshold CLI
+dart pub global activate pqthreshold   # or: dart run pqthreshold from a clone
+pqthreshold params export --t 3 --n 5 --out root-ceremony/params.pqth
+pqthreshold inspect --in root-ceremony/params.pqth
+
+# 3) DKG + threshold signing (Phase 3+) — pqthreshold ceremony commands
+#    Combined signatures verify as ordinary Ed25519 (hybrid-verify / PqClassical)
+```
+
+| Concern | Tool |
+| ------- | ---- |
+| Day-to-day encrypt / sign / hybrid workflows | **pqforge** (this CLI) |
+| Root DKG, shares, quorum signing | **pqthreshold** |
+| Wrapped secret storage | Same `PqWrappedKey` envelope for both |
+| Combined root signature verify | **pqforge** `verify` / Ed25519 path on joint public key |
+
+Full cross-package terminal runbook:
+[pqthreshold `doc/TERMINAL.md`](https://github.com/turkananation/pqthreshold/blob/main/doc/TERMINAL.md).
+Ceremony logic: [pqthreshold `doc/CEREMONIES.md`](https://github.com/turkananation/pqthreshold/blob/main/doc/CEREMONIES.md).
+
+## Color, Quiet, And Help
 
 Run `pqforge` with no arguments (or `pqforge --help`) for a grouped command
 overview, and `pqforge <command> --help` for per-command options and examples.
 Colors auto-disable when output is piped or `NO_COLOR` is set; force them off
 with `--no-color`. `pqforge --version` (or `pqforge version`) prints the
 version, which is single-sourced from `pubspec.yaml`.
+
+`--quiet` / `-q` on encrypt/decrypt (file, text, media, folder), pack/unpack,
+sign, verify, hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify, and keygen
+mutes line-by-line file completion summaries and skip warnings. The final
+"complete: N file(s)" line still prints. `keygen --quiet` still warns if raw
+secret-key JSON was written. `decrypt-text` without `--out` never mixes a
+progress line into the plaintext.
 
 ## Operational Notes
 

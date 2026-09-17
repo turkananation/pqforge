@@ -192,6 +192,7 @@ class PqForgeStreamCipher {
     PqSignatureAlgorithm? signatureAlgorithm,
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
+    void Function(int bytesProcessed, int? totalBytes)? onProgress,
   }) async {
     final context = await _prepareEncrypt(
       recipientPublicKey: recipientPublicKey,
@@ -214,6 +215,7 @@ class PqForgeStreamCipher {
           // An empty input still gets one (empty) final frame so the reader
           // sees a terminator rather than a truncated stream.
           await writer.add(Uint8List(0), isFinal: true);
+          onProgress?.call(0, 0);
           return;
         }
         // Double-buffered read-ahead (R9): the next frame is read from the
@@ -238,6 +240,7 @@ class PqForgeStreamCipher {
             await _drainQuietly(pending);
             rethrow;
           }
+          onProgress?.call(read, total);
           if (pending == null) return;
           final n = await pending;
           if (n <= 0) break; // input shrank; the reader detects truncation
@@ -486,6 +489,7 @@ class PqForgeStreamCipher {
     String? recipientKeyId,
     Uint8List? signerPublicKey,
     Uint8List? Function(PqStreamingHeader header)? aadResolver,
+    void Function(int bytesProcessed, int? totalBytes)? onProgress,
   }) async {
     await output.parent.create(recursive: true);
     final sink = await output.open(mode: FileMode.write);
@@ -501,8 +505,11 @@ class PqForgeStreamCipher {
         aadResolver: aadResolver,
         onHeader: (h) => header = h,
       );
+      var processed = 0;
       await for (final plaintext in frames) {
         if (plaintext.isNotEmpty) await sink.writeFrom(plaintext);
+        processed += plaintext.length;
+        onProgress?.call(processed, _contentLengthOf(header));
       }
       await sink.flush();
       success = true;
@@ -939,6 +946,13 @@ Future<Uint8List?> _readExactlyOrNull(
 
 int _readUint32(Uint8List bytes) =>
     bytes.buffer.asByteData(bytes.offsetInBytes, 4).getUint32(0, Endian.big);
+
+int? _contentLengthOf(PqStreamingHeader? header) {
+  final value = header?.metadata['contentLength'];
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return null;
+}
 
 Future<void> _deleteQuietly(File file) async {
   try {

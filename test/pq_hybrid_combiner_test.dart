@@ -242,6 +242,59 @@ void main() {
       expect(buffer, everyElement(0));
       expect(buffer, hasLength(48));
     });
+
+    test(
+      'concatenateSharedSecrets then HKDF matches combine, reverse does not',
+      () {
+        const combiner = PqForgeCombiner.balanced();
+        final classical = _filled(32, 3);
+        final postQuantum = _filled(32, 9);
+        final salt = _filled(16, 1);
+        final info = _bytes('pqforge/concat/v1');
+        final joined = PqForgeCombiner.concatenateSharedSecrets(
+          classicalSharedSecret: classical,
+          postQuantumSharedSecret: postQuantum,
+        );
+        expect(
+          combiner.combine(
+            classicalSharedSecret: classical,
+            postQuantumSharedSecret: postQuantum,
+            info: info,
+            salt: salt,
+          ),
+          orderedEquals(
+            PqSymmetricPrimitives.hkdfSha256(
+              ikm: joined,
+              salt: salt,
+              info: info,
+            ),
+          ),
+        );
+        final reversed = PqForgeCombiner.concatenateSharedSecrets(
+          classicalSharedSecret: classical,
+          postQuantumSharedSecret: postQuantum,
+          order: PqHybridConcatOrder.pqThenClassical,
+        );
+        expect(reversed, isNot(orderedEquals(joined)));
+        expect(
+          PqSymmetricPrimitives.hkdfSha256(
+            ikm: reversed,
+            salt: salt,
+            info: info,
+          ),
+          isNot(
+            orderedEquals(
+              combiner.combine(
+                classicalSharedSecret: classical,
+                postQuantumSharedSecret: postQuantum,
+                info: info,
+                salt: salt,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   });
 
   group('PqForgeCryptographyExtensions (Option B)', () {

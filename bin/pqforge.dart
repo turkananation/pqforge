@@ -199,7 +199,7 @@ final class PqForgeRunner extends CommandRunner<void> {
       '  pqforge encrypt --recipient-public keys/vault.kem.public.json '
           '--in f --out f.pqf',
       '',
-      '  ${ansi.dim('Legend')}  🛡️  ML-KEM/ML-DSA · PQC   '
+      '  ${ansi.dim('Legend')}  🛡️  ML-KEM/ML-DSA/SLH-DSA · PQC   '
           '🤝 X25519/Ed25519   🔒 AES-GCM/ECDSA-P256',
       '  ${ansi.dim('Docs')}    https://github.com/turkananation/pqforge'
           '  ·  doc/CLI.md',

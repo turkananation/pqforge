@@ -1,5 +1,5 @@
 # The pub.dev archive is the consumable package, not the repository workspace.
-# Keep: lib/, bin/, example/, pubspec.yaml, README.md, CHANGELOG.md, LICENSE.
+# Keep: lib/, bin/, example/, doc/, pubspec.yaml, README.md, CHANGELOG.md, LICENSE.
 
 # Agent, editor, and repository automation.
 .claude/
@@ -12,10 +12,9 @@
 AGENTS.md
 CLAUDE.md
 
-# Development-only configuration, tests, documentation sources, and tooling.
+# Development-only configuration, tests, and tooling.
 analysis_options.yaml
 dart_test.yaml
-doc/
 test/
 tool/
 verdicts/

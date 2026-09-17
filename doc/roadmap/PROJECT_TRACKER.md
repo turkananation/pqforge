@@ -6,7 +6,8 @@
 - [x] Add binary and JSON envelopes.
 - [x] Add portable key wrapping and storage interfaces.
 - [x] Add document, record, file, folder, text, media, email, webhook, token, log, artifact, identity, and dual-signature helpers.
-- [x] Add built-in X25519 + ML-KEM, ML-DSA and SLH-DSA + Ed25519 hybrid tier.
+- [x] Add built-in X25519 + ML-KEM and ML-DSA + Ed25519 hybrid tier.
+- [x] Compose SLH-DSA (FIPS 205) into `keygen`, key custody, and detached `sign`/`verify` (`PqSlhDsaAlgorithm`, all 12 sets). Envelope headers, streaming signatures, and `hybrid-sign` remain ML-DSA-only (0.4.4).
 - [x] Add built-in ECDSA-P256 classical signatures (pure-Dart PointyCastle).
 - [x] Add universal CLI with wrapped key reuse.
 - [x] Add generated GitHub Pages and AI discovery surfaces.

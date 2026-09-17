@@ -74,23 +74,32 @@ class PqArtifactSignature {
     required this.artifactId,
     required this.version,
     required Uint8List artifactHash,
-    required this.signatureAlgorithm,
+    this.signatureAlgorithm,
+    this.slhDsa,
     required Uint8List signature,
   }) : artifactHash = PqBytes.copy(artifactHash),
        signature = PqBytes.copy(signature) {
+    if ((signatureAlgorithm == null) == (slhDsa == null)) {
+      throw const PqForgeException(
+        'Pass exactly one of signatureAlgorithm (ML-DSA) or slhDsa (SLH-DSA)',
+      );
+    }
     requireLength('artifactHash', this.artifactHash, 32);
     requireLength(
       'signature',
       this.signature,
-      signatureAlgorithm.signatureBytes,
+      signatureAlgorithm?.signatureBytes ?? slhDsa!.signatureBytes,
     );
   }
 
   final String artifactId;
   final int version;
   final Uint8List artifactHash;
-  final PqSignatureAlgorithm signatureAlgorithm;
+  final PqSignatureAlgorithm? signatureAlgorithm;
+  final PqSlhDsaAlgorithm? slhDsa;
   final Uint8List signature;
+
+  String get algorithmId => signatureAlgorithm?.id ?? slhDsa!.id;
 
   Uint8List message() => PqRecipeMessages.artifact(
     artifactId: artifactId,

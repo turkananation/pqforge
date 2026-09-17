@@ -11,7 +11,13 @@ void main() {
   final bundle = forge.generateKeys(keyId: 'example-bundle');
   print(
     '${bundle.profile.name}: '
-    '${bundle.profile.kem.name} + ${bundle.profile.signature.name}',
+    '${bundle.profile.kem.name} + ${bundle.profile.signature.name} + '
+    '${bundle.profile.slhDsa.name}',
+  );
+  final slhKeys = forge.generateSlhDsaKeyPair();
+  print(
+    'SLH-DSA ${forge.profile.slhDsa.name}: '
+    'pk=${slhKeys.publicKey.length} sk=${slhKeys.secretKey.length}',
   );
 
   print('\n== 2. Sign and verify a document ==');
@@ -27,6 +33,23 @@ void main() {
     documentId: 'example-document',
   );
   print('document verified: $documentOk');
+
+  final slhDocumentSignature = forge.signDocument(
+    slhKeys.secretKey,
+    message,
+    documentId: 'example-document',
+    slhDsa: forge.profile.slhDsa,
+  );
+  final slhDocumentOk = forge.verifyDocument(
+    slhKeys.publicKey,
+    message,
+    slhDocumentSignature,
+    documentId: 'example-document',
+    slhDsa: forge.profile.slhDsa,
+  );
+  print(
+    'SLH-DSA ${forge.profile.slhDsa.name} document verified: $slhDocumentOk',
+  );
 
   print('\n== 3. Encrypt and decrypt a record ==');
   final envelope = forge.encrypt(

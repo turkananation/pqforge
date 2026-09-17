@@ -73,10 +73,21 @@ void main() {
         PqPackEntry(relativePath: rel, sourcePath: '${src.path}/$rel'),
     ];
 
+    final started = <String>[];
+    final progress = <String>[];
+    final done = <String>[];
     final archive = File('${dir.path}/tree.pqf');
     final stats = await cipher.encryptStream(
       recipientPublicKey: keys.kemKeyPair.publicKey,
-      source: PqFolderPack.packStream(entries),
+      source: PqFolderPack.packStream(
+        entries,
+        onEntryStart: (entry, length) {
+          started.add('${entry.relativePath}:$length');
+        },
+        onEntryProgress: (entry, processed, length) {
+          progress.add('${entry.relativePath}:$processed/$length');
+        },
+      ),
       output: archive,
       profile: PqForgeProfile.compact,
       frameSize: 4096, // force multiple frames across entry boundaries
@@ -84,6 +95,16 @@ void main() {
     );
     expect(stats.signed, isTrue);
     expect(stats.frameCount, greaterThan(1));
+    expect(
+      started,
+      unorderedEquals([
+        'top.txt:9',
+        'nested/data.bin:70000',
+        'nested/empty.dat:0',
+      ]),
+    );
+    expect(progress, contains('nested/data.bin:70000/70000'));
+    expect(progress, isNot(contains('nested/empty.dat:')));
 
     final outDir = '${dir.path}/restored';
     final count = await PqFolderPack.unpackFromStream(
@@ -93,8 +114,25 @@ void main() {
         signerPublicKey: keys.signatureKeyPair.publicKey,
       ),
       outputDirPath: outDir,
+      onEntryStart: (path, length) => done.add('start:$path:$length'),
+      onEntryProgress: (path, processed, length) {
+        done.add('progress:$path:$processed/$length');
+      },
+      onEntryDone: (path) => done.add('done:$path'),
     );
     expect(count, tree.length);
+    expect(
+      done,
+      containsAll([
+        'start:top.txt:9',
+        'done:top.txt',
+        'start:nested/data.bin:70000',
+        'progress:nested/data.bin:70000/70000',
+        'done:nested/data.bin',
+        'start:nested/empty.dat:0',
+        'done:nested/empty.dat',
+      ]),
+    );
     tree.forEach((rel, bytes) {
       expect(File('$outDir/$rel').readAsBytesSync(), bytes);
     });

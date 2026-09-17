@@ -59,6 +59,56 @@ class PqForgeHybridKeyAgreement {
     );
   }
 
+  /// P-256 ECDH between a 32-byte [secretKey] scalar and a 65-byte uncompressed
+  /// SEC1 [remotePublicKey], returning the 32-byte x-coordinate.
+  ///
+  /// Rejects missing `0x04`, wrong length, off-curve points, infinity, and an
+  /// all-zero shared secret. Does **not** go through [PqEcdsaP256] (that class
+  /// is signatures only).
+  static Future<Uint8List> p256SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) {
+    requireLength('secretKey', secretKey, PqNistEcdh.p256PrivateKeyBytes);
+    requireLength(
+      'remotePublicKey',
+      remotePublicKey,
+      PqNistEcdh.p256PublicKeyBytes,
+    );
+    return PqClassical.provider.p256SharedSecret(
+      secretKey: secretKey,
+      remotePublicKey: remotePublicKey,
+    );
+  }
+
+  /// P-384 ECDH between a 48-byte [secretKey] scalar and a 97-byte uncompressed
+  /// SEC1 [remotePublicKey], returning the 48-byte x-coordinate.
+  static Future<Uint8List> p384SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) {
+    requireLength('secretKey', secretKey, PqNistEcdh.p384PrivateKeyBytes);
+    requireLength(
+      'remotePublicKey',
+      remotePublicKey,
+      PqNistEcdh.p384PublicKeyBytes,
+    );
+    return PqClassical.provider.p384SharedSecret(
+      secretKey: secretKey,
+      remotePublicKey: remotePublicKey,
+    );
+  }
+
+  /// Generates a P-256 ECDH key pair as raw SEC1 bytes.
+  static Future<({Uint8List publicKey, Uint8List secretKey})>
+  generateP256KeyPairBytes({Uint8List? seed}) =>
+      PqClassical.provider.p256GenerateKeyPair(seed: seed);
+
+  /// Generates a P-384 ECDH key pair as raw SEC1 bytes.
+  static Future<({Uint8List publicKey, Uint8List secretKey})>
+  generateP384KeyPairBytes({Uint8List? seed}) =>
+      PqClassical.provider.p384GenerateKeyPair(seed: seed);
+
   Future<PqHybridKeyAgreementResult> initiate({
     required crypto.SimplePublicKey serverClassicalPublicKey,
     required Uint8List serverKemPublicKey,

@@ -55,6 +55,140 @@ class PqForge {
     );
   }
 
+  /// Generate an SLH-DSA (FIPS 205) keypair. Defaults to the profile-matched
+  /// SHAKE-f set (compact 128f, balanced 192f, maximum 256f).
+  PqKeyPair generateSlhDsaKeyPair({PqSlhDsaAlgorithm? algorithm}) {
+    return PqSlhDsaPrimitives.generateKeyPair(algorithm ?? profile.slhDsa);
+  }
+
+  Uint8List signSlhDsa(
+    Uint8List secretKey,
+    Uint8List message, {
+    PqSlhDsaAlgorithm? algorithm,
+    Uint8List? context,
+    bool preHash = false,
+    bool allowSlowSigning = false,
+  }) {
+    return PqSlhDsaPrimitives.sign(
+      algorithm ?? profile.slhDsa,
+      secretKey,
+      message,
+      context: context,
+      preHash: preHash,
+      allowSlowSigning: allowSlowSigning,
+    );
+  }
+
+  bool verifySlhDsa(
+    Uint8List publicKey,
+    Uint8List message,
+    Uint8List signature, {
+    PqSlhDsaAlgorithm? algorithm,
+    Uint8List? context,
+    bool preHash = false,
+  }) {
+    return PqSlhDsaPrimitives.verify(
+      algorithm ?? profile.slhDsa,
+      publicKey,
+      message,
+      signature,
+      context: context,
+      preHash: preHash,
+    );
+  }
+
+  PqExportedKey exportSlhDsaPublicKey(
+    PqKeyPair keyPair, {
+    PqSlhDsaAlgorithm? algorithm,
+    String? keyId,
+  }) {
+    final selected = algorithm ?? profile.slhDsa;
+    return PqExportedKey(
+      kind: PqKeyKind.signaturePublic,
+      algorithmId: selected.id,
+      keyId: keyId,
+      bytes: keyPair.publicKey,
+    );
+  }
+
+  PqExportedKey exportSlhDsaSecretKey(
+    PqKeyPair keyPair, {
+    PqSlhDsaAlgorithm? algorithm,
+    String? keyId,
+  }) {
+    final selected = algorithm ?? profile.slhDsa;
+    return PqExportedKey(
+      kind: PqKeyKind.signatureSecret,
+      algorithmId: selected.id,
+      keyId: keyId,
+      bytes: keyPair.secretKey,
+    );
+  }
+
+  Uint8List _signRecipe(
+    Uint8List secretKey,
+    Uint8List message, {
+    required Uint8List context,
+    PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
+  }) {
+    if (slhDsa != null) {
+      if (algorithm != null) {
+        throw const PqForgeException(
+          'Pass only one of algorithm (ML-DSA) or slhDsa (SLH-DSA)',
+        );
+      }
+      return signSlhDsa(
+        secretKey,
+        message,
+        algorithm: slhDsa,
+        context: context,
+        preHash: true,
+        allowSlowSigning: !slhDsa.isFast,
+      );
+    }
+    return sign(
+      secretKey,
+      message,
+      algorithm: algorithm,
+      context: context,
+      preHash: true,
+    );
+  }
+
+  bool _verifyRecipe(
+    Uint8List publicKey,
+    Uint8List message,
+    Uint8List signature, {
+    required Uint8List context,
+    PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
+  }) {
+    if (slhDsa != null) {
+      if (algorithm != null) {
+        throw const PqForgeException(
+          'Pass only one of algorithm (ML-DSA) or slhDsa (SLH-DSA)',
+        );
+      }
+      return verifySlhDsa(
+        publicKey,
+        message,
+        signature,
+        algorithm: slhDsa,
+        context: context,
+        preHash: true,
+      );
+    }
+    return verify(
+      publicKey,
+      message,
+      signature,
+      algorithm: algorithm,
+      context: context,
+      preHash: true,
+    );
+  }
+
   PqKemEncapsulation encapsulate(
     Uint8List publicKey, {
     PqKemAlgorithm? algorithm,
@@ -446,16 +580,17 @@ class PqForge {
     Uint8List documentBytes, {
     required String documentId,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    return sign(
+    return _signRecipe(
       secretKey,
       PqRecipeMessages.document(
         documentId: documentId,
         documentBytes: documentBytes,
       ),
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/document/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -465,17 +600,18 @@ class PqForge {
     Uint8List signature, {
     required String documentId,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    return verify(
+    return _verifyRecipe(
       publicKey,
       PqRecipeMessages.document(
         documentId: documentId,
         documentBytes: documentBytes,
       ),
       signature,
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/document/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -484,18 +620,19 @@ class PqForge {
     required String text,
     required String textId,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
     final textBytes = PqBytes.utf8Bytes(text);
-    return sign(
+    return _signRecipe(
       signerSecretKey,
       PqRecipeMessages.text(
         textId: textId,
         encoding: 'utf-8',
         textBytes: textBytes,
       ),
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/text/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -505,9 +642,10 @@ class PqForge {
     required String textId,
     required Uint8List signature,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
     final textBytes = PqBytes.utf8Bytes(text);
-    return verify(
+    return _verifyRecipe(
       signerPublicKey,
       PqRecipeMessages.text(
         textId: textId,
@@ -515,9 +653,9 @@ class PqForge {
         textBytes: textBytes,
       ),
       signature,
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/text/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -527,17 +665,18 @@ class PqForge {
     required String mimeType,
     required Uint8List mediaBytes,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    return sign(
+    return _signRecipe(
       signerSecretKey,
       PqRecipeMessages.media(
         mediaId: mediaId,
         mimeType: mimeType,
         mediaBytes: mediaBytes,
       ),
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/media/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -548,8 +687,9 @@ class PqForge {
     required Uint8List mediaBytes,
     required Uint8List signature,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    return verify(
+    return _verifyRecipe(
       signerPublicKey,
       PqRecipeMessages.media(
         mediaId: mediaId,
@@ -557,9 +697,9 @@ class PqForge {
         mediaBytes: mediaBytes,
       ),
       signature,
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/media/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -569,17 +709,18 @@ class PqForge {
     required int timestampMs,
     required Uint8List payload,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    return sign(
+    return _signRecipe(
       signerSecretKey,
       PqRecipeMessages.webhook(
         eventType: eventType,
         timestampMs: timestampMs,
         payload: payload,
       ),
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/webhook/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -590,13 +731,14 @@ class PqForge {
     required Uint8List payload,
     required Uint8List signature,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     int? nowMs,
     int maxSkewMs = 300000,
   }) {
     if (nowMs != null && (nowMs - timestampMs).abs() > maxSkewMs) {
       return false;
     }
-    return verify(
+    return _verifyRecipe(
       signerPublicKey,
       PqRecipeMessages.webhook(
         eventType: eventType,
@@ -604,9 +746,9 @@ class PqForge {
         payload: payload,
       ),
       signature,
-      algorithm: algorithm,
       context: PqBytes.utf8Bytes('pqforge/webhook/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
   }
 
@@ -1091,26 +1233,28 @@ class PqForge {
     required int version,
     required Uint8List artifactBytes,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    final sigAlg = algorithm ?? profile.signature;
     final artifactHash = PqBytes.sha256(artifactBytes);
-    final message = PqRecipeMessages.artifact(
-      artifactId: artifactId,
-      version: version,
-      artifactHash: artifactHash,
-    );
-    final signature = sign(
+    final signature = _signRecipe(
       signerSecretKey,
-      message,
-      algorithm: sigAlg,
+      PqRecipeMessages.artifact(
+        artifactId: artifactId,
+        version: version,
+        artifactHash: artifactHash,
+      ),
       context: PqBytes.utf8Bytes('pqforge/artifact-signature/v1'),
-      preHash: true,
+      algorithm: algorithm,
+      slhDsa: slhDsa,
     );
     return PqArtifactSignature(
       artifactId: artifactId,
       version: version,
       artifactHash: artifactHash,
-      signatureAlgorithm: sigAlg,
+      signatureAlgorithm: slhDsa == null
+          ? (algorithm ?? profile.signature)
+          : null,
+      slhDsa: slhDsa,
       signature: signature,
     );
   }
@@ -1124,13 +1268,13 @@ class PqForge {
     if (!PqBytes.constantTimeEquals(artifactHash, artifact.artifactHash)) {
       return false;
     }
-    return verify(
+    return _verifyRecipe(
       signerPublicKey,
       artifact.message(),
       artifact.signature,
-      algorithm: artifact.signatureAlgorithm,
       context: PqBytes.utf8Bytes('pqforge/artifact-signature/v1'),
-      preHash: true,
+      algorithm: artifact.signatureAlgorithm,
+      slhDsa: artifact.slhDsa,
     );
   }
 

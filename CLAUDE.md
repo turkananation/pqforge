@@ -8,11 +8,14 @@ the workflows under `.codex/skills/` and `.claude/skills/`.
 
 `pqforge` is a **pure-Dart, web-safe post-quantum application toolkit**. It is the
 *composition layer* built on [`pqcrypto`](https://pub.dev/packages/pqcrypto)
-(FIPS 203 ML-KEM, FIPS 204 ML-DSA): KEM-DEM envelopes, AES-256-GCM /
-ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, bounded-memory
-streaming, multi-recipient envelopes, Argon2id key custody, named recipes, and a
-CLI. `pqforge` depends on `pqcrypto` and **never reimplements the lattice
-primitives**. See [doc/HYBRID_AUDIT.md](doc/HYBRID_AUDIT.md) and the
+(FIPS 203 ML-KEM, FIPS 204 ML-DSA, FIPS 205 SLH-DSA): KEM-DEM envelopes, AES-256-GCM /
+ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH,
+bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named
+recipes, and a CLI. `pqforge` depends on `pqcrypto` and **never reimplements the
+lattice primitives**. FIPS 205 SLH-DSA is composed into `keygen`, key custody,
+and detached `sign`/`verify` (`PqSlhDsaAlgorithm`, `PqSlhDsaPrimitives`). Envelope
+headers, streaming signatures, and `hybrid-sign` remain ML-DSA-only. See
+[doc/HYBRID_AUDIT.md](doc/HYBRID_AUDIT.md) and the
 [pqforge vs pqcrypto](https://github.com/turkananation/pqforge/wiki/pqforge-vs-pqcrypto)
 wiki page.
 
@@ -37,10 +40,10 @@ wiki page.
 | --- | --- |
 | `lib/pqforge.dart` | Web-safe core umbrella (single public import) |
 | `lib/pqforge_io.dart` | `dart:io` streaming/pack entrypoint (re-exports the core) |
-| `lib/src/algorithms/` | ML-KEM/ML-DSA wrappers, FIPS mode, swappable lattice provider |
+| `lib/src/algorithms/` | ML-KEM/ML-DSA wrappers, SLH-DSA algorithm ids, FIPS mode, swappable lattice provider |
 | `lib/src/cipher/` | AEAD engines (PointyCastle + `cryptography`), cipher suites, secure session |
 | `lib/src/codecs/` | `.pqf` envelope and `.pqfs` streaming envelope codecs |
-| `lib/src/hybrid/` | Combiner, `cryptography` extensions, ECDSA-P256, hybrid signer/agreement |
+| `lib/src/hybrid/` | Combiner, `cryptography` extensions, ECDSA-P256, NIST ECDH, hybrid signer/agreement |
 | `lib/src/keys/` | Key bundles, custody, wrapping |
 | `lib/src/recipes/` | Domain-separated recipe message framing |
 | `lib/src/services/` | Facade services: one-shot, async, stream, pack, multi-recipient |

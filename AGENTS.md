@@ -105,10 +105,10 @@ OpenSSL interop harness or streaming memory gate when those areas change.
 
 ## Publication Boundary
 
-The pub.dev archive should contain the consumable package only: `lib/`, `bin/`,
-`example/`, `pubspec.yaml`, `README.md`, `CHANGELOG.md`, and `LICENSE`.
-Repository automation, agent files, tests, internal docs, generated discovery
-surfaces, and development tools are excluded by `.pubignore`.
+The pub.dev archive should contain the consumable package: `lib/`, `bin/`,
+`example/`, `doc/`, `pubspec.yaml`, `README.md`, `CHANGELOG.md`, and `LICENSE`.
+Repository automation, agent files, tests, generated discovery surfaces, and
+development tools are excluded by `.pubignore`.
 
 Validate the boundary with:
 

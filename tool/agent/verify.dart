@@ -110,9 +110,11 @@ Future<void> _run(String label, List<String> command) async {
     command.sublist(1),
     mode: ProcessStartMode.inheritStdio,
   );
+
   final code = await process.exitCode;
   if (code != 0) {
-    throw ProcessException(command.first, command.sublist(1), label, code);
+    stderr.writeln('\n❌ Step "$label" failed with exit code $code.');
+    exit(code); // Gracefully terminate the process without a stack trace
   }
 }
 

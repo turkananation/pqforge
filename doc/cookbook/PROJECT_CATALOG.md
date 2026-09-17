@@ -49,6 +49,7 @@ Use for contracts, forms, reports, approvals, certificates, policy documents,
 and public notices.
 
 - Use: `sign --kind document`, `verify`, `signDocument`, `verifyDocument`.
+- Signer key may be ML-DSA or SLH-DSA (`keygen` emits both).
 - Document id, hash, and length are signed.
 - You supply legal policy, signer identity vetting, document canonicalization,
   and user experience.
@@ -58,7 +59,7 @@ and public notices.
 Use for payment callbacks, server-to-server notifications, audit delivery, and
 integration events.
 
-- Use: `signWebhook`, `verifyWebhook`.
+- Use: `signWebhook`, `verifyWebhook` (ML-DSA or SLH-DSA via `slhDsa:`).
 - Event type, timestamp, and payload hash are signed.
 - You supply replay protection, timestamp windows, and verification-key
   distribution.
@@ -95,7 +96,8 @@ public-sector archives.
 Use for release bundles, firmware, packages, configuration pushes, and internal
 deployment manifests.
 
-- Use: `sign --kind artifact`, `signArtifact`, `verifyArtifact`.
+- Use: `sign --kind artifact`, `signArtifact`, `verifyArtifact` (ML-DSA or
+  SLH-DSA via `slhDsa:`).
 - Sign version and artifact hash to reduce rollback risk.
 - You supply target metadata, release channel, and signing-key custody.
 
