@@ -50,6 +50,19 @@ Uint8List combine({
 static void wipe(Uint8List buffer); // zeroization primitive
 ```
 
+Concat-only join (no HKDF). Use this for RFC 10024 TLS combiners; do **not**
+call `combine()` for X25519MLKEM768 (that reverses the join and HKDF twice):
+
+```dart
+enum PqHybridConcatOrder { classicalThenPq, pqThenClassical }
+
+PqForgeCombiner.concatenateSharedSecrets({
+  required Uint8List classicalSharedSecret,
+  required Uint8List postQuantumSharedSecret,
+  PqHybridConcatOrder order = PqHybridConcatOrder.classicalThenPq,
+});
+```
+
 ### Option B — `SecretKey.deriveHybridSecretKey`
 
 ```dart
@@ -104,6 +117,62 @@ Future<Uint8List> accept({
 `PqHybridKeyAgreementRequest` carries the server public material, client X25519
 public key, ML-KEM ciphertext, transcript context, and transcript hash. It has
 `toJson()` / `fromJson()` for transport or server DTOs.
+
+Byte-oriented X25519 and NIST-curve ECDH (the latter is **not** on the
+`initiate`/`accept` X25519 handshake; it is for TLS hybrid groups):
+
+```dart
+static Future<Uint8List> x25519SharedSecret({
+  required Uint8List secretKey,       // 32
+  required Uint8List remotePublicKey, // 32
+}); // 32-byte shared secret
+
+static Future<Uint8List> p256SharedSecret({
+  required Uint8List secretKey,       // 32-byte scalar
+  required Uint8List remotePublicKey, // 65-byte uncompressed SEC1
+}); // 32-byte x-coordinate
+
+static Future<Uint8List> p384SharedSecret({
+  required Uint8List secretKey,       // 48-byte scalar
+  required Uint8List remotePublicKey, // 97-byte uncompressed SEC1
+}); // 48-byte x-coordinate
+
+static Future<({Uint8List publicKey, Uint8List secretKey})>
+    generateP256KeyPairBytes({Uint8List? seed});
+static Future<({Uint8List publicKey, Uint8List secretKey})>
+    generateP384KeyPairBytes({Uint8List? seed});
+```
+
+`PqNistEcdh` is the synchronous PointyCastle implementation (uncompressed
+SEC1, x-coordinate secret, full public-key validation).
+`PqEcdsaP256` remains signatures only. Custom `PqClassicalProvider`
+implementors must add the four `p256*` / `p384*` methods.
+
+Sync KDF / AEAD / KEM-check helpers used by TLS/QUIC (caller-supplied
+nonce; no session object):
+
+```dart
+PqBytes.sha384 / hmacSha384 / sha384OfStream
+
+PqSymmetricPrimitives.hkdfExtractSha256({required ikm, Uint8List? salt});
+PqSymmetricPrimitives.hkdfExpandSha256({required prk, required info, required outputBytes});
+PqSymmetricPrimitives.hkdfExtractSha384 / hkdfExpandSha384 / hkdfSha384
+
+PqSymmetricPrimitives.chacha20Poly1305Encrypt({ // ciphertext || tag
+  required key,   // 32
+  required nonce, // 12, uniqueness is the caller's
+  required plaintext,
+  Uint8List? aad,
+});
+PqSymmetricPrimitives.chacha20Poly1305Decrypt(...); // throws PqForgeAuthTagException
+
+PqKemPrimitives.checkEncapsulationKey(PqKemAlgorithm kem, Uint8List ek);
+```
+
+Do **not** use `PqForgeSecureSession.encrypt` for TLS records: that path is
+async, generates its own nonce, and prepends it.
+
+### ML-DSA + Ed25519 / ECDSA-P256 dual signatures
 
 ### ML-DSA + Ed25519 / ECDSA-P256 dual signatures
 
@@ -233,14 +302,14 @@ Methods, grouped:
 | Key wrapping & identity | `wrapKeyWithPassphrase` / `unwrapKeyWithPassphrase` · `createIdentityBinding` / `verifyIdentityBinding` |
 | Signed logs | `appendSignedLogEntry` / `verifySignedLogEntry` |
 | Hybrid (legacy) | `deriveHybridSessionKey` (delegates to `PqForgeCombiner`) |
-| Raw primitives | `hkdfSha256` · `aesGcmEncrypt` / `aesGcmDecrypt` · `argon2id` |
+| Raw primitives | `hkdfSha256` · `hkdfExtractSha256` / `hkdfExpandSha256` · `hkdfSha384` · `hkdfExtractSha384` / `hkdfExpandSha384` · `aesGcmEncrypt` / `aesGcmDecrypt` · `chacha20Poly1305Encrypt` / `Decrypt` · `argon2id` · `checkEncapsulationKey` |
 
 ---
 
 ## 5. Supporting types
 
 - **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqForgeProfile` (`compact`, `balanced`, `maximum`) · `PqForgeException`
-- **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `hmacSha256`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqForgeBytes` (compatibility alias)
+- **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `sha384`, `hmacSha256`, `hmacSha384`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqNistEcdh` · `PqForgeBytes` (compatibility alias)
 - **Keys & custody:** `PqKeyPair` · `PqKeyBundle` · `PqKemEncapsulation` · `PqExportedKey` · `PqWrappedKey` · `PqPassphraseKeyCustody` · `PqKeyCustodyStore` / `PqMemoryKeyCustodyStore` / `PqCallbackKeyCustodyStore` · `PqKeyStore` / `PqKeyResolver`
 - **Codecs, recipes & DTOs:** `PqEnvelope` (`toBinary` / `fromBinary`, `toJson` / `fromJson`) · `PqIdentityBinding` · `PqSignedLogEntry` · `PqArtifactSignature` · `PqSignedToken` · `PqDualSignature` / `PqDualSignaturePolicy` · `PqHybridKeyAgreementRequest` / `PqHybridKeyAgreementResult` · `PqHybridSignature` · `PqRecipeMessages` · `PqOffloadRequest` / `PqOffloadResponse`
 

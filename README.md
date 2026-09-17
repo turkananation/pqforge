@@ -245,7 +245,7 @@ one-shot CLI command:
 | Capability | Library API | Why library-only |
 | --- | --- | --- |
 | App-supplied dual signatures | `dualSign` / `dualVerify` | `dualVerify` takes a classical-verifier **callback**, so a bring-your-own scheme can't be passed on a command line. Use `hybrid-sign` for the built-in Ed25519/ECDSA-P256 schemes. |
-| Hybrid session derivation (raw bytes) | `PqForgeCombiner`, `SecretKey.deriveHybridSecretKey()` | Interactive, multi-party key agreement; the raw classical ‖ ML-KEM join is a building block, not a workflow. |
+| Hybrid session derivation (raw bytes) | `PqForgeCombiner`, `SecretKey.deriveHybridSecretKey()`, `PqNistEcdh` | Interactive, multi-party key agreement; the raw classical ‖ ML-KEM join is a building block, not a workflow. NIST-curve ECDH is library-only. |
 
 ## Profiles
 
@@ -260,14 +260,18 @@ one-shot CLI command:
 The single `package:pqforge/pqforge.dart` import also provides:
 
 - `PqForgeHybridKeyAgreement` for X25519 + ML-KEM session key agreement;
+- `PqNistEcdh` / `p256SharedSecret` / `p384SharedSecret` for NIST-curve ECDH
+  (uncompressed SEC1, x-coordinate secret);
 - `PqForgeHybridSigner` for ML-DSA + Ed25519 **or ECDSA-P256** dual signatures;
 - `PqForgeSecureSession` for AES-256-GCM or ChaCha20-Poly1305 packets;
+- `PqSymmetricPrimitives.chacha20Poly1305Encrypt` for caller-supplied nonces;
 - `SecretKey.deriveHybridSecretKey()` for `package:cryptography` users.
 
 ECDSA over NIST P-256 is built in via `PqEcdsaP256` (pure-Dart PointyCastle, with
 RFC 6979 deterministic nonces and low-S signatures), because `cryptography 2.9.0`
 cannot generate P-256 keys on the Dart VM. `dualSign` / `dualVerify` remain for
-any other app-supplied classical signature scheme.
+any other app-supplied classical signature scheme. ECDH over P-256/P-384 is
+`PqNistEcdh`, not `PqEcdsaP256`.
 
 ## Claim Boundary
 

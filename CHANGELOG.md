@@ -3,6 +3,11 @@
 ## 0.4.4
 
 - **`PqBytes.sha512`**, **`PqBytes.sha512OfStream`**, and **`PqBytes.hmacSha512`** — SHA-512 helpers for protocols (e.g. FROST-Ed25519) that need a 512-bit digest facade alongside the existing SHA-256 APIs. Additive only; no wire-format changes.
+- **NIST-curve ECDH** — `PqNistEcdh` plus `PqClassicalProvider.p256*` / `p384*` and `PqForgeHybridKeyAgreement.p256SharedSecret` / `p384SharedSecret`. Uncompressed SEC1 (`0x04 || X || Y`); shared secret is the x-coordinate (RFC 8446 / SP 800-56A). Full public-key validation: rejects infinity, all-zero x, missing `0x04`, off-curve points, and out-of-range scalars. Does **not** overload `PqEcdsaP256` (signatures only). Unlocks TLS hybrid groups SecP256r1MLKEM768 / SecP384r1MLKEM1024 for `pqtransport`. Additive; no `.pqf`/`.pqfs` changes. Custom `PqClassicalProvider` implementors must add the four ECDH methods.
+- **RFC 5869 HKDF-Extract / Expand** — `PqSymmetricPrimitives.hkdfExtractSha256` / `hkdfExpandSha256` / `hkdfExtractSha384` / `hkdfExpandSha384`, plus `PqBytes.sha384` / `hmacSha384` / `sha384OfStream` and combined `hkdfSha384`. Existing `hkdfSha256` is unchanged. Expand-Label stays in the protocol layer.
+- **Sync ChaCha20-Poly1305** — `PqSymmetricPrimitives.chacha20Poly1305Encrypt` / `Decrypt` matching the AES-GCM helper shape (32-byte key, caller-supplied 12-byte nonce, `ciphertext || tag`). Distinct from `PqForgeSecureSession.encrypt` (async, self-nonce, nonce-prepended packet).
+- **Concat-only hybrid join** — `PqForgeCombiner.concatenateSharedSecrets` with `PqHybridConcatOrder`. Does not HKDF. `combine()` still always does `classical || PQ` then HKDF. RFC 10024 X25519MLKEM768 must use `pqThenClassical` and must **not** call `combine()`.
+- **`PqKemPrimitives.checkEncapsulationKey`** — FIPS 203 §7.2 modulus check as a `bool` before encapsulate (length + pqcrypto validation). Does not reimplement ML-KEM.
 
 ## 0.4.3
 

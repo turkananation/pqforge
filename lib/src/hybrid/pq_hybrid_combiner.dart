@@ -27,6 +27,19 @@ import 'package:pointycastle/export.dart' as pc;
 
 import '../algorithms/pq_algorithms.dart';
 
+/// Join order for [PqForgeCombiner.concatenateSharedSecrets].
+///
+/// [PqForgeCombiner.combine] always uses [classicalThenPq] and then HKDF.
+/// RFC 10024 X25519MLKEM768 needs [pqThenClassical] and **must not** HKDF
+/// inside the combiner — TLS HKDF-Extract consumes the raw concatenation.
+enum PqHybridConcatOrder {
+  /// `classical || postQuantum`. Same join as [PqForgeCombiner.combine].
+  classicalThenPq,
+
+  /// `postQuantum || classical`. RFC 10024 X25519MLKEM768 shared secret.
+  pqThenClassical,
+}
+
 /// Hash digest engine + security-profile pairing used by [PqForgeCombiner].
 ///
 /// Fixing the digest fixes the HKDF extract/expand boundary so the combiner
@@ -178,6 +191,41 @@ class PqForgeCombiner {
       // Overwrite the joined secret regardless of success or thrown error.
       wipe(concatenatedSecret);
     }
+  }
+
+  /// Concatenates the two shares **without** HKDF.
+  ///
+  /// Use this for protocol combiners (RFC 10024) that feed the joined secret
+  /// into their own KDF. Do **not** call [combine] for X25519MLKEM768 — that
+  /// would reverse the join and HKDF twice.
+  static Uint8List concatenateSharedSecrets({
+    required Uint8List classicalSharedSecret,
+    required Uint8List postQuantumSharedSecret,
+    PqHybridConcatOrder order = PqHybridConcatOrder.classicalThenPq,
+  }) {
+    if (classicalSharedSecret.isEmpty) {
+      throw ArgumentError.value(
+        classicalSharedSecret.length,
+        'classicalSharedSecret',
+        'must not be empty',
+      );
+    }
+    if (postQuantumSharedSecret.isEmpty) {
+      throw ArgumentError.value(
+        postQuantumSharedSecret.length,
+        'postQuantumSharedSecret',
+        'must not be empty',
+      );
+    }
+    final first = order == PqHybridConcatOrder.classicalThenPq
+        ? classicalSharedSecret
+        : postQuantumSharedSecret;
+    final second = order == PqHybridConcatOrder.classicalThenPq
+        ? postQuantumSharedSecret
+        : classicalSharedSecret;
+    return Uint8List(first.length + second.length)
+      ..setRange(0, first.length, first)
+      ..setRange(first.length, first.length + second.length, second);
   }
 
   /// Overwrites [buffer] in place with zero bytes.

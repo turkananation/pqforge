@@ -49,7 +49,7 @@ Yes. pqforge pack collapses a whole folder into one encrypted streaming archive 
 
 ## What does hybrid mean in pqforge?
 
-Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message.
+Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256.
 
 ## Where does the CLI store keys?
 

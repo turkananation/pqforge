@@ -24,7 +24,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - Use pqforge when you need to ship a feature: encrypt a file, sign a release, run a hybrid session, wrap a key, or expose a CLI.
 - pqforge depends on pqcrypto and never reimplements the lattice primitives; the post-quantum security claim is inherited from pqcrypto.
 - Both are pure Dart and web-safe; neither ships dart:ffi in its published package.
-- pqforge adds the classical hybrid tier (X25519, Ed25519, ECDSA-P256) and the symmetric/AEAD/KDF stack that pqcrypto deliberately leaves out.
+- pqforge adds the classical hybrid tier (X25519, Ed25519, ECDSA-P256, P-256/P-384 ECDH) and the symmetric/AEAD/KDF stack that pqcrypto deliberately leaves out.
 
 ## Capabilities
 
@@ -34,6 +34,8 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB
 - Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change
 - X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands
+- NIST P-256 and P-384 ECDH (uncompressed SEC1, x-coordinate secret) for TLS hybrid groups
+- RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384) and sync ChaCha20-Poly1305 with a caller-supplied nonce
 - ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S)
 - Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory
 - pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)

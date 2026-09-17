@@ -10,6 +10,7 @@ import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 import '../algorithms/pq_algorithms.dart';
 import '../algorithms/pq_lattice_provider.dart';
+import '../cipher/pq_cipher_suite.dart';
 import '../keys/pq_keys.dart';
 
 final _secureRandom = Random.secure();
@@ -136,6 +137,9 @@ class PqBytes {
 
   static Uint8List sha256(Uint8List data) => pc.SHA256Digest().process(data);
 
+  /// SHA-384 one-shot digest (48 bytes).
+  static Uint8List sha384(Uint8List data) => pc.SHA384Digest().process(data);
+
   /// SHA-512 one-shot digest (64 bytes).
   static Uint8List sha512(Uint8List data) => pc.SHA512Digest().process(data);
 
@@ -144,6 +148,18 @@ class PqBytes {
   /// artifacts for digest-mode signing without buffering them.
   static Future<Uint8List> sha256OfStream(Stream<List<int>> chunks) async {
     final digest = pc.SHA256Digest();
+    await for (final chunk in chunks) {
+      final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+      digest.update(bytes, 0, bytes.length);
+    }
+    final out = Uint8List(digest.digestSize);
+    digest.doFinal(out, 0);
+    return out;
+  }
+
+  /// SHA-384 over a byte stream in O(1) memory.
+  static Future<Uint8List> sha384OfStream(Stream<List<int>> chunks) async {
+    final digest = pc.SHA384Digest();
     await for (final chunk in chunks) {
       final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
       digest.update(bytes, 0, bytes.length);
@@ -170,6 +186,15 @@ class PqBytes {
     required Uint8List data,
   }) {
     final hmac = pc.HMac(pc.SHA256Digest(), 64)..init(pc.KeyParameter(key));
+    return hmac.process(data);
+  }
+
+  /// HMAC-SHA-384 (48-byte tag).
+  static Uint8List hmacSha384({
+    required Uint8List key,
+    required Uint8List data,
+  }) {
+    final hmac = pc.HMac(pc.SHA384Digest(), 128)..init(pc.KeyParameter(key));
     return hmac.process(data);
   }
 
@@ -208,11 +233,16 @@ class PqForgeBytes {
   static Uint8List lengthPrefixed(Iterable<Uint8List> fields) =>
       PqBytes.lengthPrefixed(fields);
   static Uint8List sha256(Uint8List data) => PqBytes.sha256(data);
+  static Uint8List sha384(Uint8List data) => PqBytes.sha384(data);
   static Uint8List sha512(Uint8List data) => PqBytes.sha512(data);
   static Uint8List hmacSha256({
     required Uint8List key,
     required Uint8List data,
   }) => PqBytes.hmacSha256(key: key, data: data);
+  static Uint8List hmacSha384({
+    required Uint8List key,
+    required Uint8List data,
+  }) => PqBytes.hmacSha384(key: key, data: data);
   static Uint8List hmacSha512({
     required Uint8List key,
     required Uint8List data,
@@ -265,6 +295,34 @@ class PqKemPrimitives {
     requireLength('secretKey', secretKey, algorithm.secretKeyBytes);
     requireLength('ciphertext', ciphertext, algorithm.ciphertextBytes);
     return PqLattice.provider.kemDecapsulate(algorithm, secretKey, ciphertext);
+  }
+
+  /// FIPS 203 §7.2 encapsulation-key check **before** a live encapsulate.
+  ///
+  /// Returns `false` (never throws) for a wrong length or a key whose
+  /// 12-bit coefficients are not in `[0, q)`. Valid keys return `true`.
+  /// pqcrypto performs the modulus check; this wrapper does not reimplement
+  /// ML-KEM.
+  static bool checkEncapsulationKey(
+    PqKemAlgorithm algorithm,
+    Uint8List encapsulationKey,
+  ) {
+    if (encapsulationKey.length != algorithm.publicKeyBytes) {
+      return false;
+    }
+    final nonce = Uint8List(32)..[0] = 0x01;
+    try {
+      final (ciphertext, sharedSecret) = PqLattice.provider.kemEncapsulate(
+        algorithm,
+        encapsulationKey,
+        nonce: nonce,
+      );
+      sharedSecret.fillRange(0, sharedSecret.length, 0);
+      ciphertext.fillRange(0, ciphertext.length, 0);
+      return true;
+    } on ArgumentError {
+      return false;
+    }
   }
 }
 
@@ -349,6 +407,114 @@ class PqSymmetricPrimitives {
     return out;
   }
 
+  /// RFC 5869 HKDF-Extract with SHA-256. Empty/null [salt] is HashLen zeros.
+  static Uint8List hkdfExtractSha256({
+    required Uint8List ikm,
+    Uint8List? salt,
+  }) =>
+      _hkdfExtract(hmac: PqBytes.hmacSha256, hashLen: 32, ikm: ikm, salt: salt);
+
+  /// RFC 5869 HKDF-Expand with SHA-256.
+  static Uint8List hkdfExpandSha256({
+    required Uint8List prk,
+    required Uint8List info,
+    required int outputBytes,
+  }) => _hkdfExpand(
+    hmac: PqBytes.hmacSha256,
+    hashLen: 32,
+    prk: prk,
+    info: info,
+    outputBytes: outputBytes,
+  );
+
+  /// Combined HKDF-SHA-384 (Extract then Expand), matching [hkdfSha256].
+  static Uint8List hkdfSha384({
+    required Uint8List ikm,
+    required Uint8List salt,
+    required Uint8List info,
+    int outputBytes = 48,
+  }) {
+    RangeError.checkValueInInterval(outputBytes, 1, 255 * 48, 'outputBytes');
+    final derivator = pc.HKDFKeyDerivator(pc.SHA384Digest())
+      ..init(pc.HkdfParameters(ikm, outputBytes, salt, info));
+    final out = Uint8List(outputBytes);
+    derivator.deriveKey(null, 0, out, 0);
+    return out;
+  }
+
+  /// RFC 5869 HKDF-Extract with SHA-384.
+  static Uint8List hkdfExtractSha384({
+    required Uint8List ikm,
+    Uint8List? salt,
+  }) =>
+      _hkdfExtract(hmac: PqBytes.hmacSha384, hashLen: 48, ikm: ikm, salt: salt);
+
+  /// RFC 5869 HKDF-Expand with SHA-384.
+  static Uint8List hkdfExpandSha384({
+    required Uint8List prk,
+    required Uint8List info,
+    required int outputBytes,
+  }) => _hkdfExpand(
+    hmac: PqBytes.hmacSha384,
+    hashLen: 48,
+    prk: prk,
+    info: info,
+    outputBytes: outputBytes,
+  );
+
+  static Uint8List _hkdfExtract({
+    required Uint8List Function({
+      required Uint8List key,
+      required Uint8List data,
+    })
+    hmac,
+    required int hashLen,
+    required Uint8List ikm,
+    Uint8List? salt,
+  }) {
+    final actualSalt = (salt == null || salt.isEmpty)
+        ? Uint8List(hashLen)
+        : salt;
+    return hmac(key: actualSalt, data: ikm);
+  }
+
+  static Uint8List _hkdfExpand({
+    required Uint8List Function({
+      required Uint8List key,
+      required Uint8List data,
+    })
+    hmac,
+    required int hashLen,
+    required Uint8List prk,
+    required Uint8List info,
+    required int outputBytes,
+  }) {
+    RangeError.checkValueInInterval(
+      outputBytes,
+      1,
+      255 * hashLen,
+      'outputBytes',
+    );
+    final n = (outputBytes + hashLen - 1) ~/ hashLen;
+    final okm = Uint8List(n * hashLen);
+    var previous = Uint8List(0);
+    var offset = 0;
+    for (var i = 1; i <= n; i++) {
+      final block = hmac(
+        key: prk,
+        data: PqBytes.concat([
+          previous,
+          info,
+          Uint8List.fromList([i]),
+        ]),
+      );
+      okm.setRange(offset, offset + hashLen, block);
+      offset += hashLen;
+      previous = block;
+    }
+    return Uint8List.sublistView(okm, 0, outputBytes);
+  }
+
   static Uint8List aesGcmEncrypt({
     required Uint8List key,
     required Uint8List nonce,
@@ -389,6 +555,90 @@ class PqSymmetricPrimitives {
         ),
       );
     return cipher.process(ciphertext);
+  }
+
+  /// Sync ChaCha20-Poly1305 (RFC 8439). [key] is 32 bytes, [nonce] is 12 bytes
+  /// and **caller-supplied**. Returns `ciphertext || tag` (16-byte tag).
+  ///
+  /// Distinct from [PqForgeSecureSession.encrypt], which is async, generates
+  /// its own nonce, and prepends it.
+  static Uint8List chacha20Poly1305Encrypt({
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List plaintext,
+    Uint8List? aad,
+  }) {
+    requireLength('key', key, 32);
+    requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
+    return _chacha20Poly1305(
+      forEncryption: true,
+      key: key,
+      nonce: nonce,
+      data: plaintext,
+      aad: aad ?? Uint8List(0),
+    );
+  }
+
+  /// Sync ChaCha20-Poly1305 open. [ciphertext] is `ciphertext || tag`.
+  /// Throws [PqForgeAuthTagException] on a failed tag.
+  static Uint8List chacha20Poly1305Decrypt({
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List ciphertext,
+    Uint8List? aad,
+  }) {
+    requireLength('key', key, 32);
+    requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
+    if (ciphertext.length < 16) {
+      throw const PqForgeAuthTagException(
+        'ciphertext is shorter than the authentication tag',
+      );
+    }
+    try {
+      return _chacha20Poly1305(
+        forEncryption: false,
+        key: key,
+        nonce: nonce,
+        data: ciphertext,
+        aad: aad ?? Uint8List(0),
+      );
+    } on pc.InvalidCipherTextException {
+      throw const PqForgeAuthTagException(
+        'chacha20-poly1305 authentication tag verification failed',
+      );
+    } on ArgumentError catch (error) {
+      if (error.message?.toString().contains('mac check') == true) {
+        throw const PqForgeAuthTagException(
+          'chacha20-poly1305 authentication tag verification failed',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Uint8List _chacha20Poly1305({
+    required bool forEncryption,
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List data,
+    required Uint8List aad,
+  }) {
+    final cipher = pc.ChaCha20Poly1305(pc.ChaCha7539Engine(), pc.Poly1305())
+      ..init(
+        forEncryption,
+        pc.AEADParameters(pc.KeyParameter(key), 128, nonce, aad),
+      );
+    final out = Uint8List(cipher.getOutputSize(data.length));
+    try {
+      final n = cipher.processBytes(data, 0, data.length, out, 0);
+      final written = n + cipher.doFinal(out, n);
+      return written == out.length
+          ? out
+          : Uint8List.fromList(out.sublist(0, written));
+    } catch (error) {
+      out.fillRange(0, out.length, 0);
+      rethrow;
+    }
   }
 
   static Uint8List argon2id({

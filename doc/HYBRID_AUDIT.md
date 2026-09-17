@@ -1,6 +1,6 @@
 # pqforge Hybrid Coverage Audit
 
-Last updated: 2026-06-13
+Last updated: 2026-09-17
 
 This audit reconciles `pqforge` against the
 [`pqcrypto`](https://pub.dev/packages/pqcrypto) primitives package
@@ -25,7 +25,7 @@ classical KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
 | KEM-DEM encryption | `encrypt`, `decrypt`, `sealToKemPublicKey`, file/record/email/text/media/folder helpers |
 | Signatures | raw signatures, documents, text, media, webhooks, artifacts, logs, tokens |
 | Hybrid KDF | `PqForgeCombiner`, `deriveHybridSessionKey` |
-| Built-in hybrid KEX | X25519 + ML-KEM through `PqForgeHybridKeyAgreement` |
+| Built-in hybrid KEX | X25519 + ML-KEM through `PqForgeHybridKeyAgreement`; P-256/P-384 ECDH through `PqNistEcdh` (TLS hybrid groups, not the X25519 handshake) |
 | Built-in hybrid signatures | ML-DSA + Ed25519 **or ECDSA-P256** through `PqForgeHybridSigner` |
 | Built-in classical signatures | ECDSA-P256 (`PqEcdsaP256`, pure-Dart PointyCastle, RFC 6979, low-S) — `ecdsa-sign`/`ecdsa-verify` |
 | App-supplied hybrid signatures | `dualSign` / `dualVerify` for any other classical verifier callback |
