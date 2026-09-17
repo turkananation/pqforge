@@ -62,7 +62,7 @@ sets are slow; those workflows stay compact ML-DSA. Passing an SLH-DSA key as
 
 ### CI
 
-- **pub.dev** — `.github/workflows/publish.yml` publishes the package on `vX.Y.Z` tags using GitHub Actions OIDC (no long-lived pub token). Enable it once on the [package admin page](https://pub.dev/packages/pqforge/admin): repository `turkananation/pqforge`, tag pattern `v{{version}}`, workflow `publish.yml`. The existing `release.yml` still attaches AOT CLI binaries on the same tags.
+- **pub.dev** — `.github/workflows/publish.yml` publishes the package on `vX.Y.Z` tags using GitHub Actions OIDC (no long-lived pub token). Enable it once on the [package admin page](https://pub.dev/packages/pqforge/admin): repository `turkananation/pqforge`, tag pattern `v{{version}}`, GitHub Actions environment name `pub.dev` (not the workflow filename). The job uses `environment: pub.dev`. The existing `release.yml` still attaches AOT CLI binaries on the same tags.
 
 ## 0.4.3
 

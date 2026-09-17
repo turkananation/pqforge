@@ -7,7 +7,13 @@ name: Publish to pub.dev
 # (Automated publishing → GitHub Actions):
 #   repository:  turkananation/pqforge
 #   tag-pattern: v{{version}}
-#   workflow:    publish.yml
+#   push events: enabled
+#   workflow_dispatch: optional fallback (enabled below)
+#   Require GitHub Actions environment: pub.dev
+#     ← this is a GitHub Environment *name*, not the workflow filename
+#
+# Also create the matching GitHub Environment:
+#   Settings → Environments → New environment → name: pub.dev
 #
 # Do not add a `release` event trigger: a GitHub Release that creates a new
 # tag already fires this `push` event, and a second trigger would double-publish.
@@ -16,6 +22,7 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +32,7 @@ jobs:
   publish:
     name: Publish to pub.dev
     runs-on: ubuntu-latest
+    environment: pub.dev
     permissions:
       id-token: write
       contents: read
