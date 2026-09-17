@@ -20,7 +20,7 @@ Uint8List _pattern(int length, int Function(int) f) =>
 /// Exercises the contract a provider must satisfy on its own: deterministic
 /// seeded keygen, deterministic encaps + decaps recovery, and sign/verify
 /// round-trip with tamper rejection — across every ML-KEM and ML-DSA parameter.
-/// SLH-DSA is re-exported from pqcrypto and is not a `PqLatticeProvider` surface.
+/// SLH-DSA is composed through [PqSlhDsaPrimitives], not this lattice seam.
 void latticeProviderConformance(PqLatticeProvider provider) {
   for (final kem in PqKemAlgorithm.values) {
     final seed = _pattern(64, (i) => i & 0xFF);

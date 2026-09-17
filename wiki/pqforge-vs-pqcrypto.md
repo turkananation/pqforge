@@ -11,12 +11,11 @@ post-quantum primitives.
   ML-DSA, and FIPS 205 SLH-DSA (all 12 parameter sets), plus SHA-2 and
   SHA-3/SHAKE, with **zero runtime dependencies**. It gives you raw key
   generation, encapsulation/decapsulation, and sign/verify over byte arrays.
-- **`pqforge` is the application toolkit.** It turns ML-KEM and ML-DSA into
+- **`pqforge` is the application toolkit.** It turns ML-KEM, ML-DSA, and SLH-DSA into
   encrypted files, folders, text, media, signed documents, webhooks, tokens,
   hybrid sessions, wrapped key custody, streaming, multi-recipient envelopes,
-  and a CLI. SLH-DSA is **re-exported** so `SlhDsa` is importable from
-  `package:pqforge/pqforge.dart`; it is not composed into `keygen`, envelopes,
-  recipes, or `hybrid-sign`.
+  and a CLI. SLH-DSA is composed into `keygen` and detached `sign`/`verify`;
+  envelopes and `hybrid-sign` remain ML-DSA-only.
 
 ## Which one do I want?
 
@@ -45,7 +44,8 @@ the rest of the stack a real application needs:
 - **Classical hybrid tier** — X25519 key agreement, Ed25519 and ECDSA-P256
   signatures, P-256/P-384 ECDH (`PqNistEcdh`), combined with ML-KEM/ML-DSA so
   security holds if *either* the post-quantum or the classical assumption
-  survives. SLH-DSA is available as a re-export, not a hybrid-signer leg.
+  survives. SLH-DSA is a composed detached-signature family, not a hybrid-signer
+  leg.
 - **Key custody** — Argon2id + AES-256-GCM wrapped keys (PBKDF2 under FIPS mode)
   and pluggable stores.
 - **Streaming and packing** — bounded-memory gigabyte files and one-archive

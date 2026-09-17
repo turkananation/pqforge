@@ -6,6 +6,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+import 'package:pqcrypto/pqcrypto.dart';
 import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 import '../algorithms/pq_algorithms.dart';
@@ -388,6 +389,106 @@ class PqSignaturePrimitives {
       preHash: preHash,
     );
   }
+}
+
+/// FIPS 205 SLH-DSA adapters over `pqcrypto`. Hash-based, not lattice — this
+/// is a sibling of [PqSignaturePrimitives], not a [PqLatticeProvider] surface.
+class PqSlhDsaPrimitives {
+  const PqSlhDsaPrimitives._();
+
+  static PqKeyPair generateKeyPair(PqSlhDsaAlgorithm algorithm) {
+    final (publicKey, secretKey) = SlhDsa.generateKeyPair(_params(algorithm));
+    requireLength('publicKey', publicKey, algorithm.publicKeyBytes);
+    requireLength('secretKey', secretKey, algorithm.secretKeyBytes);
+    return PqKeyPair(publicKey: publicKey, secretKey: secretKey);
+  }
+
+  /// Hedged FIPS 205 Algorithm 22, or HashSLH-DSA Algorithm 23 when [preHash]
+  /// is set (default pre-hash: SHA-256, matching pqforge recipe digesting).
+  ///
+  /// Slow `s` parameter sets require [allowSlowSigning], matching `pqcrypto`.
+  static Uint8List sign(
+    PqSlhDsaAlgorithm algorithm,
+    Uint8List secretKey,
+    Uint8List message, {
+    Uint8List? context,
+    bool preHash = false,
+    SlhDsaPreHash hash = SlhDsaPreHash.sha256,
+    bool allowSlowSigning = false,
+  }) {
+    requireLength('secretKey', secretKey, algorithm.secretKeyBytes);
+    requireDsaContext(context);
+    final params = _params(algorithm);
+    try {
+      return preHash
+          ? SlhDsa.hashSign(
+              secretKey,
+              message,
+              hash,
+              params,
+              context: context,
+              allowSlowSigning: allowSlowSigning,
+            )
+          : SlhDsa.sign(
+              secretKey,
+              message,
+              params,
+              context: context,
+              allowSlowSigning: allowSlowSigning,
+            );
+    } on UnsupportedError catch (error) {
+      throw PqForgeException(error.message ?? '$error');
+    }
+  }
+
+  static bool verify(
+    PqSlhDsaAlgorithm algorithm,
+    Uint8List publicKey,
+    Uint8List message,
+    Uint8List signature, {
+    Uint8List? context,
+    bool preHash = false,
+    SlhDsaPreHash hash = SlhDsaPreHash.sha256,
+  }) {
+    if (publicKey.length != algorithm.publicKeyBytes ||
+        signature.length != algorithm.signatureBytes ||
+        (context?.length ?? 0) > 255) {
+      return false;
+    }
+    final params = _params(algorithm);
+    return preHash
+        ? SlhDsa.hashVerify(
+            publicKey,
+            message,
+            signature,
+            hash,
+            params,
+            context: context,
+          )
+        : SlhDsa.verify(
+            publicKey,
+            message,
+            signature,
+            params,
+            context: context,
+          );
+  }
+
+  static SlhDsaParams _params(PqSlhDsaAlgorithm algorithm) =>
+      switch (algorithm) {
+        PqSlhDsaAlgorithm.sha2128s => SlhDsaParams.sha2128s,
+        PqSlhDsaAlgorithm.sha2128f => SlhDsaParams.sha2128f,
+        PqSlhDsaAlgorithm.sha2192s => SlhDsaParams.sha2192s,
+        PqSlhDsaAlgorithm.sha2192f => SlhDsaParams.sha2192f,
+        PqSlhDsaAlgorithm.sha2256s => SlhDsaParams.sha2256s,
+        PqSlhDsaAlgorithm.sha2256f => SlhDsaParams.sha2256f,
+        PqSlhDsaAlgorithm.shake128s => SlhDsaParams.shake128s,
+        PqSlhDsaAlgorithm.shake128f => SlhDsaParams.shake128f,
+        PqSlhDsaAlgorithm.shake192s => SlhDsaParams.shake192s,
+        PqSlhDsaAlgorithm.shake192f => SlhDsaParams.shake192f,
+        PqSlhDsaAlgorithm.shake256s => SlhDsaParams.shake256s,
+        PqSlhDsaAlgorithm.shake256f => SlhDsaParams.shake256f,
+      };
 }
 
 class PqSymmetricPrimitives {

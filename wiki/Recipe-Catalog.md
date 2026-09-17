@@ -12,12 +12,12 @@ Use these mappings when deciding which `pqforge` surface fits an application.
 | Defence-in-depth at rest (PQC + classical) | `encrypt --hybrid`, `encryptAsync` |
 | Text note or secret | `encrypt-text`, `decrypt-text`, `sealText`, `signText` |
 | Media archive | `encrypt-media`, `decrypt-media`, `sealMedia`, `signMedia` |
-| Contract or report | `sign --kind document`, `signDocument` |
-| Webhook system | `signWebhook`, `verifyWebhook` |
+| Contract or report | `sign --kind document`, `signDocument` (ML-DSA or SLH-DSA) |
+| Webhook system | `signWebhook`, `verifyWebhook` (ML-DSA or SLH-DSA) |
 | Capability token issuer | `issueToken`, `verifyToken` |
 | Email payload protection | `sealEmail`, `openEmail` |
 | Government or medical records | `encryptRecord`, `appendSignedLogEntry` |
-| Software release signing | `sign --kind artifact`, `signArtifact` |
+| Software release signing | `sign --kind artifact`, `signArtifact` (ML-DSA or SLH-DSA) |
 | Release/firmware dual signing | `hybrid-sign`/`hybrid-verify`, `PqForgeHybridSigner` |
 | Standalone classical signing | `ecdsa-sign`/`ecdsa-verify`, `PqEcdsaP256` |
 | Server session bootstrap | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` |

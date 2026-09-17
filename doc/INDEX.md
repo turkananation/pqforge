@@ -6,10 +6,10 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 
 > `pqforge` is the **application layer** built on
 > [`pqcrypto`](https://pub.dev/packages/pqcrypto) (FIPS 203 ML-KEM, FIPS 204
-> ML-DSA, FIPS 205 SLH-DSA re-exported). `pqcrypto` is the primitives; `pqforge`
+> ML-DSA, FIPS 205 SLH-DSA). `pqcrypto` is the primitives; `pqforge`
 > composes ML-KEM/ML-DSA into envelopes, hybrids, streaming, key custody,
-> recipes, and a CLI. SLH-DSA is available as a re-export, not a composed
-> workflow. See [HYBRID_AUDIT.md](HYBRID_AUDIT.md) for the full boundary.
+> recipes, and a CLI, and composes SLH-DSA into `keygen` and detached
+> `sign`/`verify`. See [HYBRID_AUDIT.md](HYBRID_AUDIT.md) for the full boundary.
 
 ## Start Here
 
@@ -37,8 +37,8 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | Document | Covers |
 | --- | --- |
 | [API.md](API.md) | Facade, hybrid KEM combining, hybrid key agreement, dual signatures, AEAD sessions, engines, supporting types |
-| [HYBRID_AUDIT.md](HYBRID_AUDIT.md) | What `pqforge` composes on top of `pqcrypto`, the SLH-DSA re-export boundary, and the explicit rejections (RC4, AES-as-signature) |
-| [CLI.md](CLI.md) | Every command and flag: keys, files, folders, text, media, streaming, pack, multi-recipient, hybrid, signing, inspect, `--quiet` / folder progress |
+| [HYBRID_AUDIT.md](HYBRID_AUDIT.md) | What `pqforge` composes on top of `pqcrypto`, the SLH-DSA keygen/sign boundary, and the explicit rejections (RC4, AES-as-signature) |
+| [CLI.md](CLI.md) | Every command and flag: keys, files, folders, text, media, streaming, pack, multi-recipient, hybrid, signing, inspect, `--quiet` / progress |
 
 ### Cookbook
 
@@ -96,13 +96,13 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | Document | Covers |
 | --- | --- |
 | [ci/CI_PLAN.md](ci/CI_PLAN.md) | CI jobs: visibility check, format, analyze, test, examples, CLI smoke, OpenSSL interop, memory gate |
-| [ci/RELEASE_CHECKLIST.md](ci/RELEASE_CHECKLIST.md) | Pre-publish checklist and the `v*` tag binary release flow |
+| [ci/RELEASE_CHECKLIST.md](ci/RELEASE_CHECKLIST.md) | Pre-publish checklist, `vX.Y.Z` pub.dev publish, and `v*` AOT binaries |
 
 ## Package Surface
 
 | Area | Coverage |
 | --- | --- |
-| PQC primitives | ML-KEM-512/768/1024 and ML-DSA-44/65/87 through `pqcrypto`; SLH-DSA (FIPS 205, all 12 sets) re-exported, not composed into `keygen`/envelopes |
+| PQC primitives | ML-KEM-512/768/1024 and ML-DSA-44/65/87 through `pqcrypto`; SLH-DSA (FIPS 205, all 12 sets) composed into `keygen` / detached `sign`/`verify` |
 | Encryption | KEM-DEM envelopes; AES-256-GCM and ChaCha20-Poly1305 AEAD; one-shot `.pqf` and streaming `.pqfs` |
 | Large files | Auto-streaming at ≥ 8 MiB (bounded memory); `pack`/`unpack` whole-folder archives |
 | Multi-recipient | One sealed payload, DEM key wrapped per recipient, no wire-format change |
@@ -110,7 +110,7 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | Sessions | AES-256-GCM and ChaCha20-Poly1305 packet sessions |
 | Hybrid transition | X25519 + ML-KEM agreement; P-256/P-384 ECDH (`PqNistEcdh`); ML-DSA + Ed25519/ECDSA-P256 signatures; standalone ECDSA-P256 |
 | Key custody | Argon2id + AES-GCM wrapped keys (PBKDF2 under FIPS mode) and pluggable stores |
-| CLI | file, folder, text, media, streaming, pack, multi-recipient, signing, verification, inspect, wrapped key reuse; folder progress and `--quiet` |
+| CLI | file, folder, text, media, streaming, pack, multi-recipient, signing, verification (including hybrid/ECDSA), inspect, wrapped key reuse; live progress on file commands (folder jobs forward isolate byte progress) and `--quiet` |
 | Recipes | documents, text, media, email, webhooks, tokens, records, logs, artifacts, identity bindings |
 
 ## Generated Visibility

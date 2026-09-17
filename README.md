@@ -14,7 +14,7 @@ workflows.
 
 [![ML-KEM](https://img.shields.io/badge/FIPS_203-ML--KEM_512_768_1024-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
 [![ML-DSA](https://img.shields.io/badge/FIPS_204-ML--DSA_44_65_87-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
-[![SLH-DSA](https://img.shields.io/badge/FIPS_205-SLH--DSA_re--export-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
+[![SLH-DSA](https://img.shields.io/badge/FIPS_205-SLH--DSA_12_sets-2f855a?style=for-the-badge)](doc/HYBRID_AUDIT.md)
 [![AEAD](https://img.shields.io/badge/AEAD-AES--GCM_%7C_ChaCha20--Poly1305-7c3aed?style=for-the-badge)](doc/API.md)
 [![Hybrid](https://img.shields.io/badge/Hybrid-X25519_%2B_ML--KEM-f97316?style=for-the-badge)](doc/decisions/ADR-0002-optional-classical-hybrid-tier.md)
 
@@ -25,13 +25,13 @@ workflows.
 [![Wiki sync](https://img.shields.io/badge/Workflow-Wiki_sync-111827?style=for-the-badge&logo=githubactions&logoColor=white)](.github/workflows/sync-wiki.yml)
 [![llms.txt](https://img.shields.io/badge/AI-llms.txt-7c3aed?style=for-the-badge)](llms.txt)
 
-`pqforge` turns `pqcrypto` ML-KEM and ML-DSA primitives into practical,
+`pqforge` turns `pqcrypto` ML-KEM, ML-DSA, and SLH-DSA primitives into practical,
 domain-separated application workflows: encrypted files, folders, text, media,
 email payloads, records, signed documents, signed webhooks, signed tokens,
 release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody,
-and a reusable CLI. It also **re-exports** `pqcrypto` SLH-DSA (FIPS 205, all 12
-parameter sets) so `SlhDsa` is importable from `package:pqforge/pqforge.dart`.
-`keygen`, envelopes, recipes, and `hybrid-sign` remain **ML-DSA-only**.
+and a reusable CLI. SLH-DSA (FIPS 205, all 12 parameter sets) is composed into
+`keygen`, key custody, and detached `sign`/`verify`. Envelope headers, streaming
+signatures, and `hybrid-sign` remain **ML-DSA-only**.
 
 It is deliberately more than "call a primitive." It gives users named,
 auditable operations they can explain in a code review.
@@ -55,8 +55,8 @@ the `dart:io` entrypoint `package:pqforge/pqforge_io.dart`.
   primitives. It adds everything you need to *ship a feature*: KEM-DEM envelopes,
   AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids,
   P-256/P-384 ECDH, streaming, multi-recipient envelopes, key custody, recipes,
-  and a CLI. SLH-DSA is re-exported for direct use; it is not composed into
-  `keygen` or the recipe/envelope stack.
+  and a CLI. SLH-DSA is composed into `keygen`, custody, and detached
+  `sign`/`verify`; envelopes and `hybrid-sign` stay ML-DSA-only.
 
 `pqforge`'s post-quantum security claim is inherited from `pqcrypto`. Full
 breakdown: [pqforge vs pqcrypto](https://github.com/turkananation/pqforge/wiki/pqforge-vs-pqcrypto)
@@ -69,8 +69,9 @@ dart pub get
 
 export PQFORGE_PASSPHRASE='load-this-from-a-secret-manager'
 
-# Generates the full keyset by default: ML-KEM + ML-DSA, plus X25519 (hybrid
-# encryption) and Ed25519/ECDSA-P256 (hybrid signing). Secret keys are wrapped.
+# Generates the full keyset by default: ML-KEM + ML-DSA, profile-matched
+# SLH-DSA (SHAKE-f), plus X25519 (hybrid encryption) and Ed25519/ECDSA-P256
+# (hybrid signing). Secret keys are wrapped.
 dart run pqforge keygen \
   --profile maximum \
   --key-id vault \
@@ -94,7 +95,8 @@ dart run pqforge decrypt-folder \
 `keygen --out-dir` stores reusable keys in the selected directory. Public keys
 are raw JSON. Secret keys are Argon2id + AES-256-GCM wrapped JSON when you pass
 `--passphrase-env`, `--passphrase-file`, or `--passphrase`. `--no-classical`
-emits only the ML-KEM/ML-DSA bundle.
+keeps the post-quantum bundle (ML-KEM + ML-DSA + SLH-DSA). `--no-slh-dsa`
+skips hash-based keys. `--slh-dsa-only` emits only SLH-DSA.
 
 Inspect any artifact without decrypting it:
 
@@ -110,7 +112,7 @@ Every row is post-quantum where it counts. The **Powered by** column names the
 engine doing the work — read `🛡️ → 🔒` as "wrap a quantum-safe key, then encrypt
 the bytes with it":
 
-- 🛡️ **`pqcrypto`** — pure-Dart PQC: ML-KEM (FIPS 203), ML-DSA (FIPS 204), SLH-DSA (FIPS 205, re-exported)
+- 🛡️ **`pqcrypto`** — pure-Dart PQC: ML-KEM (FIPS 203), ML-DSA (FIPS 204), SLH-DSA (FIPS 205)
 - 🔒 **`PointyCastle`** — pure-Dart classical: AES-256-GCM, ChaCha20-Poly1305, HKDF, Argon2id, ECDSA-P256
 - 🤝 **`cryptography`** — native/optimized classical: X25519, Ed25519
 
@@ -133,7 +135,7 @@ the bytes with it":
 | Serverpod/API hybrid sessions | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` | 🤝 X25519 + 🛡️ ML-KEM → 🔒 AEAD |
 | TLS 1.3 hybrid groups (`pqtransport`) | `PqNistEcdh`, `hkdfExtract`/`Expand`, `chacha20Poly1305Encrypt`, `concatenateSharedSecrets`, `checkEncapsulationKey` | P-256/P-384 ECDH + 🛡️ ML-KEM |
 | Hybrid signatures (PQC + classical) | `PqForgeHybridSigner` | 🛡️ ML-DSA + (🤝 Ed25519 \| 🔒 ECDSA-P256) |
-| Hash-based signatures (primitive) | `SlhDsa` (re-exported from `pqcrypto`) | 🛡️ SLH-DSA (FIPS 205); not composed into `keygen`/envelopes |
+| Hash-based signatures (archival / firmware) | `sign` with an SLH-DSA key, `generateSlhDsaKeyPair` | 🛡️ SLH-DSA (FIPS 205); not used for envelopes or `hybrid-sign` |
 
 The full app catalog is in [doc/cookbook/PROJECT_CATALOG.md](doc/cookbook/PROJECT_CATALOG.md).
 
@@ -170,21 +172,25 @@ final signature = forge.signArtifact(
 
 | Command | Purpose |
 | --- | --- |
-| `keygen` | Generate the full keyset (ML-KEM/ML-DSA + X25519/Ed25519/ECDSA-P256) by default |
+| `keygen` | Generate the full keyset (ML-KEM/ML-DSA + SLH-DSA + X25519/Ed25519/ECDSA-P256) by default |
 | `encrypt` / `decrypt` | Encrypt and decrypt a single file (auto-streams ≥ 8 MiB) |
 | `encrypt-folder` / `decrypt-folder` | Encrypt and decrypt folder trees (per-file, concurrent) |
 | `pack` / `unpack` | Pack a whole folder into one encrypted streaming archive and restore it |
 | `encrypt-text` / `decrypt-text` | Encrypt and decrypt UTF-8 text |
 | `encrypt-media` / `decrypt-media` | Encrypt and decrypt media or PDFs |
 | `inspect` | Describe any `.pqf`/`.pqfs`/key/signature file without decrypting |
-| `sign` / `verify` | Sign and verify documents, text, media, and artifacts |
+| `sign` / `verify` | Sign and verify documents, text, media, and artifacts (ML-DSA or SLH-DSA) |
 | `hybrid-sign` / `hybrid-verify` | ML-DSA + Ed25519/ECDSA-P256 dual signatures (`--digest` for GB-scale) |
 | `ecdsa-sign` / `ecdsa-verify` | Standalone ECDSA-P256 signatures (RFC 6979, low-S) |
 | `version` / `uninstall` | Print the version (also `--version`); remove a global pub install or binary |
 
 `pqforge` with no arguments prints a banner and grouped command help; every
-command has `--help` with worked examples. Read the complete command guide at
-[doc/CLI.md](doc/CLI.md).
+command has `--help` with worked examples. File encrypt/decrypt, text (`--out`),
+media, folder, pack/unpack, sign/verify, hybrid-sign/verify, and ecdsa-sign/verify
+print a live progress line (folder jobs forward byte progress from isolates;
+`keygen` reports wrapping progress). `--quiet` / `-q` mutes per-file lines.
+`decrypt-text` without `--out` writes only plaintext. Read the complete command
+guide at [doc/CLI.md](doc/CLI.md).
 
 Install it globally with `dart pub global activate pqforge`, and remove it any
 time with `pqforge uninstall` (or `dart pub global deactivate pqforge`).

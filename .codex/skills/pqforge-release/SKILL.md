@@ -46,8 +46,13 @@ The strict archive check must have zero warnings. Never hide warnings with
 
 - Do not publish or tag unless the user explicitly requested it.
 - Publish from a clean, reviewed commit.
-- Create the `v<version>` tag only for the exact published commit.
-- Verify the GitHub release binary workflow and checksums after pushing the tag.
-- Report the exact pub.dev version, tag, and commit.
+- Create the `v<version>` tag only for the exact release commit and push it.
+  That tag is the publisher:
+  - `.github/workflows/publish.yml` runs `dart pub publish` via OIDC.
+  - `.github/workflows/release.yml` attaches AOT CLI binaries.
+- Automated publishing must already be enabled on pub.dev (repository
+  `turkananation/pqforge`, tag pattern `v{{version}}`, workflow `publish.yml`).
+- Do not also run `dart pub publish` by hand for a tagged release.
+- Verify both workflow runs, the pub.dev version, tag, and commit.
 
 Read `doc/ci/RELEASE_CHECKLIST.md` for the repository checklist.

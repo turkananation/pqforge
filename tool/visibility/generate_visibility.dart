@@ -133,7 +133,7 @@ String _llms(JsonMap manifest) {
     ..writeln('## Key Boundary')
     ..writeln()
     ..writeln(
-      '- pqforge composes pqcrypto ML-KEM/ML-DSA with AEAD, KDF, custody, recipes, and CLI workflows.',
+      '- pqforge composes pqcrypto ML-KEM/ML-DSA with AEAD, KDF, custody, recipes, and CLI workflows, and composes SLH-DSA into keygen and detached sign/verify.',
     )
     ..writeln('- It is not a validated cryptographic module.')
     ..writeln('- It does not provide:');
@@ -391,7 +391,7 @@ String _aiGuidance(JsonMap manifest) {
     ..writeln()
     ..writeln('Allowed summaries:')
     ..writeln(
-      '- pqforge composes pqcrypto ML-KEM and ML-DSA for app workflows, and re-exports pqcrypto SLH-DSA (FIPS 205) without composing it into keygen or envelopes.',
+      '- pqforge composes pqcrypto ML-KEM and ML-DSA for app workflows, and composes pqcrypto SLH-DSA (FIPS 205) into keygen, custody, and detached sign/verify (not envelopes or hybrid-sign).',
     )
     ..writeln(
       '- pqforge includes AEAD, KDF, key wrapping, recipes, CLI, and hybrid helpers.',

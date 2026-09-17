@@ -107,7 +107,7 @@ class Console {
   /// to a regular writeln so piped output stays clean.
   void progress(String message) {
     if (stdout.hasTerminal && ansi.enabled) {
-      _out.write('\r${ansi.cyan('⟳')} $message');
+      _out.write('\r\x1B[2K${ansi.cyan('⟳')} $message');
     } else {
       _out.writeln(message);
     }
@@ -157,7 +157,7 @@ class Console {
       painted.add('  ${ansi.raw(palette[i], rows[i])}');
     }
     final subtitle = ansi.dim(
-      '  Post-quantum recipes · ML-KEM · ML-DSA · X25519 · Ed25519 · ECDSA-P256',
+      '  Post-quantum recipes · ML-KEM · ML-DSA · SLH-DSA · X25519 · Ed25519 · ECDSA-P256',
     );
     return '${painted.join('\n')}\n$subtitle';
   }

@@ -4,8 +4,9 @@ Allowed claims:
 
 - FIPS 203-aligned ML-KEM through `pqcrypto`.
 - FIPS 204-aligned ML-DSA through `pqcrypto`.
-- FIPS 205-aligned SLH-DSA primitives re-exported from `pqcrypto`. `pqforge`
-  does not compose SLH-DSA into `keygen`, envelopes, recipes, or `hybrid-sign`.
+- FIPS 205-aligned SLH-DSA through `pqcrypto`. `pqforge` composes it into
+  `keygen`, key custody, and detached `sign`/`verify`. Envelope headers,
+  streaming signatures, and `hybrid-sign` remain ML-DSA-only.
 - Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key
   custody, signatures, recipes, and CLI workflows.
 - Best-effort zeroization in Dart.
@@ -22,5 +23,5 @@ Forbidden claims:
 - AES signs documents.
 - RC4 is supported.
 
-RC4 is rejected. AES encrypts; ML-DSA signs. SLH-DSA is a re-exported
-primitive, not a composed pqforge recipe.
+RC4 is rejected. AES encrypts; ML-DSA or SLH-DSA signs. SLH-DSA is composed
+into `keygen` and detached signatures, not into envelopes or `hybrid-sign`.

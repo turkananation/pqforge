@@ -284,19 +284,19 @@ PqForgeCryptographyAeadEngine(PqForgeCipherSuite suite);  // native (package:cry
 const PqForge({PqForgeProfile profile = PqForgeProfile.balanced});
 ```
 
-| `PqForgeProfile` | KEM | Signature |
-| --- | --- | --- |
-| `compact` | ML-KEM-512 | ML-DSA-44 |
-| `balanced` | ML-KEM-768 | ML-DSA-65 |
-| `maximum` | ML-KEM-1024 | ML-DSA-87 |
+| `PqForgeProfile` | KEM | Signature | SLH-DSA |
+| --- | --- | --- | --- |
+| `compact` | ML-KEM-512 | ML-DSA-44 | SLH-DSA-SHAKE-128f |
+| `balanced` | ML-KEM-768 | ML-DSA-65 | SLH-DSA-SHAKE-192f |
+| `maximum` | ML-KEM-1024 | ML-DSA-87 | SLH-DSA-SHAKE-256f |
 
 Methods, grouped:
 
 | Area | Methods |
 | --- | --- |
-| Key generation | `generateKeys` · `generateKemKeyPair` · `generateSignatureKeyPair` · `generateSignatureKeyPairFromSeed` |
+| Key generation | `generateKeys` · `generateKemKeyPair` · `generateSignatureKeyPair` · `generateSignatureKeyPairFromSeed` · `generateSlhDsaKeyPair` · `exportSlhDsaPublicKey` / `exportSlhDsaSecretKey` |
 | KEM | `encapsulate` · `decapsulate` |
-| Signatures | `sign` / `verify` · `signDocument` / `verifyDocument` · `signText` / `verifyText` · `signMedia` / `verifyMedia` · `signWebhook` / `verifyWebhook` · `signArtifact` / `verifyArtifact` · `issueToken` / `verifyToken` · `dualSign` / `dualVerify` |
+| Signatures | `sign` / `verify` · `signSlhDsa` / `verifySlhDsa` · `signDocument` / `verifyDocument` · `signText` / `verifyText` · `signMedia` / `verifyMedia` · `signWebhook` / `verifyWebhook` · `signArtifact` / `verifyArtifact` · `issueToken` / `verifyToken` · `dualSign` / `dualVerify` |
 | Encryption & envelopes | `encrypt` / `decrypt` · `sealToKemPublicKey` / `openFromKemSecretKey` · `sealAndSign` / `openSignedFromKemSecretKey` · `encryptFileBytes` / `decryptFileBytes` · `encryptRecord` · `sealEmail` / `openEmail` · `sealText` / `openText` · `sealMedia` / `openMedia` · `encryptFolderEntry` / `decryptFolderEntry` |
 | Key wrapping & identity | `wrapKeyWithPassphrase` / `unwrapKeyWithPassphrase` · `createIdentityBinding` / `verifyIdentityBinding` |
 | Signed logs | `appendSignedLogEntry` / `verifySignedLogEntry` |
@@ -307,15 +307,19 @@ Methods, grouped:
 
 ## 5. Supporting types
 
-- **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqForgeProfile` (`compact`, `balanced`, `maximum`) · `PqForgeException`. SLH-DSA (`SlhDsa`, `SlhDsaParams`, `SlhDsaPreHash`) is re-exported from `pqcrypto` and is **not** a `PqSignatureAlgorithm` value.
-- **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `sha384`, `sha512`, `hmacSha256`, `hmacSha384`, `hmacSha512`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqNistEcdh` · `PqForgeBytes` (compatibility alias)
+- **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqSlhDsaAlgorithm` (all 12 FIPS 205 sets) · `PqForgeProfile` (`compact`, `balanced`, `maximum`; each carries a matching SHAKE-f `slhDsa`) · `PqForgeException`. `SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` remain re-exported from `pqcrypto`.
+- **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `sha384`, `sha512`, `hmacSha256`, `hmacSha384`, `hmacSha512`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqSlhDsaPrimitives` · `PqNistEcdh` · `PqForgeBytes` (compatibility alias)
 - **Keys & custody:** `PqKeyPair` · `PqKeyBundle` · `PqKemEncapsulation` · `PqExportedKey` · `PqWrappedKey` · `PqPassphraseKeyCustody` · `PqKeyCustodyStore` / `PqMemoryKeyCustodyStore` / `PqCallbackKeyCustodyStore` · `PqKeyStore` / `PqKeyResolver`
 - **Codecs, recipes & DTOs:** `PqEnvelope` (`toBinary` / `fromBinary`, `toJson` / `fromJson`) · `PqIdentityBinding` · `PqSignedLogEntry` · `PqArtifactSignature` · `PqSignedToken` · `PqDualSignature` / `PqDualSignaturePolicy` · `PqHybridKeyAgreementRequest` / `PqHybridKeyAgreementResult` · `PqHybridSignature` · `PqRecipeMessages` · `PqOffloadRequest` / `PqOffloadResponse`
 
 `package:pqforge/pqforge.dart` re-exports `package:pqcrypto/pqcrypto.dart`, so
 `SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` are importable from the same barrel.
-`PqForge.generateKeys`, envelopes, recipes, and `PqForgeHybridSigner` stay
-ML-DSA-only. See [HYBRID_AUDIT.md](HYBRID_AUDIT.md).
+`PqForge.generateSlhDsaKeyPair` and CLI `keygen` emit SLH-DSA keys; detached
+`sign`/`verify` (`document`, `text`, `media`, `artifact`) and recipe helpers
+(`signDocument`, `signText`, `signMedia`, `signWebhook`, `signArtifact`) accept
+them. Envelope headers, `.pqfs` signatures, `PqForgeHybridSigner`, signed
+tokens, signed logs, and identity bindings stay ML-DSA-only. See
+[HYBRID_AUDIT.md](HYBRID_AUDIT.md).
 
 ---
 

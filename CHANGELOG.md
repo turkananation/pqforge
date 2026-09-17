@@ -2,8 +2,9 @@
 
 ## 0.4.4
 
-Additive library surface, CLI progress, and an honest SLH-DSA boundary. No
-`.pqf` / `.pqfs` / `PqForgeSecureSession` wire-format changes.
+Additive library surface, CLI progress across file operations, and first-class
+SLH-DSA keygen/sign/verify. No `.pqf` / `.pqfs` / `PqForgeSecureSession`
+wire-format changes.
 
 ### Library (pqtransport uplink)
 
@@ -14,24 +15,54 @@ Additive library surface, CLI progress, and an honest SLH-DSA boundary. No
 - **Concat-only hybrid join** — `PqForgeCombiner.concatenateSharedSecrets` with `PqHybridConcatOrder`. Does not HKDF. `combine()` still always does `classical || PQ` then HKDF. RFC 10024 X25519MLKEM768 must use `pqThenClassical` and must **not** call `combine()`.
 - **`PqKemPrimitives.checkEncapsulationKey`** — FIPS 203 §7.2 modulus check as a `bool` before encapsulate (length + pqcrypto validation). Does not reimplement ML-KEM.
 
-### SLH-DSA (FIPS 205) — re-export, not composition
+### SLH-DSA (FIPS 205) — keygen, custody, and detached sign/verify
 
-`pqcrypto` `^0.4.1` (dependency bump in 0.4.3) ships all 12 FIPS 205 parameter sets: `SlhDsa`, `SlhDsaParams`, and `SlhDsaPreHash` covering SHA2/SHAKE × 128s/128f/192s/192f/256s/256f. `package:pqforge/pqforge.dart` re-exports `package:pqcrypto/pqcrypto.dart`, so those types are importable from pqforge.
+`pqforge` composes all 12 FIPS 205 parameter sets from `pqcrypto` into
+application key material:
 
-**pqforge does not compose SLH-DSA** into `PqSignatureAlgorithm`, `keygen`, envelopes, recipes, or `hybrid-sign`. Those remain ML-DSA-only. Use `SlhDsa` directly for hash-based signatures; composition into pqforge workflows is not in 0.4.4.
+- **`PqSlhDsaAlgorithm`** — SHA-2 and SHAKE × 128s/128f/192s/192f/256s/256f,
+  with sizes matching `SlhDsaParams`.
+- **`PqSlhDsaPrimitives`** and **`PqForge.generateSlhDsaKeyPair`** /
+  **`signSlhDsa`** / **`verifySlhDsa`**. Recipe helpers (`signDocument`,
+  `signText`, `signMedia`, `signWebhook`, `signArtifact` and their verify
+  twins) accept an optional `slhDsa:` parameter. Slow `s` sets still require
+  `allowSlowSigning` at the primitive layer, matching `pqcrypto`.
+  `issueToken`, signed logs, and identity bindings stay ML-DSA because they
+  serialize `PqSignatureAlgorithm`.
+- **`keygen`** emits a profile-matched SHAKE-f key by default (`compact` →
+  SLH-DSA-SHAKE-128f, `balanced` → 192f, `maximum` → 256f) as
+  `<key-id>.slh-dsa-shake-<n>f.{public,secret}.json`, next to the ML-KEM/ML-DSA
+  bundle and classical keys. `--slh-dsa` selects specific sets, `--no-slh-dsa`
+  skips them, `--slh-dsa-only` emits only SLH-DSA. Secrets wrap through the
+  same Argon2id + AES-256-GCM path as ML-DSA.
+- **`sign` / `verify`** accept SLH-DSA keys (same `signature-public` /
+  `signature-secret` kinds, distinguished by `algorithmId`).
+
+**Still ML-DSA-only:** envelope headers, `.pqfs` streaming signatures, and
+`hybrid-sign` / `hybrid-verify`. SLH-DSA signatures are 8–50 KiB and the `s`
+sets are slow; those workflows stay compact ML-DSA. Passing an SLH-DSA key as
+`--signer-secret` on encrypt/hybrid-sign is rejected with a clear error.
+
+`SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` remain re-exported from `pqcrypto`.
 
 ### CLI
 
-- **Folder progress** — `encrypt-folder` and `decrypt-folder` print a live, throttled progress line plus per-file SUCCESS/FAILED with throughput.
-- **`--quiet` / `-q`** — on those two commands, mutes line-by-line file summaries and skip warnings. The completion summary still prints.
-- **Skippable entries** — folder listing skips sockets, FIFOs, broken symlinks, and unreadable files (warns unless `--quiet`) instead of failing the whole tree.
+- **Progress** — `encrypt`, `decrypt`, `encrypt-text`, `decrypt-text` (when `--out` is set), `encrypt-media`, `decrypt-media`, `encrypt-folder`, `decrypt-folder`, `pack`, `unpack`, `sign`, `verify`, `hybrid-sign`, `hybrid-verify`, `ecdsa-sign`, and `ecdsa-verify` print a live, throttled progress line. Folder jobs forward streaming byte progress from background isolates over a `SendPort` (callbacks are not isolate-sendable); concurrent files keep separate live totals and the CR line aggregates them. Pack/unpack report per-entry and in-entry bytes. `--digest` hybrid/ECDSA signing reports hashing progress. `keygen` reports per-key wrapping progress when a passphrase is used. A folder job that fails any file exits non-zero. Pack/unpack failures before the first entry report a job-level failure instead of a success summary. Throughput is measured from finished bytes, not started ones.
+- **`--quiet` / `-q`** — mutes line-by-line file summaries and skip warnings. Honored on the progress commands and on `keygen`. The completion summary still prints. `keygen --quiet` still prints the raw-secret warning. `decrypt-text` without `--out` never attaches a progress line, so piped plaintext stays clean.
+- **Skippable entries** — folder listing skips sockets, FIFOs, broken
+  symlinks, and unreadable files (warns unless `--quiet`) instead of failing
+  the whole tree.
 
 ### What 0.4.4 enables
 
 - `pqtransport` TLS 1.3 hybrid groups (SecP256r1MLKEM768, SecP384r1MLKEM1024, RFC 10024 X25519MLKEM768) without reimplementing ECDH, HKDF-Extract/Expand, sync ChaCha20-Poly1305, concat combiners, or ML-KEM encapsulation-key checks.
 - Protocol facades (SHA-384/SHA-512, HMAC-SHA-384/512) for TLS, QUIC, and FROST-style constructions.
-- Direct `SlhDsa` access from the pqforge import for apps that need hash-based signatures alongside composed ML-DSA workflows.
-- Quieter, more robust folder jobs in CI and on trees that contain special files.
+- SLH-DSA key generation, custody, and detached signatures through the same CLI and facade as ML-DSA.
+- Live progress on encrypt/decrypt/text/media/folder/pack/unpack/sign/verify/hybrid-sign/ecdsa-sign, including isolate-forwarded byte progress on folder jobs and wrapping progress on `keygen`.
+
+### CI
+
+- **pub.dev** — `.github/workflows/publish.yml` publishes the package on `vX.Y.Z` tags using GitHub Actions OIDC (no long-lived pub token). Enable it once on the [package admin page](https://pub.dev/packages/pqforge/admin): repository `turkananation/pqforge`, tag pattern `v{{version}}`, workflow `publish.yml`. The existing `release.yml` still attaches AOT CLI binaries on the same tags.
 
 ## 0.4.3
 

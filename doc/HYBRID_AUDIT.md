@@ -12,7 +12,7 @@ wiki page.
 
 ## Evidence Summary
 
-`pqcrypto` 0.4.1 is pure post-quantum cryptography: ML-KEM (FIPS 203), ML-DSA
+`pqcrypto` 0.4.1 (current on pub.dev) is pure post-quantum cryptography: ML-KEM (FIPS 203), ML-DSA
 (FIPS 204), SLH-DSA (FIPS 205, all 12 parameter sets), SHA-2, SHA-3/SHAKE
 building blocks, and zero runtime dependencies. It does not expose classical
 KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
@@ -20,14 +20,15 @@ KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
 `pqforge` supplies the composition layer around that boundary. It **re-exports**
 the full `pqcrypto` API (`export 'package:pqcrypto/pqcrypto.dart'`), including
 `SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash`. It **composes** ML-KEM and ML-DSA
-into envelopes, recipes, `keygen`, and hybrid signatures. It does **not**
-compose SLH-DSA into those workflows.
+into envelopes, recipes, `keygen`, and hybrid signatures. It **composes**
+SLH-DSA into `keygen`, key custody, and detached `sign`/`verify`. It does **not**
+compose SLH-DSA into envelope headers, streaming signatures, or `hybrid-sign`.
 
 | Dimension | Current pqforge coverage |
 | --- | --- |
 | ML-KEM | 512, 768, 1024 through `PqKemAlgorithm` |
 | ML-DSA | 44, 65, 87 through `PqSignatureAlgorithm` |
-| SLH-DSA | Re-exported from `pqcrypto` (`SlhDsa`). **Not** in `PqSignatureAlgorithm`, `keygen`, envelopes, recipes, or `hybrid-sign` |
+| SLH-DSA | All 12 FIPS 205 sets through `PqSlhDsaAlgorithm` / `PqSlhDsaPrimitives`. `keygen` and detached `sign`/`verify`. **Not** in envelopes, `.pqfs` headers, or `hybrid-sign` |
 | KEM-DEM encryption | `encrypt`, `decrypt`, `sealToKemPublicKey`, file/record/email/text/media/folder helpers |
 | Signatures | raw ML-DSA signatures, documents, text, media, webhooks, artifacts, logs, tokens |
 | Hybrid KDF | `PqForgeCombiner` (`combine` = classical\|\|PQ then HKDF); `concatenateSharedSecrets` (concat only, for RFC 10024) |
@@ -40,7 +41,7 @@ compose SLH-DSA into those workflows.
 | KEM check | `PqKemPrimitives.checkEncapsulationKey` — FIPS 203 §7.2 via pqcrypto, no lattice reimplementation |
 | Large files | Bounded-memory `.pqfs` streaming (auto ≥ 8 MiB) and `pack`/`unpack` whole-folder archives |
 | Multi-recipient | One sealed payload, DEM key wrapped per recipient (`PqMultiRecipient`), no wire-format change |
-| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/pack/unpack/inspect/sign/verify/hybrid-sign/hybrid-verify/ecdsa-sign/ecdsa-verify`. `encrypt-folder`/`decrypt-folder` report live progress; `--quiet`/`-q` mutes per-file lines; non-regular files are skipped. |
+| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/pack/unpack/inspect/sign/verify/hybrid-sign/hybrid-verify/ecdsa-sign/ecdsa-verify`. File encrypt/decrypt, text (`--out`), media, folder, pack/unpack, sign/verify, hybrid-sign/verify, and ecdsa-sign/verify report live progress (folder jobs forward byte progress from isolates; `keygen` reports wrapping progress). `--quiet`/`-q` mutes per-file lines; non-regular files are skipped. `decrypt-text` without `--out` writes only plaintext. |
 
 ## Rejections And Boundaries
 
@@ -77,36 +78,50 @@ ECDH over P-256/P-384 is a separate type, `PqNistEcdh`. It does not overload
 
 ### SLH-DSA
 
-`pqcrypto` 0.4.1 ships all 12 FIPS 205 parameter sets. Because pqforge re-exports
-`package:pqcrypto/pqcrypto.dart`, this works:
+`pqcrypto` 0.4.1 (current on pub.dev) ships all 12 FIPS 205 parameter sets. pqforge composes them
+as a sibling signature family of ML-DSA:
 
 ```dart
 import 'package:pqforge/pqforge.dart';
 
-final keys = SlhDsa.generateKeyPair(SlhDsaParams.sha2128s);
+final keys = PqForge(profile: PqForgeProfile.compact).generateSlhDsaKeyPair();
+// or, equivalently, the re-export:
+final raw = SlhDsa.generateKeyPair(SlhDsaParams.shake128f);
 ```
 
-What pqforge does **not** do in 0.4.4:
+What 0.4.4 composes:
 
-- `PqSignatureAlgorithm` has only `mlDsa44` / `mlDsa65` / `mlDsa87`.
-- `PqPureDartLatticeProvider` signs with `MlDsa` only.
-- `keygen` emits ML-KEM + ML-DSA (+ classical), never SLH-DSA.
-- Envelopes, recipes, `sign`/`verify`, and `hybrid-sign` are ML-DSA-only.
+- `PqSlhDsaAlgorithm` (all 12 ids) and `PqSlhDsaPrimitives`.
+- `PqForge.generateSlhDsaKeyPair` / `signSlhDsa` / `verifySlhDsa`.
+- Recipe `signDocument` / `signText` / `signMedia` / `signWebhook` /
+  `signArtifact` via `slhDsa:`.
+- CLI `keygen` (profile-matched SHAKE-f by default; `--slh-dsa`, `--no-slh-dsa`,
+  `--slh-dsa-only`).
+- CLI `sign` / `verify` when the key `algorithmId` is an SLH-DSA set.
 
-Do not document SLH-DSA as a composed pqforge workflow. When composition lands,
-add it as a new signature family with explicit docs and tests.
+What remains ML-DSA-only:
+
+- `PqSignatureAlgorithm` (still `mlDsa44` / `mlDsa65` / `mlDsa87`).
+- Envelope and `.pqfs` header signatures.
+- `hybrid-sign` / `PqForgeHybridSigner`.
+- Typed containers that serialize `PqSignatureAlgorithm`: `issueToken`,
+  signed logs, identity bindings.
+
+Slow `s` parameter sets require `allowSlowSigning` at the primitive layer,
+matching `pqcrypto`. Do not document SLH-DSA as an envelope or hybrid-signer
+algorithm.
 
 ## Building Blocks Mapping
 
 | pqcrypto block | pqforge surface |
 | --- | --- |
-| BB1 detached signatures | `sign`, `verify`, `signDocument`, `signText`, `signMedia`, `signWebhook`, `issueToken` (ML-DSA). `SlhDsa` is available as a re-export. |
+| BB1 detached signatures | `sign`, `verify`, `signDocument`, `signText`, `signMedia`, `signWebhook` (ML-DSA or SLH-DSA via `slhDsa:`). `issueToken` stays ML-DSA (typed `PqSignatureAlgorithm`). |
 | BB2 encrypt to public key | `encrypt`, `decrypt`, `sealToKemPublicKey`, `PqEnvelope` |
 | BB3 hybrid authenticated handshake | `PqForgeHybridKeyAgreement`, `PqForgeCombiner`, `PqNistEcdh` |
-| BB4 identity enrollment | `createIdentityBinding`, `verifyIdentityBinding` |
-| BB5 deterministic keys | `generateSignatureKeyPairFromSeed`, key export/wrapping |
-| BB6 signed log | `appendSignedLogEntry`, `verifySignedLogEntry` |
-| BB7 signed artifacts | `signArtifact`, `verifyArtifact` |
+| BB4 identity enrollment | `createIdentityBinding`, `verifyIdentityBinding` (ML-DSA) |
+| BB5 deterministic keys | `generateSignatureKeyPairFromSeed`, key export/wrapping. SLH-DSA keygen is unseeded (pqcrypto has no public seeded API). |
+| BB6 signed log | `appendSignedLogEntry`, `verifySignedLogEntry` (ML-DSA) |
+| BB7 signed artifacts | `signArtifact`, `verifyArtifact` (ML-DSA or SLH-DSA via `slhDsa:`) |
 | BB8 encrypted data at rest | `encryptFileBytes`, `encryptRecord`, `sealEmail`, `sealText`, `sealMedia`, `encryptFolderEntry`, CLI file/folder/text/media encryption |
 | BB9 hybrid/dual signatures | `PqForgeHybridSigner`, `dualSign`, `dualVerify` |
 | BB10 offloading | `PqOffloadRequest`, `PqOffloadResponse` |

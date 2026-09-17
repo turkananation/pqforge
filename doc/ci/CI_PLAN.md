@@ -29,6 +29,10 @@ The workflow lives in `.github/workflows/ci.yml`. Additional automation:
 - `.github/workflows/pages.yml` deploys `site/` to GitHub Pages.
 - `.github/workflows/sync-wiki.yml` syncs `wiki/` to the GitHub Wiki.
 - `.github/workflows/codeql.yml` scans GitHub Actions workflow code.
+- `.github/workflows/release.yml` attaches AOT CLI binaries on `v*` tags.
+- `.github/workflows/publish.yml` publishes to pub.dev on `vX.Y.Z` tags via
+  GitHub Actions OIDC. Enable it once on the package admin page
+  (`turkananation/pqforge`, tag pattern `v{{version}}`, workflow `publish.yml`).
 - `.pubignore` and `tool/agent/check_publish_surface.dart` keep repository-only
   agent, test, documentation-source, generated-site, and tooling files out of
   the pub.dev archive.

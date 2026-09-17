@@ -8,6 +8,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:args/args.dart';
@@ -155,6 +156,10 @@ void addQuietOption(ArgParser parser) {
     help: 'Mute verbose line-by-line file completion summaries.',
   );
 }
+
+/// Whether the command's `--quiet` / `-q` flag is set.
+bool quietFrom(ArgResults results) =>
+    results.options.contains('quiet') && results['quiet'] as bool;
 
 /// The resolved recipient set of an encrypt command: the first
 /// `--recipient-public` is the primary (classic KEM-DEM or hybrid), every
@@ -380,6 +385,7 @@ Future<PqExportedKey> readKey(String path, {String? passphrase}) async {
 }
 
 /// Reads the optional `--signer-secret` ML-DSA key, validating its kind.
+/// SLH-DSA keys are rejected: envelope headers stay ML-DSA-only.
 Future<PqExportedKey?> optionalSignerSecret(
   ArgResults results,
   String? passphrase,
@@ -388,6 +394,7 @@ Future<PqExportedKey?> optionalSignerSecret(
   if (signerPath == null) return null;
   final signer = await readKey(signerPath, passphrase: passphrase);
   requireKind(signer, PqKeyKind.signatureSecret);
+  requireMlDsaSignatureKey(signer);
   return signer;
 }
 
@@ -406,6 +413,19 @@ void requireKind(PqExportedKey key, String kind) {
   if (key.kind != kind) {
     throw PqForgeException('Expected a $kind key, got ${key.kind}.');
   }
+}
+
+/// Envelope signing and hybrid-sign stay ML-DSA-only. SLH-DSA keys belong on
+/// the detached `sign`/`verify` path.
+void requireMlDsaSignatureKey(PqExportedKey key) {
+  if (PqSlhDsaAlgorithm.tryById(key.algorithmId) != null) {
+    throw const PqForgeException(
+      'SLH-DSA keys cannot sign envelopes or hybrid signatures; those remain '
+      'ML-DSA-only. Use `pqforge sign` / `pqforge verify` for hash-based '
+      'signatures.',
+    );
+  }
+  PqSignatureAlgorithm.byId(key.algorithmId);
 }
 
 // --- passphrase resolution -------------------------------------------------
@@ -650,7 +670,7 @@ String joinPath(String root, String relativePath) {
 
 Map<String, Object?> signatureJson({
   required String kind,
-  required PqSignatureAlgorithm algorithm,
+  required String algorithmId,
   required Uint8List signature,
   required Map<String, Object?> extra,
 }) {
@@ -658,7 +678,7 @@ Map<String, Object?> signatureJson({
     'version': 1,
     'kind': kind,
     ...extra,
-    'signatureAlgorithm': algorithm.id,
+    'signatureAlgorithm': algorithmId,
     'signature': base64Encode(signature),
   };
 }
@@ -684,6 +704,20 @@ PqForgeProfile profileForSignature(PqSignatureAlgorithm algorithm) {
     PqSignatureAlgorithm.mlDsa65 => PqForgeProfile.balanced,
     PqSignatureAlgorithm.mlDsa87 => PqForgeProfile.maximum,
   };
+}
+
+PqForgeProfile profileForSlhDsa(PqSlhDsaAlgorithm algorithm) {
+  return switch (algorithm.securityCategory) {
+    1 => PqForgeProfile.compact,
+    3 => PqForgeProfile.balanced,
+    _ => PqForgeProfile.maximum,
+  };
+}
+
+PqForgeProfile profileForPqcSignatureId(String algorithmId) {
+  final slh = PqSlhDsaAlgorithm.tryById(algorithmId);
+  if (slh != null) return profileForSlhDsa(slh);
+  return profileForSignature(PqSignatureAlgorithm.byId(algorithmId));
 }
 
 /// One-line description of the key-establishment → KDF → AEAD combination in
@@ -712,9 +746,47 @@ Uint8List digestSigningMessage(Uint8List sha256) => PqBytes.lengthPrefixed([
 
 /// Hashes [file] in O(1) memory (streamed SHA-256) and wraps the digest as
 /// the canonical digest-mode signing message — gigabyte-scale artifacts never
-/// touch RAM whole.
-Future<Uint8List> digestMessageOfFile(File file) async =>
-    digestSigningMessage(await PqBytes.sha256OfStream(file.openRead()));
+/// touch RAM whole. [onProgress] reports hashed bytes versus file length.
+Future<Uint8List> digestMessageOfFile(
+  File file, {
+  void Function(int processed, int? total)? onProgress,
+}) async {
+  final total = await file.length();
+  var processed = 0;
+  final digest = await PqBytes.sha256OfStream(
+    file.openRead().map((chunk) {
+      processed += chunk.length;
+      onProgress?.call(processed, total);
+      return chunk;
+    }),
+  );
+  return digestSigningMessage(digest);
+}
+
+/// Runs [action] (typically [Isolate.run] capturing [SendPort]) while
+/// forwarding `[processed, total]` messages onto the main isolate for UI.
+///
+/// Closures passed to [Isolate.run] cannot capture a [Function]; a [SendPort]
+/// is sendable, so folder encrypt/decrypt stream byte progress this way.
+Future<T> isolateRunWithProgress<T>(
+  Future<T> Function(SendPort progressPort) action, {
+  required void Function(int processed, int? total) onProgress,
+}) async {
+  final port = ReceivePort();
+  final subscription = port.listen((message) {
+    if (message is List && message.length >= 2 && message[0] is int) {
+      final total = message[1];
+      onProgress(message[0] as int, total is int ? total : null);
+    }
+  });
+  try {
+    return await action(port.sendPort);
+  } finally {
+    await Future<void>.delayed(Duration.zero);
+    await subscription.cancel();
+    port.close();
+  }
+}
 
 /// Human-readable engine descriptor for suite detail lines.
 String engineLabel(PqForgeEngineProvider provider) => switch (provider) {

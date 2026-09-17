@@ -1,5 +1,5 @@
 /// Pure post-quantum CLI commands: key generation, file/folder/text/media
-/// encryption, and ML-DSA recipe signing and verification.
+/// encryption, and ML-DSA / SLH-DSA recipe signing and verification.
 library;
 
 import 'dart:convert';
@@ -18,8 +18,8 @@ import 'support.dart';
 const _profiles = ['compact', 'balanced', 'maximum'];
 const _classicalAlgorithms = ['x25519', 'ed25519', 'ecdsa-p256'];
 
-/// `keygen` — ML-KEM + ML-DSA bundles plus the classical keypairs that make
-/// every hybrid workflow (hybrid encrypt, hybrid-sign) work out of the box.
+/// `keygen` — ML-KEM + ML-DSA bundles, profile-matched SLH-DSA keys, plus the
+/// classical keypairs that make every hybrid workflow work out of the box.
 final class KeygenCommand extends Command<void> {
   KeygenCommand() {
     argParser
@@ -28,7 +28,9 @@ final class KeygenCommand extends Command<void> {
         allowed: _profiles,
         defaultsTo: 'maximum',
         valueHelp: 'name',
-        help: 'Composition profile for the ML-KEM/ML-DSA bundle.',
+        help:
+            'Composition profile for the ML-KEM/ML-DSA bundle and the '
+            'default SLH-DSA parameter set.',
       )
       ..addOption(
         'key-id',
@@ -55,12 +57,31 @@ final class KeygenCommand extends Command<void> {
       ..addFlag(
         'no-classical',
         negatable: false,
-        help: 'Generate only the ML-KEM/ML-DSA bundle (skip classical keys).',
+        help: 'Generate only the post-quantum keys (skip classical keys).',
       )
       ..addFlag(
         'classical-only',
         negatable: false,
-        help: 'Skip the ML-KEM/ML-DSA bundle and emit only classical keys.',
+        help: 'Skip ML-KEM/ML-DSA/SLH-DSA and emit only classical keys.',
+      )
+      ..addMultiOption(
+        'slh-dsa',
+        allowed: PqSlhDsaAlgorithm.ids,
+        valueHelp: 'algo',
+        help:
+            'Limit SLH-DSA keypairs to specific FIPS 205 parameter sets '
+            '(default: the profile-matched SHAKE-f set — compact 128f, '
+            'balanced 192f, maximum 256f). Repeat to emit several sets.',
+      )
+      ..addFlag(
+        'no-slh-dsa',
+        negatable: false,
+        help: 'Skip SLH-DSA key generation.',
+      )
+      ..addFlag(
+        'slh-dsa-only',
+        negatable: false,
+        help: 'Skip ML-KEM/ML-DSA and classical; emit only SLH-DSA keys.',
       )
       ..addFlag(
         'quiet',
@@ -104,16 +125,19 @@ final class KeygenCommand extends Command<void> {
 
   @override
   String get description =>
-      'Generate ML-KEM/ML-DSA and classical (hybrid) key material.';
+      'Generate ML-KEM/ML-DSA, SLH-DSA, and classical (hybrid) key material.';
 
   @override
   String get usageFooter => usageExamples([
-    '# Wrapped maximum-profile bundle + X25519/Ed25519/ECDSA-P256 hybrid keys',
+    '# Wrapped maximum-profile bundle + SLH-DSA-SHAKE-256f + hybrid keys',
     'pqforge keygen --profile maximum --key-id vault --out-dir keys \\',
     '  --passphrase-env PQFORGE_PASSPHRASE',
-    '# Post-quantum bundle only',
+    '# Post-quantum bundle only (ML-KEM + ML-DSA + profile SLH-DSA)',
     'pqforge keygen --key-id vault --out-dir keys --no-classical \\',
     '  --passphrase-env PQFORGE_PASSPHRASE',
+    '# Specific SLH-DSA sets (and skip the profile default extras)',
+    'pqforge keygen --slh-dsa slh-dsa-shake-128f --slh-dsa slh-dsa-sha2-128s \\',
+    '  --no-classical --key-id archive --out-dir keys',
   ]);
 
   @override
@@ -125,32 +149,68 @@ final class KeygenCommand extends Command<void> {
     final classicalOnly = results['classical-only'] as bool;
     final noClassical = results['no-classical'] as bool;
     final selectedClassical = results['classical'] as List<String>;
+    final slhDsaOnly = results['slh-dsa-only'] as bool;
+    final noSlhDsa = results['no-slh-dsa'] as bool;
+    final selectedSlh = results['slh-dsa'] as List<String>;
     if (noClassical && (classicalOnly || selectedClassical.isNotEmpty)) {
       throw const PqForgeException(
         '--no-classical cannot be combined with --classical/--classical-only.',
       );
     }
+    if (noSlhDsa && (slhDsaOnly || selectedSlh.isNotEmpty)) {
+      throw const PqForgeException(
+        '--no-slh-dsa cannot be combined with --slh-dsa/--slh-dsa-only.',
+      );
+    }
+    if (slhDsaOnly && classicalOnly) {
+      throw const PqForgeException(
+        '--slh-dsa-only cannot be combined with --classical-only.',
+      );
+    }
+    if (slhDsaOnly && selectedClassical.isNotEmpty) {
+      throw const PqForgeException(
+        '--slh-dsa-only cannot be combined with --classical.',
+      );
+    }
     // All classical keys by default: hybrid encryption and hybrid signing then
-    // work out of the box. --classical narrows, --no-classical opts out.
-    final classical = noClassical
+    // work out of the box. --classical narrows, --no-classical / --slh-dsa-only
+    // opts out.
+    final classical = noClassical || slhDsaOnly
         ? const <String>[]
         : (selectedClassical.isEmpty
               ? _classicalAlgorithms
               : selectedClassical);
+    final emitPqc = !classicalOnly && !slhDsaOnly;
+    final slhAlgorithms = _slhDsaAlgorithms(
+      profile: profile,
+      noSlhDsa: noSlhDsa,
+      slhDsaOnly: slhDsaOnly,
+      classicalOnly: classicalOnly,
+      selected: selectedSlh,
+    );
     final passphrase = await passphraseFrom(results);
     await outDir.create(recursive: true);
 
     final publicFiles = <String, PqExportedKey>{};
     final secretFiles = <String, PqExportedKey>{};
+    final forge = PqForge(profile: profile);
 
-    if (!classicalOnly) {
-      final bundle = PqForge(profile: profile).generateKeys(keyId: keyId);
+    if (emitPqc) {
+      final bundle = forge.generateKeys(keyId: keyId);
       publicFiles['$keyId.kem.public.json'] = bundle.exportKemPublicKey();
       publicFiles['$keyId.sign.public.json'] = bundle
           .exportSignaturePublicKey();
       secretFiles['$keyId.kem.secret.json'] = bundle.exportKemSecretKey();
       secretFiles['$keyId.sign.secret.json'] = bundle
           .exportSignatureSecretKey();
+    }
+
+    for (final algorithm in slhAlgorithms) {
+      final pair = forge.generateSlhDsaKeyPair(algorithm: algorithm);
+      publicFiles['$keyId.${algorithm.fileStem}.public.json'] = forge
+          .exportSlhDsaPublicKey(pair, algorithm: algorithm, keyId: keyId);
+      secretFiles['$keyId.${algorithm.fileStem}.secret.json'] = forge
+          .exportSlhDsaSecretKey(pair, algorithm: algorithm, keyId: keyId);
     }
 
     // The classical generators are independent async work — run them
@@ -174,45 +234,75 @@ final class KeygenCommand extends Command<void> {
     for (final entry in publicFiles.entries) {
       await writeJson(outDir.child(entry.key), entry.value.toJson());
     }
-    await _writeSecrets(secretFiles, outDir, passphrase, results);
+    final quiet = quietFrom(results);
+    final wrapProgress = passphrase != null && secretFiles.isNotEmpty
+        ? ProgressReporter(
+            total: secretFiles.length,
+            operation: 'wrapping keys',
+            quiet: quiet,
+          )
+        : null;
+    try {
+      await _writeSecrets(
+        secretFiles,
+        outDir,
+        passphrase,
+        results,
+        progress: wrapProgress,
+      );
+    } finally {
+      wrapProgress?.done();
+    }
 
-    console.section(
-      classicalOnly
-          ? 'Generated classical key material'
-          : 'Generated ${profile.name} key bundle',
-    );
-    if (!classicalOnly) {
-      console.detail('profile', profile.name);
-      console.detail(
-        'pqc',
-        '${profile.kem.name} (encryption) · ${profile.signature.name} '
-            '(signatures)',
+    if (!quiet) {
+      console.section(
+        _keygenSectionTitle(
+          emitPqc: emitPqc,
+          slhAlgorithms: slhAlgorithms,
+          classicalOnly: classicalOnly,
+          slhDsaOnly: slhDsaOnly,
+          profile: profile,
+        ),
       );
-    }
-    if (classical.isNotEmpty) {
-      console.detail(
-        'classical',
-        [
-          if (classical.contains('x25519')) 'X25519 (hybrid encryption)',
-          if (classical.contains('ed25519')) 'Ed25519 (hybrid signing)',
-          if (classical.contains('ecdsa-p256')) 'ECDSA-P256 (hybrid signing)',
-        ].join(' · '),
-      );
-    }
-    if (!classicalOnly && classical.contains('x25519')) {
-      console.detail(
-        'hybrid',
-        'encrypt --hybrid → ${suiteLabel(profile, hybrid: true)}',
-      );
-    }
-    for (final name in publicFiles.keys) {
-      console.created(outDir.child(name).path);
-    }
-    for (final name in secretFiles.keys) {
-      final path = passphrase == null
-          ? outDir.child(name).path
-          : outDir.child(name.replaceFirst('.json', '.wrapped.json')).path;
-      console.created(path);
+      if (emitPqc) {
+        console.detail('profile', profile.name);
+        console.detail(
+          'pqc',
+          '${profile.kem.name} (encryption) · ${profile.signature.name} '
+              '(signatures)',
+        );
+      }
+      if (slhAlgorithms.isNotEmpty) {
+        console.detail(
+          'slh-dsa',
+          slhAlgorithms.map((algorithm) => algorithm.name).join(' · '),
+        );
+      }
+      if (classical.isNotEmpty) {
+        console.detail(
+          'classical',
+          [
+            if (classical.contains('x25519')) 'X25519 (hybrid encryption)',
+            if (classical.contains('ed25519')) 'Ed25519 (hybrid signing)',
+            if (classical.contains('ecdsa-p256')) 'ECDSA-P256 (hybrid signing)',
+          ].join(' · '),
+        );
+      }
+      if (emitPqc && classical.contains('x25519')) {
+        console.detail(
+          'hybrid',
+          'encrypt --hybrid → ${suiteLabel(profile, hybrid: true)}',
+        );
+      }
+      for (final name in publicFiles.keys) {
+        console.created(outDir.child(name).path);
+      }
+      for (final name in secretFiles.keys) {
+        final path = passphrase == null
+            ? outDir.child(name).path
+            : outDir.child(name.replaceFirst('.json', '.wrapped.json')).path;
+        console.created(path);
+      }
     }
     if (passphrase == null && secretFiles.isNotEmpty) {
       console.warn(
@@ -220,6 +310,34 @@ final class KeygenCommand extends Command<void> {
         'or --passphrase to wrap secrets with Argon2id + AES-256-GCM.',
       );
     }
+  }
+
+  List<PqSlhDsaAlgorithm> _slhDsaAlgorithms({
+    required PqForgeProfile profile,
+    required bool noSlhDsa,
+    required bool slhDsaOnly,
+    required bool classicalOnly,
+    required List<String> selected,
+  }) {
+    if (noSlhDsa) return const [];
+    if (selected.isNotEmpty) {
+      return [for (final id in selected) PqSlhDsaAlgorithm.byId(id)];
+    }
+    if (slhDsaOnly || !classicalOnly) return [profile.slhDsa];
+    return const [];
+  }
+
+  String _keygenSectionTitle({
+    required bool emitPqc,
+    required List<PqSlhDsaAlgorithm> slhAlgorithms,
+    required bool classicalOnly,
+    required bool slhDsaOnly,
+    required PqForgeProfile profile,
+  }) {
+    if (slhDsaOnly) return 'Generated SLH-DSA key material';
+    if (classicalOnly) return 'Generated classical key material';
+    if (emitPqc) return 'Generated ${profile.name} key bundle';
+    return 'Generated key material';
   }
 
   Future<({PqExportedKey public, PqExportedKey secret})> _generateClassical(
@@ -268,8 +386,9 @@ final class KeygenCommand extends Command<void> {
     Map<String, PqExportedKey> secretFiles,
     Directory outDir,
     String? passphrase,
-    ArgResults argResults,
-  ) async {
+    ArgResults argResults, {
+    ProgressReporter? progress,
+  }) async {
     if (passphrase == null) {
       for (final entry in secretFiles.entries) {
         await writeJson(outDir.child(entry.key), entry.value.toJson());
@@ -295,6 +414,7 @@ final class KeygenCommand extends Command<void> {
       for (final entry in secretFiles.entries)
         () async {
           await pool.acquire();
+          progress?.startFile(entry.key);
           try {
             final wrapped = await _wrapKeyInIsolate(
               entry.value,
@@ -307,6 +427,10 @@ final class KeygenCommand extends Command<void> {
               outDir.child(entry.key.replaceFirst('.json', '.wrapped.json')),
               wrapped.toJson(),
             );
+            progress?.completeFile(entry.key);
+          } catch (error) {
+            progress?.failFile(entry.key, error.toString());
+            rethrow;
           } finally {
             pool.release();
           }
@@ -440,13 +564,19 @@ final class EncryptCommand extends Command<void> {
       'fileName': fileName,
       'contentLength': length,
     };
+    final quiet = quietFrom(results);
 
     if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
       // Large file: stream it frame-by-frame so peak memory stays a few MB
       // regardless of size (Phase 3). The container is self-describing, so the
       // matching decrypt auto-detects it.
-      final stats =
-          await PqForgeStreamCipher.forProvider(
+      final stats = await withFileProgress(
+        quiet: quiet,
+        operation: 'encrypting',
+        path: fileName,
+        bytes: length,
+        action: (progress) {
+          return PqForgeStreamCipher.forProvider(
             engineProvider,
             cipherSuite: cipher,
           ).encryptFile(
@@ -461,11 +591,58 @@ final class EncryptCommand extends Command<void> {
             metadata: metadata,
             signerSecretKey: signer?.bytes,
             signerKeyId: signerKeyId(results, signer),
+            onProgress: (processed, total) =>
+                progress.updateBytes(processed: processed, totalBytes: total),
           );
-      console.success(
-        'Encrypted to streaming ${profile.name} envelope'
-        '${signer == null ? '' : ' (signed)'} — ${stats.frameCount} frames',
+        },
       );
+      if (!quiet) {
+        console.detail(
+          'envelope',
+          'streaming ${profile.name}'
+              '${signer == null ? '' : ' (signed)'} — ${stats.frameCount} frames',
+        );
+        _printSuite(
+          profile: profile,
+          hybrid: recipients.hybrid,
+          suite: cipher,
+          engine: engineProvider,
+          signature: signer == null ? null : profile.signature,
+          additionalRecipients: recipients.additional.length,
+        );
+        console.created(output.path);
+      }
+      return;
+    }
+
+    // readAsBytes already returns a fresh Uint8List; the prior fromList was a
+    // redundant full-file copy (defect M2). encryptAsync runs the DEM stage on
+    // the selected engine, so small files get the same ~10x AEAD speedup as
+    // the streaming path instead of being pinned to PointyCastle.
+    await withFileProgress(
+      quiet: quiet,
+      operation: 'encrypting',
+      path: fileName,
+      bytes: length,
+      action: (_) async {
+        final plaintext = await input.readAsBytes();
+        final envelope = await PqForge(profile: profile).encryptAsync(
+          recipients.primary.bytes,
+          plaintext,
+          recipientKexPublicKey: recipients.primaryKex?.bytes,
+          additionalRecipients: recipients.additional,
+          recipientKeyId: recipients.primary.keyId,
+          engine: aeadEngineForProvider(engineProvider, cipherSuite: cipher),
+          aad: aad,
+          metadata: metadata,
+          profile: profile,
+          signerSecretKey: signer?.bytes,
+          signerKeyId: signerKeyId(results, signer),
+        );
+        await writeEnvelope(output, envelope);
+      },
+    );
+    if (!quiet) {
       _printSuite(
         profile: profile,
         hybrid: recipients.hybrid,
@@ -475,40 +652,7 @@ final class EncryptCommand extends Command<void> {
         additionalRecipients: recipients.additional.length,
       );
       console.created(output.path);
-      return;
     }
-
-    // readAsBytes already returns a fresh Uint8List; the prior fromList was a
-    // redundant full-file copy (defect M2). encryptAsync runs the DEM stage on
-    // the selected engine, so small files get the same ~10x AEAD speedup as
-    // the streaming path instead of being pinned to PointyCastle.
-    final plaintext = await input.readAsBytes();
-    final envelope = await PqForge(profile: profile).encryptAsync(
-      recipients.primary.bytes,
-      plaintext,
-      recipientKexPublicKey: recipients.primaryKex?.bytes,
-      additionalRecipients: recipients.additional,
-      recipientKeyId: recipients.primary.keyId,
-      engine: aeadEngineForProvider(engineProvider, cipherSuite: cipher),
-      aad: aad,
-      metadata: metadata,
-      profile: profile,
-      signerSecretKey: signer?.bytes,
-      signerKeyId: signerKeyId(results, signer),
-    );
-    await writeEnvelope(output, envelope);
-    console.success(
-      'Encrypted to ${profile.name} envelope${signer == null ? '' : ' (signed)'}',
-    );
-    _printSuite(
-      profile: profile,
-      hybrid: recipients.hybrid,
-      suite: cipher,
-      engine: engineProvider,
-      signature: signer == null ? null : profile.signature,
-      additionalRecipients: recipients.additional.length,
-    );
-    console.created(output.path);
   }
 }
 
@@ -579,6 +723,9 @@ final class DecryptCommand extends Command<void> {
       PqKeyKind.signaturePublic,
     );
     final engineProvider = engineFrom(results);
+    final quiet = quietFrom(results);
+    final fileName = input.uri.pathSegments.last;
+    final length = await input.length();
 
     if (await PqForgeStreamCipher.isStreamingFile(input)) {
       final cipher = PqForgeStreamCipher.forProvider(engineProvider);
@@ -592,62 +739,82 @@ final class DecryptCommand extends Command<void> {
         // when the primary isn't hybrid — resolve the key opportunistically.
         discover: PqMultiRecipient.hasEntries(peek.metadata),
       );
-      final header = await cipher.decryptFile(
-        recipientSecretKey: recipient.bytes,
-        recipientKexSecretKey: kexSecret?.bytes,
-        recipientKeyId: recipient.keyId,
-        input: input,
-        output: output,
-        signerPublicKey: signer?.bytes,
-        aadResolver: (header) => PqRecipeMessages.fileAad(
-          fileName: _requiredMeta(header.metadata, 'fileName', 'File'),
-          aad: optionalAad(results),
-        ),
+      await withFileProgress(
+        quiet: quiet,
+        operation: 'decrypting',
+        path: fileName,
+        bytes: length,
+        action: (progress) {
+          return cipher.decryptFile(
+            recipientSecretKey: recipient.bytes,
+            recipientKexSecretKey: kexSecret?.bytes,
+            recipientKeyId: recipient.keyId,
+            input: input,
+            output: output,
+            signerPublicKey: signer?.bytes,
+            aadResolver: (header) => PqRecipeMessages.fileAad(
+              fileName: _requiredMeta(header.metadata, 'fileName', 'File'),
+              aad: optionalAad(results),
+            ),
+            onProgress: (processed, total) =>
+                progress.updateBytes(processed: processed, totalBytes: total),
+          );
+        },
       );
-      console.success('Decrypted (streaming)');
-      _printSuite(
-        profile: header.profile,
-        hybrid: hybrid,
-        suite: PqAeadSuite.of(header.metadata),
-        engine: engineProvider,
-        signature: header.isSigned ? header.signatureAlgorithm : null,
-      );
-      console.created(output.path);
+      if (!quiet) {
+        _printSuite(
+          profile: peek.profile,
+          hybrid: hybrid,
+          suite: PqAeadSuite.of(peek.metadata),
+          engine: engineProvider,
+          signature: peek.isSigned ? peek.signatureAlgorithm : null,
+        );
+        console.created(output.path);
+      }
       return;
     }
 
-    final envelope = await readEnvelope(input);
-    final hybrid = PqHybridKemDem.isHybrid(envelope.metadata);
-    final kexSecret = await hybridKexSecretFrom(
-      results,
-      passphrase,
-      hybridInput: hybrid,
-      discover: PqMultiRecipient.hasEntries(envelope.metadata),
+    final envelope = await withFileProgress(
+      quiet: quiet,
+      operation: 'decrypting',
+      path: fileName,
+      bytes: length,
+      action: (_) async {
+        final opened = await readEnvelope(input);
+        final kexSecret = await hybridKexSecretFrom(
+          results,
+          passphrase,
+          hybridInput: PqHybridKemDem.isHybrid(opened.metadata),
+          discover: PqMultiRecipient.hasEntries(opened.metadata),
+        );
+        final aad = PqRecipeMessages.fileAad(
+          fileName: _requiredMeta(opened.metadata, 'fileName', 'File'),
+          aad: optionalAad(results),
+        );
+        final plaintext = await PqForge(profile: opened.profile).decryptAsync(
+          recipient.bytes,
+          opened,
+          recipientKexSecretKey: kexSecret?.bytes,
+          recipientKeyId: recipient.keyId,
+          engine: aeadEngineForProvider(engineProvider),
+          aad: aad,
+          signerPublicKey: signer?.bytes,
+        );
+        await output.parent.create(recursive: true);
+        await output.writeAsBytes(plaintext);
+        return opened;
+      },
     );
-    final aad = PqRecipeMessages.fileAad(
-      fileName: _requiredMeta(envelope.metadata, 'fileName', 'File'),
-      aad: optionalAad(results),
-    );
-    final plaintext = await PqForge(profile: envelope.profile).decryptAsync(
-      recipient.bytes,
-      envelope,
-      recipientKexSecretKey: kexSecret?.bytes,
-      recipientKeyId: recipient.keyId,
-      engine: aeadEngineForProvider(engineProvider),
-      aad: aad,
-      signerPublicKey: signer?.bytes,
-    );
-    await output.parent.create(recursive: true);
-    await output.writeAsBytes(plaintext);
-    console.success('Decrypted');
-    _printSuite(
-      profile: envelope.profile,
-      hybrid: hybrid,
-      suite: PqAeadSuite.of(envelope.metadata),
-      engine: engineProvider,
-      signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
-    );
-    console.created(output.path);
+    if (!quiet) {
+      _printSuite(
+        profile: envelope.profile,
+        hybrid: PqHybridKemDem.isHybrid(envelope.metadata),
+        suite: PqAeadSuite.of(envelope.metadata),
+        engine: engineProvider,
+        signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
+      );
+      console.created(output.path);
+    }
   }
 }
 
@@ -715,95 +882,96 @@ final class EncryptFolderCommand extends Command<void> {
   @override
   Future<void> run() async {
     final results = argResults!;
-    final passphrase = await passphraseFrom(results); //
-    final recipients = await recipientsFrom(results); //
-    final inputDir = Directory(results['in-dir'] as String); //
-    final outputDir = Directory(results['out-dir'] as String); //
-    final profile = resolveProfile(results); //
-    final signer = await optionalSignerSecret(results, passphrase); //
-    final aad = optionalAad(results); //
-    final keyId = signerKeyId(results, signer); //
-    final concurrency = concurrencyFrom(results); //
-    final engineProvider = engineFrom(results); //
-    final cipher = cipherFrom(results); //
+    final passphrase = await passphraseFrom(results);
+    final recipients = await recipientsFrom(results);
+    final inputDir = Directory(results['in-dir'] as String);
+    final outputDir = Directory(results['out-dir'] as String);
+    final profile = resolveProfile(results);
+    final signer = await optionalSignerSecret(results, passphrase);
+    final aad = optionalAad(results);
+    final keyId = signerKeyId(results, signer);
+    final concurrency = concurrencyFrom(results);
+    final engineProvider = engineFrom(results);
+    final cipher = cipherFrom(results);
+    final quiet = quietFrom(results);
 
-    // Check for optional global `--quiet` flag definition safely
-    final quietMode = results.wasParsed('quiet')
-        ? results['quiet'] as bool
-        : false;
-
-    // List files with safe handling of unreadable entries
     final files = await listFiles(
       inputDir,
       onSkipped: (path, error) {
-        if (!quietMode) console.warn('skipping $path: $error'); //
+        if (!quiet) console.warn('skipping $path: $error');
       },
     );
 
-    // Progress reporter for live console updates configured for metrics + throttle
     final progress = ProgressReporter(
       total: files.length,
       operation: 'encrypting',
       showPath: true,
-      quiet: quietMode,
+      quiet: quiet,
     );
 
-    // Axis B: Bounded concurrency isolate pipeline pool
-    final pool = Semaphore(concurrency); //
+    final pool = Semaphore(concurrency);
     final tasks = <Future<void>>[];
     for (final entity in files) {
-      final relativePath = safeRelativePath(inputDir, entity); //
+      final relativePath = safeRelativePath(inputDir, entity);
 
-      // Determine file metric constraints before isolate capture
-      int fileSizeBytes = 0;
+      var fileSizeBytes = 0;
       try {
         fileSizeBytes = entity.lengthSync();
       } on FileSystemException {
-        // Fallback catch if stat read blocks under OS layers
+        // Stat failed; throughput stays without this file's size.
       }
 
       tasks.add(() async {
-        await pool.acquire(); //
+        await pool.acquire();
         try {
-          // Precise start hook triggered exactly when the isolate clears wait states
           progress.startFile(relativePath, fileSizeBytes: fileSizeBytes);
-
-          await _encryptFolderEntryInIsolate(
-            recipientPublicKey: recipients.primary.bytes, //
-            recipientKexPublicKey: recipients.primaryKex?.bytes, //
-            additionalRecipients: recipients.additional, //
-            recipientKeyId: recipients.primary.keyId, //
-            profile: profile, //
-            inputPath: entity.path, //
-            outputPath: joinPath(outputDir.path, '$relativePath.pqf'), //
-            relativePath: relativePath, //
-            aad: aad, //
-            signerSecretKey: signer?.bytes, //
-            signerKeyId: keyId, //
-            engineProvider: engineProvider, //
-            cipherSuite: cipher, //
+          await isolateRunWithProgress(
+            (port) => _encryptFolderEntryInIsolate(
+              recipientPublicKey: recipients.primary.bytes,
+              recipientKexPublicKey: recipients.primaryKex?.bytes,
+              additionalRecipients: recipients.additional,
+              recipientKeyId: recipients.primary.keyId,
+              profile: profile,
+              inputPath: entity.path,
+              outputPath: joinPath(outputDir.path, '$relativePath.pqf'),
+              relativePath: relativePath,
+              aad: aad,
+              signerSecretKey: signer?.bytes,
+              signerKeyId: keyId,
+              engineProvider: engineProvider,
+              cipherSuite: cipher,
+              progressPort: port,
+            ),
+            onProgress: (processed, total) {
+              progress.updateBytes(
+                path: relativePath,
+                processed: processed,
+                totalBytes: total,
+              );
+            },
           );
-          progress.completeFile(relativePath); //
+          progress.completeFile(relativePath);
         } catch (e) {
-          progress.failFile(relativePath, e.toString()); //
+          progress.failFile(relativePath, e.toString());
         } finally {
-          pool.release(); //
+          pool.release();
         }
       }());
     }
-    await Future.wait(tasks); //
-    progress.done(); //
+    await Future.wait(tasks);
+    progress.done();
+    if (progress.hasFailures) exitCode = 1;
 
-    if (!quietMode) {
+    if (!quiet) {
       _printSuite(
-        profile: profile, //
-        hybrid: recipients.hybrid, //
-        suite: cipher, //
-        engine: engineProvider, //
-        signature: signer == null ? null : profile.signature, //
-        additionalRecipients: recipients.additional.length, //
+        profile: profile,
+        hybrid: recipients.hybrid,
+        suite: cipher,
+        engine: engineProvider,
+        signature: signer == null ? null : profile.signature,
+        additionalRecipients: recipients.additional.length,
       );
-      console.detail('output', outputDir.path); //
+      console.detail('output', outputDir.path);
     }
   }
 }
@@ -826,6 +994,7 @@ Future<void> _encryptFolderEntryInIsolate({
   required String? signerKeyId,
   required PqForgeEngineProvider engineProvider,
   required PqForgeCipherSuite cipherSuite,
+  SendPort? progressPort,
 }) {
   return Isolate.run(() async {
     final input = File(inputPath);
@@ -841,6 +1010,9 @@ Future<void> _encryptFolderEntryInIsolate({
       'relativePath': relativePath,
       'contentLength': length,
     };
+    void report(int processed, int? total) {
+      progressPort?.send(<Object?>[processed, total]);
+    }
 
     if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
       await PqForgeStreamCipher.forProvider(
@@ -858,6 +1030,7 @@ Future<void> _encryptFolderEntryInIsolate({
         metadata: metadata,
         signerSecretKey: signerSecretKey,
         signerKeyId: signerKeyId,
+        onProgress: report,
       );
       return;
     }
@@ -877,6 +1050,7 @@ Future<void> _encryptFolderEntryInIsolate({
     );
     await output.parent.create(recursive: true);
     await output.writeAsBytes(envelope.toBinary());
+    report(length, length);
   });
 }
 
@@ -940,94 +1114,96 @@ final class DecryptFolderCommand extends Command<void> {
   @override
   Future<void> run() async {
     final results = argResults!;
-    final passphrase = await passphraseFrom(results); //
+    final passphrase = await passphraseFrom(results);
     final recipient = await readKey(
-      results['recipient-secret'] as String, //
-      passphrase: passphrase, //
+      results['recipient-secret'] as String,
+      passphrase: passphrase,
     );
-    requireKind(recipient, PqKeyKind.kemSecret); //
+    requireKind(recipient, PqKeyKind.kemSecret);
 
     final kexSecret = await hybridKexSecretFrom(
-      results, //
-      passphrase, //
-      hybridInput: false, //
-      discover: true, //
+      results,
+      passphrase,
+      hybridInput: false,
+      discover: true,
     );
-    final inputDir = Directory(results['in-dir'] as String); //
-    final outputDir = Directory(results['out-dir'] as String); //
+    final inputDir = Directory(results['in-dir'] as String);
+    final outputDir = Directory(results['out-dir'] as String);
     final signer = await optionalPublicKey(
-      results['signer-public'] as String?, //
-      PqKeyKind.signaturePublic, //
+      results['signer-public'] as String?,
+      PqKeyKind.signaturePublic,
     );
-    final aad = optionalAad(results); //
-    final concurrency = concurrencyFrom(results); //
-    final engineProvider = engineFrom(results); //
+    final aad = optionalAad(results);
+    final concurrency = concurrencyFrom(results);
+    final engineProvider = engineFrom(results);
+    final quiet = quietFrom(results);
 
-    final quietMode = results.wasParsed('quiet')
-        ? results['quiet'] as bool
-        : false;
-
-    // List .pqf files with safe handling of unreadable entries
     final files = await listFiles(
       inputDir,
       onSkipped: (path, error) {
-        if (!quietMode) console.warn('skipping $path: $error'); //
+        if (!quiet) console.warn('skipping $path: $error');
       },
     );
 
-    // Filter down strictly to active payload envelopes
-    final pqfFiles = files.where((f) => f.path.endsWith('.pqf')).toList(); //
+    final pqfFiles = files.where((f) => f.path.endsWith('.pqf')).toList();
 
-    // High-performance progress reporter initialization
     final progress = ProgressReporter(
       total: pqfFiles.length,
       operation: 'decrypting',
       showPath: true,
-      quiet: quietMode,
+      quiet: quiet,
     );
 
-    // Bounded stream walk across independent worker blocks
-    final pool = Semaphore(concurrency); //
+    final pool = Semaphore(concurrency);
     final tasks = <Future<void>>[];
     for (final entity in pqfFiles) {
-      // Determine artifact envelope sizing metrics prior to thread transfer
-      int fileSizeBytes = 0;
+      final relativePath = safeRelativePath(inputDir, entity);
+      var fileSizeBytes = 0;
       try {
         fileSizeBytes = entity.lengthSync();
       } on FileSystemException {
-        // Fallback safety catch
+        // Stat failed; throughput stays without this file's size.
       }
 
       tasks.add(() async {
-        await pool.acquire(); //
+        await pool.acquire();
         try {
-          // Precise start initialization sequence
-          progress.startFile(entity.path, fileSizeBytes: fileSizeBytes);
-
-          await _decryptFolderEntryInIsolate(
-            recipientSecretKey: recipient.bytes, //
-            recipientKexSecretKey: kexSecret?.bytes, //
-            recipientKeyId: recipient.keyId, //
-            inputPath: entity.path, //
-            outputDirPath: outputDir.path, //
-            aad: aad, //
-            signerPublicKey: signer?.bytes, //
-            engineProvider: engineProvider, //
+          progress.startFile(relativePath, fileSizeBytes: fileSizeBytes);
+          await isolateRunWithProgress(
+            (port) => _decryptFolderEntryInIsolate(
+              recipientSecretKey: recipient.bytes,
+              recipientKexSecretKey: kexSecret?.bytes,
+              recipientKeyId: recipient.keyId,
+              inputPath: entity.path,
+              outputDirPath: outputDir.path,
+              aad: aad,
+              signerPublicKey: signer?.bytes,
+              engineProvider: engineProvider,
+              progressPort: port,
+            ),
+            onProgress: (processed, total) {
+              progress.updateBytes(
+                path: relativePath,
+                processed: processed,
+                totalBytes: total,
+              );
+            },
           );
-          progress.completeFile(entity.path); //
+          progress.completeFile(relativePath);
         } catch (e) {
-          progress.failFile(entity.path, e.toString()); //
+          progress.failFile(relativePath, e.toString());
         } finally {
-          pool.release(); //
+          pool.release();
         }
       }());
     }
-    await Future.wait(tasks); //
-    progress.done(); //
+    await Future.wait(tasks);
+    progress.done();
+    if (progress.hasFailures) exitCode = 1;
 
-    if (!quietMode) {
-      console.detail('engine', engineLabel(engineProvider)); //
-      console.detail('output', outputDir.path); //
+    if (!quiet) {
+      console.detail('engine', engineLabel(engineProvider));
+      console.detail('output', outputDir.path);
     }
   }
 }
@@ -1044,8 +1220,13 @@ Future<void> _decryptFolderEntryInIsolate({
   required Uint8List? aad,
   required Uint8List? signerPublicKey,
   required PqForgeEngineProvider engineProvider,
+  SendPort? progressPort,
 }) {
   return Isolate.run(() async {
+    void report(int processed, int? total) {
+      progressPort?.send(<Object?>[processed, total]);
+    }
+
     final input = File(inputPath);
     if (await PqForgeStreamCipher.isStreamingFile(input)) {
       final header = await PqForgeStreamCipher.forProvider(
@@ -1063,6 +1244,7 @@ Future<void> _decryptFolderEntryInIsolate({
           relativePath: relativePath,
           aad: aad,
         ),
+        onProgress: report,
       );
       return;
     }
@@ -1084,6 +1266,7 @@ Future<void> _decryptFolderEntryInIsolate({
     final output = File(joinPath(outputDirPath, relativePath));
     await output.parent.create(recursive: true);
     await output.writeAsBytes(plaintext);
+    report(plaintext.length, plaintext.length);
   });
 }
 
@@ -1156,30 +1339,48 @@ final class EncryptTextCommand extends Command<void> {
     final textId = results['text-id'] as String? ?? defaultTextId;
     final profile = resolveProfile(results);
     final signer = await optionalSignerSecret(results, passphrase);
+    final quiet = quietFrom(results);
+    final plaintext = PqBytes.utf8Bytes(text);
     // Same AAD and metadata as PqForge.sealText, routed through encryptAsync
     // so the hybrid/multi-recipient markers can ride along.
-    final envelope = await PqForge(profile: profile).encryptAsync(
-      recipients.primary.bytes,
-      PqBytes.utf8Bytes(text),
-      recipientKexPublicKey: recipients.primaryKex?.bytes,
-      additionalRecipients: recipients.additional,
-      recipientKeyId: recipients.primary.keyId,
-      aad: PqRecipeMessages.textAad(textId: textId, aad: optionalAad(results)),
-      metadata: {'recipe': 'text-seal', 'textId': textId, 'encoding': 'utf-8'},
-      profile: profile,
-      signerSecretKey: signer?.bytes,
-      signerKeyId: signerKeyId(results, signer),
-    );
     final output = File(results['out'] as String);
-    await writeEnvelope(output, envelope);
-    console.success('Encrypted text (id: $textId)');
-    _printSuite(
-      profile: profile,
-      hybrid: recipients.hybrid,
-      signature: signer == null ? null : profile.signature,
-      additionalRecipients: recipients.additional.length,
+    await withFileProgress(
+      quiet: quiet,
+      operation: 'encrypting',
+      path: textId,
+      bytes: plaintext.length,
+      action: (_) async {
+        final envelope = await PqForge(profile: profile).encryptAsync(
+          recipients.primary.bytes,
+          plaintext,
+          recipientKexPublicKey: recipients.primaryKex?.bytes,
+          additionalRecipients: recipients.additional,
+          recipientKeyId: recipients.primary.keyId,
+          aad: PqRecipeMessages.textAad(
+            textId: textId,
+            aad: optionalAad(results),
+          ),
+          metadata: {
+            'recipe': 'text-seal',
+            'textId': textId,
+            'encoding': 'utf-8',
+          },
+          profile: profile,
+          signerSecretKey: signer?.bytes,
+          signerKeyId: signerKeyId(results, signer),
+        );
+        await writeEnvelope(output, envelope);
+      },
     );
-    console.created(output.path);
+    if (!quiet) {
+      _printSuite(
+        profile: profile,
+        hybrid: recipients.hybrid,
+        signature: signer == null ? null : profile.signature,
+        additionalRecipients: recipients.additional.length,
+      );
+      console.created(output.path);
+    }
   }
 }
 
@@ -1241,7 +1442,9 @@ final class DecryptTextCommand extends Command<void> {
       passphrase: passphrase,
     );
     requireKind(recipient, PqKeyKind.kemSecret);
-    final envelope = await readEnvelope(File(results['in'] as String));
+    final quiet = quietFrom(results);
+    final inputFile = File(results['in'] as String);
+    final envelope = await readEnvelope(inputFile);
     final signer = await optionalPublicKey(
       results['signer-public'] as String?,
       PqKeyKind.signaturePublic,
@@ -1259,23 +1462,48 @@ final class DecryptTextCommand extends Command<void> {
     if (encoding != 'utf-8') {
       throw PqForgeException('Unsupported text envelope encoding: $encoding');
     }
-    final plaintext = await PqForge(profile: envelope.profile).decryptAsync(
-      recipient.bytes,
-      envelope,
-      recipientKexSecretKey: kexSecret?.bytes,
-      recipientKeyId: recipient.keyId,
-      aad: PqRecipeMessages.textAad(textId: textId, aad: optionalAad(results)),
-      signerPublicKey: signer?.bytes,
+    final outputPath = results['out'] as String?;
+    if (outputPath == null) {
+      // No --out: emit the decrypted text raw so it stays pipeable. Never
+      // attach a progress line here — it would mix with the payload.
+      final plaintext = await PqForge(profile: envelope.profile).decryptAsync(
+        recipient.bytes,
+        envelope,
+        recipientKexSecretKey: kexSecret?.bytes,
+        recipientKeyId: recipient.keyId,
+        aad: PqRecipeMessages.textAad(
+          textId: textId,
+          aad: optionalAad(results),
+        ),
+        signerPublicKey: signer?.bytes,
+      );
+      console.raw(utf8.decode(plaintext));
+      return;
+    }
+
+    await withFileProgress(
+      quiet: quiet,
+      operation: 'decrypting',
+      path: textId,
+      bytes: await inputFile.length(),
+      action: (_) async {
+        final plaintext = await PqForge(profile: envelope.profile).decryptAsync(
+          recipient.bytes,
+          envelope,
+          recipientKexSecretKey: kexSecret?.bytes,
+          recipientKeyId: recipient.keyId,
+          aad: PqRecipeMessages.textAad(
+            textId: textId,
+            aad: optionalAad(results),
+          ),
+          signerPublicKey: signer?.bytes,
+        );
+        final text = utf8.decode(plaintext);
+        await File(outputPath).writeAsString(text);
+      },
     );
-    final text = utf8.decode(plaintext);
-    final output = results['out'] as String?;
-    if (output == null) {
-      // No --out: emit the decrypted text raw so it stays pipeable.
-      console.raw(text);
-    } else {
-      await File(output).writeAsString(text);
-      console.success('Decrypted text');
-      console.created(output);
+    if (!quiet) {
+      console.created(outputPath);
     }
   }
 }
@@ -1366,10 +1594,16 @@ final class EncryptMediaCommand extends Command<void> {
       'mimeType': mimeType,
       'contentLength': length,
     };
+    final quiet = quietFrom(results);
 
     if (length >= PqForgeStreamCipher.streamingThresholdBytes) {
-      final stats =
-          await PqForgeStreamCipher.forProvider(
+      final stats = await withFileProgress(
+        quiet: quiet,
+        operation: 'encrypting',
+        path: mediaId,
+        bytes: length,
+        action: (progress) {
+          return PqForgeStreamCipher.forProvider(
             engineProvider,
             cipherSuite: cipher,
           ).encryptFile(
@@ -1384,11 +1618,53 @@ final class EncryptMediaCommand extends Command<void> {
             metadata: metadata,
             signerSecretKey: signer?.bytes,
             signerKeyId: signerKeyId(results, signer),
+            onProgress: (processed, total) =>
+                progress.updateBytes(processed: processed, totalBytes: total),
           );
-      console.success(
-        'Encrypted media (id: $mediaId, $mimeType) to streaming envelope'
-        '${signer == null ? '' : ' (signed)'} — ${stats.frameCount} frames',
+        },
       );
+      if (!quiet) {
+        console.detail(
+          'media',
+          '$mediaId, $mimeType — ${stats.frameCount} frames',
+        );
+        _printSuite(
+          profile: profile,
+          hybrid: recipients.hybrid,
+          suite: cipher,
+          engine: engineProvider,
+          signature: signer == null ? null : profile.signature,
+          additionalRecipients: recipients.additional.length,
+        );
+        console.created(output.path);
+      }
+      return;
+    }
+
+    await withFileProgress(
+      quiet: quiet,
+      operation: 'encrypting',
+      path: mediaId,
+      bytes: length,
+      action: (_) async {
+        final bytes = await input.readAsBytes();
+        final envelope = await PqForge(profile: profile).encryptAsync(
+          recipients.primary.bytes,
+          bytes,
+          recipientKexPublicKey: recipients.primaryKex?.bytes,
+          additionalRecipients: recipients.additional,
+          recipientKeyId: recipients.primary.keyId,
+          engine: aeadEngineForProvider(engineProvider, cipherSuite: cipher),
+          aad: aad,
+          metadata: metadata,
+          profile: profile,
+          signerSecretKey: signer?.bytes,
+          signerKeyId: signerKeyId(results, signer),
+        );
+        await writeEnvelope(output, envelope);
+      },
+    );
+    if (!quiet) {
       _printSuite(
         profile: profile,
         hybrid: recipients.hybrid,
@@ -1398,34 +1674,7 @@ final class EncryptMediaCommand extends Command<void> {
         additionalRecipients: recipients.additional.length,
       );
       console.created(output.path);
-      return;
     }
-
-    final bytes = await input.readAsBytes(); // M2: no redundant full-file copy
-    final envelope = await PqForge(profile: profile).encryptAsync(
-      recipients.primary.bytes,
-      bytes,
-      recipientKexPublicKey: recipients.primaryKex?.bytes,
-      additionalRecipients: recipients.additional,
-      recipientKeyId: recipients.primary.keyId,
-      engine: aeadEngineForProvider(engineProvider, cipherSuite: cipher),
-      aad: aad,
-      metadata: metadata,
-      profile: profile,
-      signerSecretKey: signer?.bytes,
-      signerKeyId: signerKeyId(results, signer),
-    );
-    await writeEnvelope(output, envelope);
-    console.success('Encrypted media (id: $mediaId, $mimeType)');
-    _printSuite(
-      profile: profile,
-      hybrid: recipients.hybrid,
-      suite: cipher,
-      engine: engineProvider,
-      signature: signer == null ? null : profile.signature,
-      additionalRecipients: recipients.additional.length,
-    );
-    console.created(output.path);
   }
 }
 
@@ -1496,6 +1745,9 @@ final class DecryptMediaCommand extends Command<void> {
       PqKeyKind.signaturePublic,
     );
     final engineProvider = engineFrom(results);
+    final quiet = quietFrom(results);
+    final fileName = input.uri.pathSegments.last;
+    final length = await input.length();
 
     if (await PqForgeStreamCipher.isStreamingFile(input)) {
       final cipher = PqForgeStreamCipher.forProvider(engineProvider);
@@ -1507,65 +1759,85 @@ final class DecryptMediaCommand extends Command<void> {
         hybridInput: hybrid,
         discover: PqMultiRecipient.hasEntries(peek.metadata),
       );
-      await cipher.decryptFile(
-        recipientSecretKey: recipient.bytes,
-        recipientKexSecretKey: kexSecret?.bytes,
-        recipientKeyId: recipient.keyId,
-        input: input,
-        output: output,
-        signerPublicKey: signer?.bytes,
-        aadResolver: (header) => PqRecipeMessages.mediaAad(
-          mediaId: _requiredMeta(header.metadata, 'mediaId', 'media'),
-          mimeType: _requiredMeta(header.metadata, 'mimeType', 'media'),
-          aad: optionalAad(results),
-        ),
+      await withFileProgress(
+        quiet: quiet,
+        operation: 'decrypting',
+        path: fileName,
+        bytes: length,
+        action: (progress) {
+          return cipher.decryptFile(
+            recipientSecretKey: recipient.bytes,
+            recipientKexSecretKey: kexSecret?.bytes,
+            recipientKeyId: recipient.keyId,
+            input: input,
+            output: output,
+            signerPublicKey: signer?.bytes,
+            aadResolver: (header) => PqRecipeMessages.mediaAad(
+              mediaId: _requiredMeta(header.metadata, 'mediaId', 'media'),
+              mimeType: _requiredMeta(header.metadata, 'mimeType', 'media'),
+              aad: optionalAad(results),
+            ),
+            onProgress: (processed, total) =>
+                progress.updateBytes(processed: processed, totalBytes: total),
+          );
+        },
       );
-      console.success('Decrypted media (streaming)');
-      _printSuite(
-        profile: peek.profile,
-        hybrid: hybrid,
-        suite: PqAeadSuite.of(peek.metadata),
-        engine: engineProvider,
-        signature: peek.isSigned ? peek.signatureAlgorithm : null,
-      );
-      console.created(output.path);
+      if (!quiet) {
+        _printSuite(
+          profile: peek.profile,
+          hybrid: hybrid,
+          suite: PqAeadSuite.of(peek.metadata),
+          engine: engineProvider,
+          signature: peek.isSigned ? peek.signatureAlgorithm : null,
+        );
+        console.created(output.path);
+      }
       return;
     }
 
-    final envelope = await readEnvelope(input);
-    final hybrid = PqHybridKemDem.isHybrid(envelope.metadata);
-    final kexSecret = await hybridKexSecretFrom(
-      results,
-      passphrase,
-      hybridInput: hybrid,
-      discover: PqMultiRecipient.hasEntries(envelope.metadata),
+    final envelope = await withFileProgress(
+      quiet: quiet,
+      operation: 'decrypting',
+      path: fileName,
+      bytes: length,
+      action: (_) async {
+        final opened = await readEnvelope(input);
+        final kexSecret = await hybridKexSecretFrom(
+          results,
+          passphrase,
+          hybridInput: PqHybridKemDem.isHybrid(opened.metadata),
+          discover: PqMultiRecipient.hasEntries(opened.metadata),
+        );
+        final mediaId = _requiredMeta(opened.metadata, 'mediaId', 'media');
+        final mimeType = _requiredMeta(opened.metadata, 'mimeType', 'media');
+        final media = await PqForge(profile: opened.profile).decryptAsync(
+          recipient.bytes,
+          opened,
+          recipientKexSecretKey: kexSecret?.bytes,
+          recipientKeyId: recipient.keyId,
+          engine: aeadEngineForProvider(engineProvider),
+          aad: PqRecipeMessages.mediaAad(
+            mediaId: mediaId,
+            mimeType: mimeType,
+            aad: optionalAad(results),
+          ),
+          signerPublicKey: signer?.bytes,
+        );
+        await output.parent.create(recursive: true);
+        await output.writeAsBytes(media);
+        return opened;
+      },
     );
-    final mediaId = _requiredMeta(envelope.metadata, 'mediaId', 'media');
-    final mimeType = _requiredMeta(envelope.metadata, 'mimeType', 'media');
-    final media = await PqForge(profile: envelope.profile).decryptAsync(
-      recipient.bytes,
-      envelope,
-      recipientKexSecretKey: kexSecret?.bytes,
-      recipientKeyId: recipient.keyId,
-      engine: aeadEngineForProvider(engineProvider),
-      aad: PqRecipeMessages.mediaAad(
-        mediaId: mediaId,
-        mimeType: mimeType,
-        aad: optionalAad(results),
-      ),
-      signerPublicKey: signer?.bytes,
-    );
-    await output.parent.create(recursive: true);
-    await output.writeAsBytes(media);
-    console.success('Decrypted media');
-    _printSuite(
-      profile: envelope.profile,
-      hybrid: hybrid,
-      suite: PqAeadSuite.of(envelope.metadata),
-      engine: engineProvider,
-      signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
-    );
-    console.created(output.path);
+    if (!quiet) {
+      _printSuite(
+        profile: envelope.profile,
+        hybrid: PqHybridKemDem.isHybrid(envelope.metadata),
+        suite: PqAeadSuite.of(envelope.metadata),
+        engine: engineProvider,
+        signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
+      );
+      console.created(output.path);
+    }
   }
 }
 
@@ -1636,47 +1908,86 @@ final class PackCommand extends Command<void> {
     final aad = optionalAad(results);
     final engineProvider = engineFrom(results);
     final cipher = cipherFrom(results);
+    final quiet = quietFrom(results);
 
     final entries = [
-      for (final file in await listFiles(inputDir))
+      for (final file in await listFiles(
+        inputDir,
+        onSkipped: (path, error) {
+          if (!quiet) console.warn('skipping $path: $error');
+        },
+      ))
         PqPackEntry(
           relativePath: safeRelativePath(inputDir, file),
           sourcePath: file.path,
         ),
     ];
 
-    // The pack stream is piped straight into the AEAD writer: the plaintext
-    // archive never exists on disk (no temp spool, no extra free-space need).
-    final stats =
-        await PqForgeStreamCipher.forProvider(
-          engineProvider,
-          cipherSuite: cipher,
-        ).encryptStream(
-          recipientPublicKey: recipients.primary.bytes,
-          recipientKexPublicKey: recipients.primaryKex?.bytes,
-          additionalRecipients: recipients.additional,
-          recipientKeyId: recipients.primary.keyId,
-          source: PqFolderPack.packStream(entries),
-          output: output,
-          profile: profile,
-          aad: PqRecipeMessages.folderPackAad(aad: aad),
-          metadata: {'recipe': 'folder-pack', 'entryCount': entries.length},
-          signerSecretKey: signer?.bytes,
-          signerKeyId: signerKeyId(results, signer),
+    final progress = ProgressReporter(
+      total: entries.length,
+      operation: 'packing',
+      quiet: quiet,
+    );
+    PqPackEntry? current;
+    try {
+      final stats =
+          await PqForgeStreamCipher.forProvider(
+            engineProvider,
+            cipherSuite: cipher,
+          ).encryptStream(
+            recipientPublicKey: recipients.primary.bytes,
+            recipientKexPublicKey: recipients.primaryKex?.bytes,
+            additionalRecipients: recipients.additional,
+            recipientKeyId: recipients.primary.keyId,
+            source: PqFolderPack.packStream(
+              entries,
+              onEntryStart: (entry, length) {
+                final previous = current;
+                if (previous != null) {
+                  progress.completeFile(previous.relativePath);
+                }
+                current = entry;
+                progress.startFile(entry.relativePath, fileSizeBytes: length);
+              },
+              onEntryProgress: (entry, processed, length) {
+                progress.updateBytes(processed: processed, totalBytes: length);
+              },
+            ),
+            output: output,
+            profile: profile,
+            aad: PqRecipeMessages.folderPackAad(aad: aad),
+            metadata: {'recipe': 'folder-pack', 'entryCount': entries.length},
+            signerSecretKey: signer?.bytes,
+            signerKeyId: signerKeyId(results, signer),
+          );
+      if (current != null) {
+        progress.completeFile(current!.relativePath);
+      }
+      progress.done();
+      if (!quiet) {
+        console.detail(
+          'archive',
+          '${entries.length} file(s), ${stats.frameCount} frames',
         );
-    console.success(
-      'Packed ${entries.length} file(s) into a streaming ${profile.name} '
-      'archive${signer == null ? '' : ' (signed)'} — ${stats.frameCount} frames',
-    );
-    _printSuite(
-      profile: profile,
-      hybrid: recipients.hybrid,
-      suite: cipher,
-      engine: engineProvider,
-      signature: signer == null ? null : profile.signature,
-      additionalRecipients: recipients.additional.length,
-    );
-    console.created(output.path);
+        _printSuite(
+          profile: profile,
+          hybrid: recipients.hybrid,
+          suite: cipher,
+          engine: engineProvider,
+          signature: signer == null ? null : profile.signature,
+          additionalRecipients: recipients.additional.length,
+        );
+        console.created(output.path);
+      }
+    } catch (error) {
+      if (current != null) {
+        progress.failFile(current!.relativePath, error.toString());
+      } else {
+        progress.failJob(error.toString());
+      }
+      progress.done();
+      rethrow;
+    }
   }
 }
 
@@ -1748,6 +2059,7 @@ final class UnpackCommand extends Command<void> {
     );
     final aad = optionalAad(results);
     final engineProvider = engineFrom(results);
+    final quiet = quietFrom(results);
 
     if (!await PqForgeStreamCipher.isStreamingFile(input)) {
       throw PqForgeException(
@@ -1765,30 +2077,63 @@ final class UnpackCommand extends Command<void> {
       discover: PqMultiRecipient.hasEntries(peek.metadata),
     );
 
-    // Authenticated plaintext frames stream straight into the unpacker — no
-    // decrypted temp file. On any failure the unpacker removes the files it
-    // created, so no partial tree is left behind.
-    final frames = cipher.decryptStream(
-      recipientSecretKey: recipient.bytes,
-      recipientKexSecretKey: kexSecret?.bytes,
-      recipientKeyId: recipient.keyId,
-      input: input,
-      signerPublicKey: signer?.bytes,
-      aadResolver: (_) => PqRecipeMessages.folderPackAad(aad: aad),
+    final entryCount = switch (peek.metadata['entryCount']) {
+      final int n => n,
+      final num n => n.toInt(),
+      _ => 0,
+    };
+    final progress = ProgressReporter(
+      total: entryCount,
+      operation: 'unpacking',
+      quiet: quiet,
     );
-    final count = await PqFolderPack.unpackFromStream(
-      frames,
-      outputDirPath: outputDir.path,
-    );
-    console.success('Unpacked $count file(s)');
-    _printSuite(
-      profile: peek.profile,
-      hybrid: hybrid,
-      suite: PqAeadSuite.of(peek.metadata),
-      engine: engineProvider,
-      signature: peek.isSigned ? peek.signatureAlgorithm : null,
-    );
-    console.detail('output', outputDir.path);
+    String? active;
+    try {
+      final frames = cipher.decryptStream(
+        recipientSecretKey: recipient.bytes,
+        recipientKexSecretKey: kexSecret?.bytes,
+        recipientKeyId: recipient.keyId,
+        input: input,
+        signerPublicKey: signer?.bytes,
+        aadResolver: (_) => PqRecipeMessages.folderPackAad(aad: aad),
+      );
+      final count = await PqFolderPack.unpackFromStream(
+        frames,
+        outputDirPath: outputDir.path,
+        onEntryStart: (path, length) {
+          active = path;
+          progress.startFile(path, fileSizeBytes: length);
+        },
+        onEntryProgress: (path, processed, length) {
+          progress.updateBytes(processed: processed, totalBytes: length);
+        },
+        onEntryDone: (path) {
+          progress.completeFile(path);
+          active = null;
+        },
+      );
+      progress.done();
+      if (progress.hasFailures) exitCode = 1;
+      if (!quiet) {
+        console.detail('files', '$count');
+        _printSuite(
+          profile: peek.profile,
+          hybrid: hybrid,
+          suite: PqAeadSuite.of(peek.metadata),
+          engine: engineProvider,
+          signature: peek.isSigned ? peek.signatureAlgorithm : null,
+        );
+        console.detail('output', outputDir.path);
+      }
+    } catch (error) {
+      if (active != null) {
+        progress.failFile(active!, error.toString());
+      } else {
+        progress.failJob(error.toString());
+      }
+      progress.done();
+      rethrow;
+    }
   }
 }
 
@@ -1930,7 +2275,8 @@ final class InspectCommand extends Command<void> {
   }
 }
 
-/// `sign` — detached ML-DSA recipe signatures (document/text/media/artifact).
+/// `sign` — detached ML-DSA or SLH-DSA recipe signatures
+/// (document/text/media/artifact).
 final class SignCommand extends Command<void> {
   SignCommand() {
     argParser
@@ -1938,7 +2284,8 @@ final class SignCommand extends Command<void> {
         'signer-secret',
         mandatory: true,
         valueHelp: 'file',
-        help: 'Raw or wrapped ML-DSA secret key JSON from pqforge keygen.',
+        help:
+            'Raw or wrapped ML-DSA or SLH-DSA secret key JSON from pqforge keygen.',
       )
       ..addOption(
         'in',
@@ -1998,13 +2345,17 @@ final class SignCommand extends Command<void> {
   String get name => 'sign';
 
   @override
-  String get description => 'Create detached ML-DSA recipe signatures.';
+  String get description =>
+      'Create detached ML-DSA or SLH-DSA recipe signatures.';
 
   @override
   String get usageFooter => usageExamples([
     'pqforge sign --signer-secret keys/vault.sign.secret.wrapped.json \\',
     '  --passphrase-env PQFORGE_PASSPHRASE --kind document \\',
     '  --in contract.pdf --document-id contract-2026-001 --out contract.sig.json',
+    'pqforge sign --signer-secret keys/vault.slh-dsa-shake-128f.secret.wrapped.json \\',
+    '  --passphrase-env PQFORGE_PASSPHRASE --kind document \\',
+    '  --in archive.pdf --out archive.slh.sig.json',
   ]);
 
   @override
@@ -2017,88 +2368,108 @@ final class SignCommand extends Command<void> {
     );
     requireKind(signer, PqKeyKind.signatureSecret);
     final input = File(results['in'] as String);
-    final bytes = await input.readAsBytes(); // M2: no redundant full-file copy
-    final algorithm = PqSignatureAlgorithm.byId(signer.algorithmId);
-    final forge = PqForge(profile: profileForSignature(algorithm));
+    final quiet = quietFrom(results);
+    final slhDsa = PqSlhDsaAlgorithm.tryById(signer.algorithmId);
+    final mlDsa = slhDsa == null
+        ? PqSignatureAlgorithm.byId(signer.algorithmId)
+        : null;
+    final algorithmId = slhDsa?.id ?? mlDsa!.id;
+    final algorithmName = slhDsa?.name ?? mlDsa!.name;
+    final forge = PqForge(profile: profileForPqcSignatureId(algorithmId));
     final kind = results['kind'] as String;
     final fileName = input.uri.pathSegments.last;
-
-    late final Map<String, Object?> json;
-    switch (kind) {
-      case 'text':
-        final textId = results['text-id'] as String? ?? fileName;
-        final signature = forge.signText(
-          signerSecretKey: signer.bytes,
-          text: utf8.decode(bytes),
-          textId: textId,
-          algorithm: algorithm,
-        );
-        json = signatureJson(
-          kind: kind,
-          algorithm: algorithm,
-          signature: signature,
-          extra: {'textId': textId, 'encoding': 'utf-8'},
-        );
-      case 'media':
-        final mediaId = results['media-id'] as String? ?? fileName;
-        final mimeType =
-            results['mime-type'] as String? ?? guessMimeType(input.path);
-        final signature = forge.signMedia(
-          signerSecretKey: signer.bytes,
-          mediaId: mediaId,
-          mimeType: mimeType,
-          mediaBytes: bytes,
-          algorithm: algorithm,
-        );
-        json = signatureJson(
-          kind: kind,
-          algorithm: algorithm,
-          signature: signature,
-          extra: {'mediaId': mediaId, 'mimeType': mimeType},
-        );
-      case 'artifact':
-        final artifactId = results['artifact-id'] as String? ?? fileName;
-        final version = int.parse(results['version'] as String);
-        final artifact = forge.signArtifact(
-          signerSecretKey: signer.bytes,
-          artifactId: artifactId,
-          version: version,
-          artifactBytes: bytes,
-          algorithm: algorithm,
-        );
-        json = signatureJson(
-          kind: kind,
-          algorithm: algorithm,
-          signature: artifact.signature,
-          extra: {
-            'artifactId': artifactId,
-            'version': version,
-            'artifactHash': base64Encode(artifact.artifactHash),
-          },
-        );
-      default:
-        final documentId = results['document-id'] as String? ?? fileName;
-        final signature = forge.signDocument(
-          signer.bytes,
-          bytes,
-          documentId: documentId,
-          algorithm: algorithm,
-        );
-        json = signatureJson(
-          kind: 'document',
-          algorithm: algorithm,
-          signature: signature,
-          extra: {'documentId': documentId},
-        );
-    }
     final output = File(results['out'] as String);
-    await writeJson(output, json);
-    console.success('Signed ($kind, ${algorithm.name})');
-    console.created(output.path);
+
+    await withFileProgress(
+      quiet: quiet,
+      operation: 'signing',
+      path: fileName,
+      bytes: await input.length(),
+      action: (_) async {
+        final bytes = await input.readAsBytes();
+        late final Map<String, Object?> json;
+        switch (kind) {
+          case 'text':
+            final textId = results['text-id'] as String? ?? fileName;
+            final signature = forge.signText(
+              signerSecretKey: signer.bytes,
+              text: utf8.decode(bytes),
+              textId: textId,
+              algorithm: mlDsa,
+              slhDsa: slhDsa,
+            );
+            json = signatureJson(
+              kind: kind,
+              algorithmId: algorithmId,
+              signature: signature,
+              extra: {'textId': textId, 'encoding': 'utf-8'},
+            );
+          case 'media':
+            final mediaId = results['media-id'] as String? ?? fileName;
+            final mimeType =
+                results['mime-type'] as String? ?? guessMimeType(input.path);
+            final signature = forge.signMedia(
+              signerSecretKey: signer.bytes,
+              mediaId: mediaId,
+              mimeType: mimeType,
+              mediaBytes: bytes,
+              algorithm: mlDsa,
+              slhDsa: slhDsa,
+            );
+            json = signatureJson(
+              kind: kind,
+              algorithmId: algorithmId,
+              signature: signature,
+              extra: {'mediaId': mediaId, 'mimeType': mimeType},
+            );
+          case 'artifact':
+            final artifactId = results['artifact-id'] as String? ?? fileName;
+            final version = int.parse(results['version'] as String);
+            final artifact = forge.signArtifact(
+              signerSecretKey: signer.bytes,
+              artifactId: artifactId,
+              version: version,
+              artifactBytes: bytes,
+              algorithm: mlDsa,
+              slhDsa: slhDsa,
+            );
+            json = signatureJson(
+              kind: kind,
+              algorithmId: algorithmId,
+              signature: artifact.signature,
+              extra: {
+                'artifactId': artifactId,
+                'version': version,
+                'artifactHash': base64Encode(artifact.artifactHash),
+              },
+            );
+          default:
+            final documentId = results['document-id'] as String? ?? fileName;
+            final signature = forge.signDocument(
+              signer.bytes,
+              bytes,
+              documentId: documentId,
+              algorithm: mlDsa,
+              slhDsa: slhDsa,
+            );
+            json = signatureJson(
+              kind: 'document',
+              algorithmId: algorithmId,
+              signature: signature,
+              extra: {'documentId': documentId},
+            );
+        }
+        await writeJson(output, json);
+      },
+    );
+    if (!quiet) {
+      console.detail('algorithm', '$kind, $algorithmName');
+      console.created(output.path);
+    }
   }
 }
 
-/// `verify` — verify detached ML-DSA recipe signatures.
+/// `verify` — verify detached ML-DSA or SLH-DSA recipe signatures.
 final class VerifyCommand extends Command<void> {
   VerifyCommand() {
     argParser
@@ -2106,7 +2477,7 @@ final class VerifyCommand extends Command<void> {
         'signer-public',
         mandatory: true,
         valueHelp: 'file',
-        help: 'ML-DSA public key JSON from pqforge keygen.',
+        help: 'ML-DSA or SLH-DSA public key JSON from pqforge keygen.',
       )
       ..addOption(
         'in',
@@ -2150,13 +2521,15 @@ final class VerifyCommand extends Command<void> {
         valueHelp: 'n',
         help: 'Override the signature JSON artifact version.',
       );
+    addQuietOption(argParser);
   }
 
   @override
   String get name => 'verify';
 
   @override
-  String get description => 'Verify detached ML-DSA recipe signatures.';
+  String get description =>
+      'Verify detached ML-DSA or SLH-DSA recipe signatures.';
 
   @override
   String get usageFooter => usageExamples([
@@ -2170,62 +2543,91 @@ final class VerifyCommand extends Command<void> {
     final signer = await readKey(results['signer-public'] as String);
     requireKind(signer, PqKeyKind.signaturePublic);
     final input = File(results['in'] as String);
-    final bytes = await input.readAsBytes(); // M2: no redundant full-file copy
-    final sigJson = await readJsonMap(File(results['signature'] as String));
-    final algorithm = PqSignatureAlgorithm.byId(
-      sigJson['signatureAlgorithm'] as String,
+    final quiet = quietFrom(results);
+    final fileName = input.uri.pathSegments.last;
+    final progress = ProgressReporter(
+      total: 1,
+      operation: 'verifying',
+      quiet: quiet,
     );
-    final signature = base64Decode(sigJson['signature'] as String);
-    final kind = sigJson['kind'] as String? ?? 'document';
-    final forge = PqForge(profile: profileForSignature(algorithm));
+    progress.startFile(fileName, fileSizeBytes: await input.length());
+    late final bool ok;
+    late final String kind;
+    late final String algorithmName;
+    try {
+      final bytes = await input.readAsBytes();
+      final sigJson = await readJsonMap(File(results['signature'] as String));
+      final algorithmId = sigJson['signatureAlgorithm'] as String;
+      final slhDsa = PqSlhDsaAlgorithm.tryById(algorithmId);
+      final mlDsa = slhDsa == null
+          ? PqSignatureAlgorithm.byId(algorithmId)
+          : null;
+      algorithmName = slhDsa?.name ?? mlDsa!.name;
+      final signature = base64Decode(sigJson['signature'] as String);
+      kind = sigJson['kind'] as String? ?? 'document';
+      final forge = PqForge(profile: profileForPqcSignatureId(algorithmId));
 
-    final ok = switch (kind) {
-      'text' => forge.verifyText(
-        signerPublicKey: signer.bytes,
-        text: utf8.decode(bytes),
-        textId: results['text-id'] as String? ?? sigJson['textId'] as String,
-        signature: signature,
-        algorithm: algorithm,
-      ),
-      'media' => forge.verifyMedia(
-        signerPublicKey: signer.bytes,
-        mediaId: results['media-id'] as String? ?? sigJson['mediaId'] as String,
-        mimeType:
-            results['mime-type'] as String? ?? sigJson['mimeType'] as String,
-        mediaBytes: bytes,
-        signature: signature,
-        algorithm: algorithm,
-      ),
-      'artifact' => forge.verifyArtifact(
-        signer.bytes,
-        bytes,
-        PqArtifactSignature(
-          artifactId:
-              results['artifact-id'] as String? ??
-              sigJson['artifactId'] as String,
-          version:
-              int.tryParse(results['version'] as String? ?? '') ??
-              sigJson['version'] as int,
-          artifactHash: base64Decode(sigJson['artifactHash'] as String),
-          signatureAlgorithm: algorithm,
+      ok = switch (kind) {
+        'text' => forge.verifyText(
+          signerPublicKey: signer.bytes,
+          text: utf8.decode(bytes),
+          textId: results['text-id'] as String? ?? sigJson['textId'] as String,
           signature: signature,
+          algorithm: mlDsa,
+          slhDsa: slhDsa,
         ),
-      ),
-      _ => forge.verifyDocument(
-        signer.bytes,
-        bytes,
-        signature,
-        documentId:
-            results['document-id'] as String? ??
-            sigJson['documentId'] as String,
-        algorithm: algorithm,
-      ),
-    };
-    if (ok) {
-      console.success('Signature verified ($kind, ${algorithm.name})');
-    } else {
-      console.failure('Signature verification FAILED ($kind)');
-      exitCode = 1;
+        'media' => forge.verifyMedia(
+          signerPublicKey: signer.bytes,
+          mediaId:
+              results['media-id'] as String? ?? sigJson['mediaId'] as String,
+          mimeType:
+              results['mime-type'] as String? ?? sigJson['mimeType'] as String,
+          mediaBytes: bytes,
+          signature: signature,
+          algorithm: mlDsa,
+          slhDsa: slhDsa,
+        ),
+        'artifact' => forge.verifyArtifact(
+          signer.bytes,
+          bytes,
+          PqArtifactSignature(
+            artifactId:
+                results['artifact-id'] as String? ??
+                sigJson['artifactId'] as String,
+            version:
+                int.tryParse(results['version'] as String? ?? '') ??
+                sigJson['version'] as int,
+            artifactHash: base64Decode(sigJson['artifactHash'] as String),
+            signatureAlgorithm: mlDsa,
+            slhDsa: slhDsa,
+            signature: signature,
+          ),
+        ),
+        _ => forge.verifyDocument(
+          signer.bytes,
+          bytes,
+          signature,
+          documentId:
+              results['document-id'] as String? ??
+              sigJson['documentId'] as String,
+          algorithm: mlDsa,
+          slhDsa: slhDsa,
+        ),
+      };
+      if (ok) {
+        progress.completeFile(fileName);
+      } else {
+        progress.failFile(fileName, 'signature mismatch ($kind)');
+        exitCode = 1;
+      }
+    } catch (error) {
+      progress.failFile(fileName, error.toString());
+      rethrow;
+    } finally {
+      progress.done();
+    }
+    if (ok && !quiet) {
+      console.detail('algorithm', '$kind, $algorithmName');
     }
   }
 }

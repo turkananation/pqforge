@@ -24,5 +24,6 @@ authorization policy, and transport policy.
 
 ECDSA over NIST P-256 is built in (`PqEcdsaP256`, pure-Dart PointyCastle);
 `dualSign` / `dualVerify` remain for other app-supplied classical schemes.
-ECDH over P-256/P-384 is `PqNistEcdh`, not `PqEcdsaP256`. SLH-DSA is
-re-exported from `pqcrypto` and is not a `PqForgeHybridSigner` leg.
+ECDH over P-256/P-384 is `PqNistEcdh`, not `PqEcdsaP256`. SLH-DSA is a
+composed detached-signature family (`keygen` / `sign`) and is not a
+`PqForgeHybridSigner` leg.

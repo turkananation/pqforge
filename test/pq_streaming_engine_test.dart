@@ -75,6 +75,43 @@ void main() {
     },
   );
 
+  test('encryptFile and decryptFile report byte progress', () async {
+    final original = payload(5000);
+    final src = write('prog.bin', original);
+    final enc = File('${dir.path}/prog.pqf');
+    final dec = File('${dir.path}/prog.out');
+    final encryptReports = <(int, int?)>[];
+    final decryptReports = <(int, int?)>[];
+
+    await PqForgeStreamCipher().encryptFile(
+      recipientPublicKey: keys.kemKeyPair.publicKey,
+      input: src,
+      output: enc,
+      profile: PqForgeProfile.compact,
+      frameSize: 1024,
+      metadata: {'contentLength': original.length},
+      onProgress: (processed, total) => encryptReports.add((processed, total)),
+    );
+    expect(encryptReports, isNotEmpty);
+    expect(encryptReports.last.$1, original.length);
+    expect(encryptReports.last.$2, original.length);
+    expect(
+      encryptReports.map((e) => e.$1).toList(),
+      orderedEquals([...encryptReports.map((e) => e.$1)]..sort()),
+    );
+
+    await PqForgeStreamCipher().decryptFile(
+      recipientSecretKey: keys.kemKeyPair.secretKey,
+      input: enc,
+      output: dec,
+      onProgress: (processed, total) => decryptReports.add((processed, total)),
+    );
+    expect(dec.readAsBytesSync(), original);
+    expect(decryptReports, isNotEmpty);
+    expect(decryptReports.last.$1, original.length);
+    expect(decryptReports.last.$2, original.length);
+  });
+
   test('background encrypt/decrypt round-trips', () async {
     final original = payload(20000);
     final src = write('bg.bin', original);

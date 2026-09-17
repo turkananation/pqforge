@@ -1,0 +1,50 @@
+name: Publish to pub.dev
+
+# Publishes the package when a version tag is pushed (v0.4.4, v1.0.0, …).
+# Same tag also triggers `.github/workflows/release.yml` (AOT CLI binaries).
+#
+# One-time setup on https://pub.dev/packages/pqforge/admin
+# (Automated publishing → GitHub Actions):
+#   repository:  turkananation/pqforge
+#   tag-pattern: v{{version}}
+#   workflow:    publish.yml
+#
+# Do not add a `release` event trigger: a GitHub Release that creates a new
+# tag already fires this `push` event, and a second trigger would double-publish.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for pub.dev; no long-lived pub credential
+
+jobs:
+  publish:
+    name: Publish to pub.dev
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Print Dart version
+        run: dart --version
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Publish dry run
+        run: dart pub publish --dry-run
+
+      - name: Publish to pub.dev
+        run: dart pub publish --force
