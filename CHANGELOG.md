@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.6
+
+Additive AES helpers for QUIC (RFC 9000 header protection, RFC 9001
+Initial). No `.pqf` / `.pqfs` / `PqForgeSecureSession` wire-format
+changes.
+
+- **`PqSymmetricPrimitives.aesEncryptBlock`** — AES-ECB one 16-byte
+  block. Key is 16 (AES-128) or 32 (AES-256) bytes. FIPS 197 C.1 / C.3
+  pins. Used by QUIC header protection, not as an AEAD.
+- **`PqSymmetricPrimitives.aes128GcmEncrypt` / `Decrypt`** — AES-128-GCM
+  (16-byte key, 12-byte nonce, `ciphertext || tag`). QUIC Initial packets
+  use this AEAD regardless of the 1-RTT suite. NIST empty-plaintext tag
+  pin. Existing AES-256-GCM helpers are unchanged.
+
 ## 0.4.5
 
 Sync ChaCha20-Poly1305 is dart2js-safe. No `.pqf` / `.pqfs` /

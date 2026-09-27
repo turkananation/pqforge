@@ -686,6 +686,69 @@ class PqSymmetricPrimitives {
     return cipher.process(ciphertext);
   }
 
+  /// AES-ECB single 16-byte block. [key] is 16 (AES-128) or 32 (AES-256).
+  /// QUIC header protection (RFC 9000 §5.4.3) uses this, not an AEAD.
+  static Uint8List aesEncryptBlock({
+    required Uint8List key,
+    required Uint8List block,
+  }) {
+    if (key.length != 16 && key.length != 32) {
+      throw ArgumentError.value(key.length, 'key.length', 'must be 16 or 32');
+    }
+    requireLength('block', block, 16);
+    final out = Uint8List(16);
+    pc.AESEngine()
+      ..init(true, pc.KeyParameter(key))
+      ..processBlock(block, 0, out, 0);
+    return out;
+  }
+
+  /// AES-128-GCM (RFC 5116). [key] is 16 bytes, [nonce] is 12 bytes.
+  /// Returns `ciphertext || tag` (16-byte tag). QUIC Initial packets
+  /// (RFC 9001 §5.2) use this AEAD regardless of the 1-RTT suite.
+  static Uint8List aes128GcmEncrypt({
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List plaintext,
+    Uint8List? aad,
+  }) {
+    requireLength('key', key, 16);
+    requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
+    final cipher = pc.GCMBlockCipher(pc.AESEngine())
+      ..init(
+        true,
+        pc.AEADParameters(
+          pc.KeyParameter(key),
+          128,
+          nonce,
+          aad ?? Uint8List(0),
+        ),
+      );
+    return cipher.process(plaintext);
+  }
+
+  /// AES-128-GCM open. [ciphertext] is `ciphertext || tag`.
+  static Uint8List aes128GcmDecrypt({
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List ciphertext,
+    Uint8List? aad,
+  }) {
+    requireLength('key', key, 16);
+    requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
+    final cipher = pc.GCMBlockCipher(pc.AESEngine())
+      ..init(
+        false,
+        pc.AEADParameters(
+          pc.KeyParameter(key),
+          128,
+          nonce,
+          aad ?? Uint8List(0),
+        ),
+      );
+    return cipher.process(ciphertext);
+  }
+
   /// Sync ChaCha20-Poly1305 (RFC 8439). [key] is 32 bytes, [nonce] is 12 bytes
   /// and **caller-supplied**. Returns `ciphertext || tag` (16-byte tag).
   ///
