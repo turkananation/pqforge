@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.4.7
+
+### Fixed
+
+**Argon2id cost parameters are now range-checked before the KDF runs.**
+`PqSymmetricPrimitives.argon2id` passed `iterations`, `memoryPowerOf2` and
+`lanes` straight into `pc.Argon2Parameters` and `generator.process()` with no
+validation, while the adjacent `pbkdf2Sha256` already validated its own
+`iterations`. Because a `PqWrappedKey` round-trips through JSON, those
+parameters are part of the untrusted input to
+`PqForge.unwrapKeyWithPassphrase`: a stored record claiming
+`memoryPowerOf2: 30` requested 1 GiB of allocation, and `40` a terabyte, before
+any authentication had happened. Anyone able to write one file into a key store
+could trigger it.
+
+- `Argon2Limits` — public, authoritative bounds: iterations `1..10`,
+  `memoryPowerOf2` `10..20` (1 MiB - 1 GiB), lanes `1..16`, salt at least 8
+  bytes. Exposed so a caller holding untrusted parameters can reject them with
+  its own typed error before calling the KDF.
+- `PqSymmetricPrimitives.argon2id` enforces the bounds and throws `RangeError`.
+- `PqForge.unwrapKeyWithPassphrase` additionally validates the stored cost and
+  throws `PqForgeException` naming the field, the observed value and the
+  permitted range - so callers can tell a malformed record from a wrong
+  passphrase, and no `RangeError` leaks out of the service.
+
+No wire-format change. Legal parameters, including the range endpoints, still
+derive keys as before.
+
+### Dependencies
+
+- `pqcrypto` `^0.4.2` -> `^0.4.3`. 0.4.3 exports the ML-KEM parameter tables
+  (`KyberParams`, `KyberLevel`) from `package:pqcrypto/pqcrypto.dart`, so
+  ML-KEM derived sizes become reachable through the same barrel import
+  `pqforge` already uses, matching how ML-DSA and SLH-DSA were already exposed.
+  No behaviour change; `KyberParams` and `KyberLevel` existed before and were
+  only used internally.
+- **New dependency: `zeroize` `^0.2.0`.** A leaf package whose only runtime
+  dependency is `package:meta`, so this adds no transitive weight.
+
+### Security
+
+**Zeroization now goes through `package:zeroize` instead of hand-rolled wipes.**
+
+Every secret-buffer wipe in `lib/` used `Uint8List.fillRange(0, n, 0)`. That
+call is exactly the pattern Dead Store Elimination removes: the buffer is not
+read afterwards, so the AOT compiler can prove the writes are dead and elide
+them. The wipe silently became a no-op.
+
+- `PqForgeCombiner.wipe` — the library's own zeroization primitive, used by
+  roughly ten call sites across the hybrid, multi-recipient, and async
+  services — now delegates to `secureZero`. One change covers all of them.
+- `PqForgeSecureSession.dispose`, and the unauthenticated-plaintext wipe in the
+  PointyCastle AEAD engine's error path, now call `secureZero` directly.
+- `PqBytes.constantTimeEquals` now delegates to `zeroize`'s `ctEquals`. The two
+  implementations were functionally equivalent (both fold a length XOR and byte
+  XORs into an accumulator); `ctEquals` additionally carries the
+  `@constantTime` annotation. No behavioural change to any of the eight call
+  sites.
+
+`pqcrypto` also exports a `secureZero`, but it is pqcrypto's own hand-rolled
+zeroizer rather than the DSE-resistant one. The import in
+`lib/src/primitives/pq_primitives.dart` hides pqcrypto's, so the name always
+binds to `package:zeroize`'s implementation.
+
+**`checkEncapsulationKey` no longer wipes the ML-KEM ciphertext.** Ciphertext is
+public output, not a secret, and is already dead at that point. Wiping it cost
+time and implied a sensitivity that does not exist. The shared secret, which is
+live key material, is still scrubbed.
+
+`doc/security/CLAIM_BOUNDARY.md` gains a section stating what a wipe does *not*
+achieve: it is not erasure, it cannot reach registers, and a value still needed
+after the wipe call can be spilled to a second copy the wipe does not cover.
+
+
 ## 0.4.6
 
 Additive AES helpers for QUIC (RFC 9000 header protection, RFC 9001

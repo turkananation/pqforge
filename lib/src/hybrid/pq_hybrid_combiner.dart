@@ -24,6 +24,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+import 'package:zeroize/zeroize.dart';
 
 import '../algorithms/pq_algorithms.dart';
 
@@ -231,10 +232,15 @@ class PqForgeCombiner {
   /// Overwrites [buffer] in place with zero bytes.
   ///
   /// Exposed as the library's zeroization primitive: use it to scrub raw
-  /// shared-secret buffers once they are no longer needed. Dart cannot
-  /// guarantee the runtime keeps no other copy, but eagerly zeroing shortens
-  /// the window in which key material is resident.
-  static void wipe(Uint8List buffer) {
-    buffer.fillRange(0, buffer.length, 0);
-  }
+  /// shared-secret buffers once they are no longer needed.
+  ///
+  /// Delegates to `package:zeroize`'s [secureZero], whose overwrite pattern is
+  /// resistant to Dead Store Elimination in AOT. A bare [Uint8List.fillRange]
+  /// here would be trivially removable by the compiler, since nothing reads
+  /// [buffer] afterwards.
+  ///
+  /// This is **not** a memory-erasure guarantee: the runtime may hold another
+  /// copy of [buffer], and pure Dart cannot `mlock`. See
+  /// `doc/security/CLAIM_BOUNDARY.md`.
+  static void wipe(Uint8List buffer) => secureZero(buffer);
 }
