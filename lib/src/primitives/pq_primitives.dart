@@ -8,8 +8,9 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart' as crypto;
 import 'package:cryptography/dart.dart' as crypto_dart;
 import 'package:pointycastle/export.dart' as pc;
-import 'package:pqcrypto/pqcrypto.dart';
+import 'package:pqcrypto/pqcrypto.dart' hide secureZero;
 import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+import 'package:zeroize/zeroize.dart';
 
 import '../algorithms/pq_algorithms.dart';
 import '../algorithms/pq_lattice_provider.dart';
@@ -252,17 +253,8 @@ class PqBytes {
     return hmac.process(data);
   }
 
-  static bool constantTimeEquals(Uint8List expected, Uint8List supplied) {
-    var nonEqual = expected.length ^ supplied.length;
-    final len = min(expected.length, supplied.length);
-    for (var i = 0; i < len; i++) {
-      nonEqual |= expected[i] ^ supplied[i];
-    }
-    for (var i = len; i < supplied.length; i++) {
-      nonEqual |= supplied[i] ^ ~supplied[i];
-    }
-    return nonEqual == 0;
-  }
+  static bool constantTimeEquals(Uint8List expected, Uint8List supplied) =>
+      ctEquals(expected, supplied);
 }
 
 /// Backward-compatible byte utility name from the V0.1 facade.
@@ -362,8 +354,13 @@ class PqKemPrimitives {
         encapsulationKey,
         nonce: nonce,
       );
-      sharedSecret.fillRange(0, sharedSecret.length, 0);
-      ciphertext.fillRange(0, ciphertext.length, 0);
+      // sharedSecret is live key material, discarded immediately, so it is
+      // scrubbed with the DSE-resistant primitive.
+      //
+      // `ciphertext` is deliberately NOT wiped: it is public output rather than
+      // a secret, and it is already dead here. Wiping it would cost time and
+      // would misread as treating it as sensitive.
+      secureZero(sharedSecret);
       return true;
     } on ArgumentError {
       return false;

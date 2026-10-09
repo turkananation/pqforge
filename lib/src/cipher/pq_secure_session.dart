@@ -3,6 +3,8 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:zeroize/zeroize.dart';
+
 import '../algorithms/pq_fips.dart';
 import '../primitives/pq_primitives.dart';
 import 'pq_cipher_suite.dart';
@@ -142,7 +144,7 @@ final class PqForgeSecureSession {
   /// throws [StateError]. The caller's original key bytes are unaffected — the
   /// constructor took a defensive copy. Idempotent.
   void dispose() {
-    _secretKey.fillRange(0, _secretKey.length, 0);
+    secureZero(_secretKey);
     _disposed = true;
   }
 

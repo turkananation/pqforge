@@ -21,6 +21,7 @@ dependencies:
   pqcrypto: ^0.4.3
   pointycastle: ^4.0.0
   cryptography: ^2.9.0
+  zeroize: ^0.2.0
 
 executables:
   pqforge: pqforge

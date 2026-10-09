@@ -4,6 +4,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+import 'package:zeroize/zeroize.dart';
 
 import 'pq_cipher_suite.dart';
 
@@ -118,7 +119,7 @@ final class PqForgePointyCastleAeadEngine implements PqForgeAeadEngine {
           ? out
           : Uint8List.sublistView(out, 0, written);
     } catch (_) {
-      out.fillRange(0, out.length, 0);
+      secureZero(out);
       rethrow;
     }
   }
