@@ -28,6 +28,14 @@ could trigger it.
 No wire-format change. Legal parameters, including the range endpoints, still
 derive keys as before.
 
+### Dependencies
+
+- `pqcrypto` `^0.4.2` -> `^0.4.3`. 0.4.3 exports the ML-KEM parameter tables
+  (`KyberParams`, `KyberLevel`) from `package:pqcrypto/pqcrypto.dart`, so
+  ML-KEM derived sizes become reachable through the same barrel import
+  `pqforge` already uses, matching how ML-DSA and SLH-DSA were already exposed.
+  No behaviour change; `KyberParams` and `KyberLevel` existed before and were
+  only used internally.
 
 ## 0.4.6
 
