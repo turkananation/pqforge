@@ -1106,11 +1106,60 @@ class PqForge {
     );
   }
 
+  /// Rejects an unwrap whose stored KDF cost is outside the supported range.
+  ///
+  /// The parameters live in the serialized `PqWrappedKey`, so they are part of
+  /// the untrusted input to an unwrap. Checking here rather than relying on the
+  /// `RangeError` from [PqSymmetricPrimitives.argon2id] keeps the failure a
+  /// typed `PqForgeException` and lets the message name the offending field and
+  /// both the observed and permitted range.
+  static void _validateWrappedKeyCost(PqWrappedKey wrapped) {
+    if (wrapped.kdf != PqKdf.argon2id) return;
+    void check(int value, int min, int max, String field) {
+      if (value < min || value > max) {
+        throw PqForgeException(
+          'Unsupported Argon2id $field: $value is outside the supported range '
+          '$min..$max',
+        );
+      }
+    }
+
+    check(
+      wrapped.iterations,
+      Argon2Limits.minArgon2Iterations,
+      Argon2Limits.maxArgon2Iterations,
+      'iterations',
+    );
+    check(
+      wrapped.memoryPowerOf2,
+      Argon2Limits.minArgon2MemoryPowerOf2,
+      Argon2Limits.maxArgon2MemoryPowerOf2,
+      'memoryPowerOf2',
+    );
+    check(
+      wrapped.lanes,
+      Argon2Limits.minArgon2Lanes,
+      Argon2Limits.maxArgon2Lanes,
+      'lanes',
+    );
+    if (wrapped.salt.length < Argon2Limits.minArgon2SaltBytes) {
+      throw PqForgeException(
+        'Unsupported Argon2id salt length: ${wrapped.salt.length} is below the '
+        'minimum ${Argon2Limits.minArgon2SaltBytes}',
+      );
+    }
+  }
+
   PqExportedKey unwrapKeyWithPassphrase(
     PqWrappedKey wrapped,
     String passphrase,
   ) {
     PqFipsMode.requireApprovedKdf(wrapped.kdf);
+    // A PqWrappedKey round-trips through JSON, so its KDF parameters are
+    // attacker-controlled by anyone who can write one file into a key store.
+    // Reject an out-of-range cost here, before the derivation, and report it as
+    // a PqForgeException rather than letting a RangeError escape.
+    _validateWrappedKeyCost(wrapped);
     final wrappingKey = switch (wrapped.kdf) {
       PqKdf.argon2id => PqSymmetricPrimitives.argon2id(
         password: passphrase,

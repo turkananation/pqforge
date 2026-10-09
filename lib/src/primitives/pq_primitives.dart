@@ -16,6 +16,48 @@ import '../algorithms/pq_lattice_provider.dart';
 import '../cipher/pq_cipher_suite.dart';
 import '../keys/pq_keys.dart';
 
+/// Authoritative Argon2id parameter bounds.
+///
+/// Enforced by [PqSymmetricPrimitives.argon2id] before any allocation happens.
+/// Public so a caller that reads parameters from untrusted storage can reject
+/// them with its own typed error *before* calling the KDF, rather than catching
+/// a `RangeError`.
+///
+/// The upper memory bound exists because `memoryPowerOf2` selects `2^n` KiB, so
+/// an attacker-supplied `30` would request 1 GiB and `40` a terabyte before any
+/// authentication occurred.
+abstract final class Argon2Limits {
+  Argon2Limits._();
+
+  /// Lower bound on Argon2id iterations.
+  static const int minArgon2Iterations = 1;
+
+  /// Upper bound on Argon2id iterations.
+  ///
+  /// Bounded because time cost multiplies the memory cost.
+  static const int maxArgon2Iterations = 10;
+
+  /// Lower bound on the Argon2id memory exponent (`2^n` KiB).
+  ///
+  /// 2^10 KiB = 1 MiB, below which the KDF loses its memory-hardness property.
+  static const int minArgon2MemoryPowerOf2 = 10;
+
+  /// Upper bound on the Argon2id memory exponent.
+  ///
+  /// 2^20 KiB = 1 GiB. This is the ceiling that keeps an attacker-supplied
+  /// record from turning an unwrap into an unbounded allocation.
+  static const int maxArgon2MemoryPowerOf2 = 20;
+
+  /// Lower bound on Argon2id lanes.
+  static const int minArgon2Lanes = 1;
+
+  /// Upper bound on Argon2id lanes.
+  static const int maxArgon2Lanes = 16;
+
+  /// Minimum salt length in bytes.
+  static const int minArgon2SaltBytes = 8;
+}
+
 final _secureRandom = Random.secure();
 
 Uint8List _platformRandomBytes(int length) {
@@ -836,6 +878,23 @@ class PqSymmetricPrimitives {
     return Uint8List.fromList(clear);
   }
 
+  /// Argon2id (RFC 9106 / RFC 9106 recommended profile).
+  ///
+  /// ## Parameter bounds
+  ///
+  /// Every parameter is range-checked **before** the KDF runs. [memoryPowerOf2]
+  /// is the dangerous one: it selects a block count of `2^n` KiB, so
+  /// `memoryPowerOf2: 30` requests 1 GiB and `40` requests 1 TiB of allocation
+  /// with no authentication having happened yet. These bounds exist because
+  /// `unwrapKeyWithPassphrase` accepts parameters read from a stored
+  /// `PqWrappedKey`, which is attacker-controlled by anyone who can write one
+  /// file into a key store.
+  ///
+  /// The limits are permissive enough for legitimate use and tight enough to
+  /// bound a single derivation to at most 1 GiB. Raise them deliberately, with a
+  /// documented reason, rather than discovering the need in production.
+  ///
+  /// Throws [RangeError] when a parameter is outside its documented range.
   static Uint8List argon2id({
     required String password,
     required Uint8List salt,
@@ -844,6 +903,32 @@ class PqSymmetricPrimitives {
     int memoryPowerOf2 = 16,
     int lanes = 4,
   }) {
+    RangeError.checkValueInInterval(
+      iterations,
+      Argon2Limits.minArgon2Iterations,
+      Argon2Limits.maxArgon2Iterations,
+      'iterations',
+    );
+    RangeError.checkValueInInterval(
+      memoryPowerOf2,
+      Argon2Limits.minArgon2MemoryPowerOf2,
+      Argon2Limits.maxArgon2MemoryPowerOf2,
+      'memoryPowerOf2',
+    );
+    RangeError.checkValueInInterval(
+      lanes,
+      Argon2Limits.minArgon2Lanes,
+      Argon2Limits.maxArgon2Lanes,
+      'lanes',
+    );
+    if (salt.length < Argon2Limits.minArgon2SaltBytes) {
+      throw RangeError.range(
+        salt.length,
+        Argon2Limits.minArgon2SaltBytes,
+        null,
+        'salt.length',
+      );
+    }
     final params = pc.Argon2Parameters(
       pc.Argon2Parameters.ARGON2_id,
       salt,

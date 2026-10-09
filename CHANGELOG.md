@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.7
+
+### Fixed
+
+**Argon2id cost parameters are now range-checked before the KDF runs.**
+`PqSymmetricPrimitives.argon2id` passed `iterations`, `memoryPowerOf2` and
+`lanes` straight into `pc.Argon2Parameters` and `generator.process()` with no
+validation, while the adjacent `pbkdf2Sha256` already validated its own
+`iterations`. Because a `PqWrappedKey` round-trips through JSON, those
+parameters are part of the untrusted input to
+`PqForge.unwrapKeyWithPassphrase`: a stored record claiming
+`memoryPowerOf2: 30` requested 1 GiB of allocation, and `40` a terabyte, before
+any authentication had happened. Anyone able to write one file into a key store
+could trigger it.
+
+- `Argon2Limits` — public, authoritative bounds: iterations `1..10`,
+  `memoryPowerOf2` `10..20` (1 MiB - 1 GiB), lanes `1..16`, salt at least 8
+  bytes. Exposed so a caller holding untrusted parameters can reject them with
+  its own typed error before calling the KDF.
+- `PqSymmetricPrimitives.argon2id` enforces the bounds and throws `RangeError`.
+- `PqForge.unwrapKeyWithPassphrase` additionally validates the stored cost and
+  throws `PqForgeException` naming the field, the observed value and the
+  permitted range - so callers can tell a malformed record from a wrong
+  passphrase, and no `RangeError` leaks out of the service.
+
+No wire-format change. Legal parameters, including the range endpoints, still
+derive keys as before.
+
+
 ## 0.4.6
 
 Additive AES helpers for QUIC (RFC 9000 header protection, RFC 9001
