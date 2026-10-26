@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.8
+
+Additive ChaCha20 keystream for QUIC header protection (RFC 9001 §5.4.4).
+No `.pqf` / `.pqfs` / `PqForgeSecureSession` wire-format changes.
+
+- **`PqSymmetricPrimitives.chacha20`** — RFC 8439 ChaCha20 keystream.
+  32-byte key, 12-byte nonce, caller-supplied 32-bit block counter,
+  1..4096 keystream bytes. RFC 8439 §2.3.2 (block count 1) is pinned.
+  QUIC takes the first 5 bytes as the header-protection mask: the
+  sample's little-endian counter and its last 12 bytes are the nonce.
+  Same Dart engine as `chacha20Poly1305Encrypt`, so this runs on
+  dart2js. The AEAD is not this function: it forces counter 1 and
+  appends a Poly1305 tag.
+
 ## 0.4.7
 
 ### Fixed

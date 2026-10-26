@@ -161,6 +161,15 @@ PqSymmetricPrimitives.hkdfExtractSha384 / hkdfExpandSha384 / hkdfSha384
 
 PqSymmetricPrimitives.supportsChaCha20Poly1305; // always true (Dart engine)
 
+PqSymmetricPrimitives.chacha20({ // RFC 8439 keystream, not an AEAD
+  required key,    // 32
+  required nonce,  // 12
+  required counter, // uint32 block counter
+  int length = 64,  // 1..4096
+});
+// QUIC header protection (RFC 9001 §5.4.4) uses length 5.
+// dart2js-safe. Do not substitute chacha20Poly1305Encrypt.
+
 PqSymmetricPrimitives.chacha20Poly1305Encrypt({ // ciphertext || tag
   required key,   // 32
   required nonce, // 12, uniqueness is the caller's
@@ -304,7 +313,7 @@ Methods, grouped:
 | Key wrapping & identity | `wrapKeyWithPassphrase` / `unwrapKeyWithPassphrase` · `createIdentityBinding` / `verifyIdentityBinding` |
 | Signed logs | `appendSignedLogEntry` / `verifySignedLogEntry` |
 | Hybrid (legacy) | `deriveHybridSessionKey` (delegates to `PqForgeCombiner`) |
-| Raw primitives | `hkdfSha256` · `hkdfExtractSha256` / `hkdfExpandSha256` · `hkdfSha384` · `hkdfExtractSha384` / `hkdfExpandSha384` · `aesGcmEncrypt` / `aesGcmDecrypt` · `chacha20Poly1305Encrypt` / `Decrypt` · `argon2id` · `checkEncapsulationKey` |
+| Raw primitives | `hkdfSha256` · `hkdfExtractSha256` / `hkdfExpandSha256` · `hkdfSha384` · `hkdfExtractSha384` / `hkdfExpandSha384` · `aesGcmEncrypt` / `aesGcmDecrypt` · `aesEncryptBlock` · `aes128GcmEncrypt` / `Decrypt` · `chacha20` · `chacha20Poly1305Encrypt` / `Decrypt` · `argon2id` · `checkEncapsulationKey` |
 
 ---
 
