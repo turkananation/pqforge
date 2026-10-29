@@ -279,6 +279,8 @@ The single `package:pqforge/pqforge.dart` import also provides:
 - `PqForgeSecureSession` for AES-256-GCM or ChaCha20-Poly1305 packets;
 - `PqSymmetricPrimitives.chacha20Poly1305Encrypt` for caller-supplied nonces
   (Dart engine, dart2js-safe; `supportsChaCha20Poly1305` is the capability);
+- `PqSymmetricPrimitives.chacha20` for the raw keystream (QUIC header
+  protection). Not the AEAD: the caller passes the 32-bit block counter;
 - `SecretKey.deriveHybridSecretKey()` for `package:cryptography` users.
 
 ECDSA over NIST P-256 is built in via `PqEcdsaP256` (pure-Dart PointyCastle, with

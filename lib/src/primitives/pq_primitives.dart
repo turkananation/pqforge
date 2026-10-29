@@ -788,6 +788,51 @@ class PqSymmetricPrimitives {
     return cipher.process(ciphertext);
   }
 
+  /// RFC 8439 ChaCha20 keystream. Not an AEAD and not header protection by itself.
+  ///
+  /// [key] is 32 bytes. [nonce] is 12 bytes. [counter] is the 32-bit block
+  /// counter (state word 12). Returns [length] keystream bytes, which is
+  /// ChaCha20 applied to that many `0x00` bytes.
+  ///
+  /// QUIC header protection (RFC 9001 §5.4.4) calls this with the sample's
+  /// little-endian counter, the sample's last 12 bytes as [nonce], and
+  /// [length] 5. Those five bytes are the mask. Initial packets do not use
+  /// this function; they use [aesEncryptBlock].
+  ///
+  /// This is the same Dart engine as [chacha20Poly1305Encrypt], so it runs
+  /// on dart2js. The AEAD is a different function: it forces the counter to
+  /// 1 and appends a Poly1305 tag. Do not use it as the mask.
+  static Uint8List chacha20({
+    required Uint8List key,
+    required Uint8List nonce,
+    required int counter,
+    int length = 64,
+  }) {
+    requireLength('key', key, 32);
+    requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
+    if (counter < 0 || counter > 0xffffffff) {
+      throw ArgumentError.value(counter, 'counter', 'must be a uint32');
+    }
+    if (length < 1 || length > 4096) {
+      throw ArgumentError.value(length, 'length', 'must be 1..4096');
+    }
+    // counter * 64 is the byte offset of that block. Every uint32 counter
+    // fits in a JavaScript number after the multiply (2^32 * 64 < 2^53).
+    final box = _chacha20Keystream.encryptSync(
+      Uint8List(length),
+      secretKey: crypto.SecretKeyData(key),
+      nonce: nonce,
+      keyStreamIndex: counter * 64,
+    );
+    return Uint8List.fromList(box.cipherText);
+  }
+
+  /// Raw ChaCha20. [MacAlgorithm.empty] keeps the block counter equal to the
+  /// caller's counter. The Poly1305 AEAD consumes the first block itself.
+  static const _chacha20Keystream = crypto_dart.DartChacha20(
+    macAlgorithm: crypto.MacAlgorithm.empty,
+  );
+
   /// Sync ChaCha20-Poly1305 (RFC 8439). [key] is 32 bytes, [nonce] is 12 bytes
   /// and **caller-supplied**. Returns `ciphertext || tag` (16-byte tag).
   ///
