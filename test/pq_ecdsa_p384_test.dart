@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:pointycastle/export.dart' as pc;
 import 'package:pqforge/pqforge.dart';
 import 'package:test/test.dart';
 
@@ -60,5 +61,55 @@ void main() {
         orderedEquals(kp.publicKey),
       );
     });
+    test('verify accepts the high-S form and a compressed point', () {
+      final kp = PqEcdsaP384.generateKeyPair();
+      final message = Uint8List.fromList([1, 2, 3]);
+      final signature = PqEcdsaP384.sign(
+        privateKey: kp.secretKey,
+        message: message,
+      );
+      final n = pc.ECCurve_secp384r1().n;
+      final s = _be(signature.sublist(48));
+      final high = Uint8List.fromList(signature)
+        ..setRange(48, 96, _fixed(n - s, 48));
+      expect(
+        PqEcdsaP384.verify(
+          publicKey: kp.publicKey,
+          message: message,
+          signature: high,
+        ),
+        isTrue,
+      );
+      final point = pc.ECCurve_secp384r1().curve.decodePoint(kp.publicKey)!;
+      final compressed = Uint8List.fromList(point.getEncoded(true));
+      expect(compressed.length, 49);
+      expect(
+        PqEcdsaP384.verify(
+          publicKey: compressed,
+          message: message,
+          signature: signature,
+        ),
+        isTrue,
+      );
+    });
   });
+}
+
+BigInt _be(List<int> bytes) {
+  var value = BigInt.zero;
+  for (final byte in bytes) {
+    value = (value << 8) | BigInt.from(byte);
+  }
+  return value;
+}
+
+Uint8List _fixed(BigInt value, int length) {
+  final out = Uint8List(length);
+  final mask = BigInt.from(0xff);
+  var rest = value;
+  for (var i = length - 1; i >= 0; i--) {
+    out[i] = (rest & mask).toInt();
+    rest >>= 8;
+  }
+  return out;
 }

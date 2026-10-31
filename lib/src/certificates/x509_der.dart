@@ -114,8 +114,8 @@ final class DerWriter {
     _bytes.add(unsigned);
   }
 
-  void bitString(Uint8List payload, {int unused = 0}) {
-    _bytes.addByte(0x03);
+  void bitString(Uint8List payload, {int unused = 0, int tag = 0x03}) {
+    _bytes.addByte(tag);
     _length(payload.length + 1);
     _bytes.addByte(unused);
     _bytes.add(payload);

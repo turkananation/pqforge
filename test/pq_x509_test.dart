@@ -315,7 +315,7 @@ void main() {
           digitalSignature: false,
           keyCertSign: true,
           includeEku: false,
-          uriNameConstraint: true,
+          permitOtherName: true,
         );
         expect(
           PqX509.validate(chain: [leaf, uri], anchors: [uri], now: now).failure,
@@ -330,6 +330,104 @@ void main() {
         );
       },
     );
+
+    test('must-staple, a unique id, and an excluded DNS name', () {
+      final keys = PqSignaturePrimitives.generateKeyPair(
+        PqSignatureAlgorithm.mlDsa65,
+      );
+      Uint8List sign(Uint8List tbs) => PqSignaturePrimitives.sign(
+        PqSignatureAlgorithm.mlDsa65,
+        keys.secretKey,
+        tbs,
+      );
+      final name = PqX509Name.commonName('localhost');
+      final stapled = PqX509.mint(
+        issuer: name,
+        subject: name,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, keys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: sign,
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([9]),
+        subjectAltNames: [PqX509DnsName('localhost')],
+        mustStaple: true,
+        issuerUniqueId: Uint8List.fromList([0xaa]),
+      );
+      final parsed = PqX509.parse(stapled).certificate!;
+      expect(parsed.mustStaple, isTrue);
+      expect(parsed.issuerUniqueId, isNotNull);
+      expect(
+        PqX509.validate(chain: [stapled], anchors: [stapled], now: now).failure,
+        PqX509Failure.mustStaple,
+      );
+      expect(
+        PqX509.validate(
+          chain: [stapled],
+          anchors: [stapled],
+          now: now,
+          ocspResponsePresent: true,
+        ).trusted,
+        isTrue,
+      );
+      final caName = PqX509Name.commonName('ca');
+      final ca = PqX509.mint(
+        issuer: caName,
+        subject: caName,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, keys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: sign,
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([8]),
+        ca: true,
+        digitalSignature: false,
+        keyCertSign: true,
+        includeEku: false,
+        excludedDns: ['other.test'],
+      );
+      final leaf = PqX509.mint(
+        issuer: caName,
+        subject: PqX509Name.commonName('leaf'),
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, keys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: sign,
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([7]),
+        subjectAltNames: [PqX509DnsName('www.other.test')],
+      );
+      expect(
+        PqX509.validate(chain: [leaf, ca], anchors: [ca], now: now).failure,
+        PqX509Failure.badConstraint,
+      );
+    });
+
+    test('PSS salt 20 and a PSS public key round-trip', () {
+      final kp = PqRsa.generateKeyPair();
+      final name = PqX509Name.commonName('localhost');
+      final der = PqX509.mint(
+        issuer: name,
+        subject: name,
+        publicKey: PqX509RsaKey(kp.modulus, kp.exponent),
+        algorithm: PqX509Algorithm.rsaPssSha256,
+        pssPublicKey: true,
+        pssSaltLength: 20,
+        sign: (tbs) => PqRsa.signPss(
+          privateKey: kp.privateKey,
+          message: tbs,
+          hash: PqRsaHash.sha256,
+          saltLength: 20,
+        ),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([6]),
+        subjectAltNames: [PqX509DnsName('localhost')],
+      );
+      final parsed = PqX509.parse(der).certificate!;
+      expect(parsed.pssSaltLength, 20);
+      expect(PqX509.checkSignature(parsed, parsed.publicKey), isTrue);
+    });
 
     test('hostile DER stops before a signature check', () {
       expect(PqX509.parse(Uint8List(0)).failure, PqX509Failure.truncated);

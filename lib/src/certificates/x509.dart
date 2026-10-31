@@ -44,6 +44,7 @@ enum PqX509Failure {
   untrusted,
   pathTooLong,
   badConstraint,
+  mustStaple,
 }
 
 enum PqX509Algorithm {
@@ -157,6 +158,35 @@ final class PqX509Ip6Name extends PqX509GeneralName {
   final Uint8List octets;
 }
 
+/// RFC 822 mailbox. The domain comparison is case-insensitive.
+final class PqX509EmailName extends PqX509GeneralName {
+  const PqX509EmailName(this.mailbox);
+
+  final String mailbox;
+}
+
+/// Uniform resource identifier. Name constraints apply to the host.
+final class PqX509UriName extends PqX509GeneralName {
+  const PqX509UriName(this.uri);
+
+  final String uri;
+}
+
+/// `directoryName`, the DER `Name`.
+final class PqX509DirectoryName extends PqX509GeneralName {
+  const PqX509DirectoryName(this.name);
+
+  final Uint8List name;
+}
+
+/// A GeneralName this validator does not implement.
+///
+/// A certificate may carry one in a subjectAltName. A name constraint that
+/// carries one cannot be evaluated, so the path fails closed.
+final class PqX509OtherName extends PqX509GeneralName {
+  const PqX509OtherName();
+}
+
 final class PqX509Certificate {
   PqX509Certificate({
     required this.der,
@@ -176,6 +206,10 @@ final class PqX509Certificate {
     required this.pathLen,
     required this.keyUsageBits,
     required this.extKeyUsage,
+    this.issuerUniqueId,
+    this.subjectUniqueId,
+    this.mustStaple = false,
+    this.pssSaltLength,
   });
 
   final Uint8List der;
@@ -195,6 +229,19 @@ final class PqX509Certificate {
   final int? pathLen;
   final int? keyUsageBits;
   final List<List<int>> extKeyUsage;
+
+  /// [1] IMPLICIT UniqueIdentifier, when the certificate has one.
+  final Uint8List? issuerUniqueId;
+
+  /// [2] IMPLICIT UniqueIdentifier, when the certificate has one.
+  final Uint8List? subjectUniqueId;
+
+  /// Critical or non-critical `id-pe-tlsfeature` listing `status_request` (5).
+  final bool mustStaple;
+
+  /// RSASSA-PSS salt length from the signature algorithm. Null otherwise.
+  /// RFC 4055's omitted salt field is 20, and that 20 is stored here.
+  final int? pssSaltLength;
 }
 
 /// X.509 certificates (RFC 5280) and the signature algorithms pqforge can
@@ -228,12 +275,15 @@ abstract final class PqX509 {
     }
   }
 
-  /// Basic path. [chain] is leaf first. [anchors] are DER trust anchors.
-  /// [now] must be UTC. Does not fetch, and does not read a trust store.
+  /// [ocspResponsePresent] must be true when any certificate on the path
+  /// requires OCSP stapling (RFC 7633). [acceptedCriticalOids] are extensions
+  /// this process implements. Any other critical extension is `badConstraint`.
   static PqX509Path validate({
     required List<Uint8List> chain,
     required List<Uint8List> anchors,
     required DateTime now,
+    bool ocspResponsePresent = false,
+    List<List<int>> acceptedCriticalOids = const [],
   }) {
     if (!now.isUtc) return const PqX509Path.fail(PqX509Failure.badTime);
     if (chain.isEmpty || anchors.isEmpty) {
@@ -258,7 +308,7 @@ abstract final class PqX509 {
       }
       roots.add(parsed.certificate!);
     }
-    return _path(certs, roots, now);
+    return _path(certs, roots, now, ocspResponsePresent, acceptedCriticalOids);
   }
 
   /// Self-signed v3 TLS leaf. [sign] is called once, on the exact TBS bytes
@@ -305,7 +355,19 @@ abstract final class PqX509 {
     bool keyCertSign = false,
     bool includeEku = true,
     List<String> permittedDns = const [],
-    bool uriNameConstraint = false,
+    List<String> excludedDns = const [],
+    List<String> permittedEmail = const [],
+    List<String> excludedEmail = const [],
+    List<String> permittedUri = const [],
+    List<String> excludedUri = const [],
+    List<PqX509Name> permittedDirectory = const [],
+    List<PqX509Name> excludedDirectory = const [],
+    bool permitOtherName = false,
+    bool mustStaple = false,
+    bool pssPublicKey = false,
+    int? pssSaltLength,
+    Uint8List? issuerUniqueId,
+    Uint8List? subjectUniqueId,
     bool version3 = true,
   }) {
     _requireUtc(notBefore, 'notBefore');
@@ -320,15 +382,30 @@ abstract final class PqX509 {
         'not a positive 1..20 octet integer',
       );
     }
+    if (pssSaltLength != null && (pssSaltLength < 0 || pssSaltLength > 512)) {
+      throw ArgumentError.value(
+        pssSaltLength,
+        'pssSaltLength',
+        'expected 0..512',
+      );
+    }
     if (!version3 &&
         (ca ||
             subjectAltNames.isNotEmpty ||
             includeEku ||
             permittedDns.isNotEmpty ||
-            uriNameConstraint)) {
+            excludedDns.isNotEmpty ||
+            permittedEmail.isNotEmpty ||
+            excludedEmail.isNotEmpty ||
+            permittedUri.isNotEmpty ||
+            excludedUri.isNotEmpty ||
+            permittedDirectory.isNotEmpty ||
+            excludedDirectory.isNotEmpty ||
+            permitOtherName ||
+            mustStaple)) {
       throw ArgumentError('a v1 certificate cannot carry extensions');
     }
-    final algorithmId = _algorithmDer(algorithm);
+    final algorithmId = _algorithmDer(algorithm, pssSaltLength);
     final tbsBody = DerWriter();
     if (version3) {
       tbsBody.tlv(
@@ -341,7 +418,16 @@ abstract final class PqX509 {
     tbsBody.raw(issuer.der);
     tbsBody.sequence(_validity(notBefore, notAfter));
     tbsBody.raw(subject.der);
-    tbsBody.raw(_spki(publicKey));
+    tbsBody.raw(
+      _spki(
+        publicKey,
+        algorithm: algorithm,
+        pssPublicKey: pssPublicKey,
+        pssSaltLength: pssSaltLength,
+      ),
+    );
+    if (issuerUniqueId != null) tbsBody.bitString(issuerUniqueId, tag: 0x81);
+    if (subjectUniqueId != null) tbsBody.bitString(subjectUniqueId, tag: 0x82);
     if (version3) {
       tbsBody.tlv(
         0xa3,
@@ -354,7 +440,15 @@ abstract final class PqX509 {
                 includeEku: includeEku && !ca,
                 names: subjectAltNames,
                 permittedDns: permittedDns,
-                uriNameConstraint: uriNameConstraint,
+                excludedDns: excludedDns,
+                permittedEmail: permittedEmail,
+                excludedEmail: excludedEmail,
+                permittedUri: permittedUri,
+                excludedUri: excludedUri,
+                permittedDirectory: permittedDirectory,
+                excludedDirectory: excludedDirectory,
+                permitOtherName: permitOtherName,
+                mustStaple: mustStaple,
               ),
             ))
             .take(),
@@ -414,6 +508,7 @@ const _eku = [2, 5, 29, 37];
 const _ski = [2, 5, 29, 14];
 const _aki = [2, 5, 29, 35];
 const _names = [2, 5, 29, 30];
+const _tlsFeature = [1, 3, 6, 1, 5, 5, 7, 1, 24];
 const _serverAuth = [1, 3, 6, 1, 5, 5, 7, 3, 1];
 
 final class _Stop implements Exception {
@@ -445,15 +540,18 @@ PqX509Parsed _parse(Uint8List der) {
   final signatureAlgorithm = _need(body.tag(0x30));
   final signatureBits = _need(body.tag(0x03));
   if (!body.finished) _die(PqX509Failure.notDer);
-  final algorithm = _algorithm(reader.nested(signatureAlgorithm));
+  final outer = _algorithm(reader.nested(signatureAlgorithm));
   final built = _tbs(reader.nested(tbs), tbs.whole());
-  if (built.algorithm != algorithm) _die(PqX509Failure.notDer);
+  if (built.algorithm != outer.algorithm ||
+      built.pssSaltLength != outer.pssSalt) {
+    _die(PqX509Failure.notDer);
+  }
   return PqX509Parsed.ok(
     PqX509Certificate(
       der: Uint8List.fromList(der),
       tbs: built.tbs,
-      algorithm: algorithm,
-      signature: _signatureBits(signatureBits, algorithm),
+      algorithm: outer.algorithm,
+      signature: _signatureBits(signatureBits, outer.algorithm),
       issuerDer: built.issuerDer,
       subjectDer: built.subjectDer,
       serial: built.serial,
@@ -467,6 +565,10 @@ PqX509Parsed _parse(Uint8List der) {
       pathLen: built.pathLen,
       keyUsageBits: built.keyUsageBits,
       extKeyUsage: built.extKeyUsage,
+      issuerUniqueId: built.issuerUniqueId,
+      subjectUniqueId: built.subjectUniqueId,
+      mustStaple: built.mustStaple,
+      pssSaltLength: outer.pssSalt,
     ),
   );
 }
@@ -489,6 +591,10 @@ final class _Built {
   int? get pathLen => certificate.pathLen;
   int? get keyUsageBits => certificate.keyUsageBits;
   List<List<int>> get extKeyUsage => certificate.extKeyUsage;
+  Uint8List? get issuerUniqueId => certificate.issuerUniqueId;
+  Uint8List? get subjectUniqueId => certificate.subjectUniqueId;
+  bool get mustStaple => certificate.mustStaple;
+  int? get pssSaltLength => certificate.pssSaltLength;
 }
 
 _Built _tbs(DerReader reader, Uint8List tbs) {
@@ -505,7 +611,7 @@ _Built _tbs(DerReader reader, Uint8List tbs) {
   }
   final serial = unsignedInteger(_need(reader.tag(0x02)).copy(), maxBytes: 20);
   if (serial == null) _die(PqX509Failure.notDer);
-  final algorithm = _algorithm(reader.nested(_need(reader.tag(0x30))));
+  final sig = _algorithm(reader.nested(_need(reader.tag(0x30))));
   final issuer = _need(reader.tag(0x30));
   if (issuer.whole().length > PqX509.maxNameBytes) _die(PqX509Failure.badName);
   final validity = reader.nested(_need(reader.tag(0x30)));
@@ -515,15 +621,18 @@ _Built _tbs(DerReader reader, Uint8List tbs) {
   if (notBefore.isAfter(notAfter)) _die(PqX509Failure.badTime);
   final subject = _need(reader.tag(0x30));
   if (subject.whole().length > PqX509.maxNameBytes) _die(PqX509Failure.badName);
-  final publicKey = _publicKey(
-    reader.nested(_need(reader.tag(0x30))),
-    algorithm,
-  );
+  final publicKey = _publicKey(reader.nested(_need(reader.tag(0x30))), sig);
+  Uint8List? issuerUniqueId;
+  Uint8List? subjectUniqueId;
+  if (reader.offset < reader.end && reader.bytes[reader.offset] == 0x81) {
+    issuerUniqueId = _uniqueId(reader, 0x81);
+  }
+  if (reader.offset < reader.end && reader.bytes[reader.offset] == 0x82) {
+    subjectUniqueId = _uniqueId(reader, 0x82);
+  }
   if (reader.offset < reader.end &&
       (reader.bytes[reader.offset] == 0xa1 ||
-          reader.bytes[reader.offset] == 0x81 ||
-          reader.bytes[reader.offset] == 0xa2 ||
-          reader.bytes[reader.offset] == 0x82)) {
+          reader.bytes[reader.offset] == 0xa2)) {
     _die(PqX509Failure.notDer);
   }
   final extensions = <PqX509Extension>[];
@@ -532,6 +641,7 @@ _Built _tbs(DerReader reader, Uint8List tbs) {
   int? pathLen;
   int? keyUsage;
   final eku = <List<int>>[];
+  var mustStaple = false;
   if (reader.offset < reader.end && reader.bytes[reader.offset] == 0xa3) {
     if (version != 3) _die(PqX509Failure.notDer);
     final explicit = reader.nested(_need(reader.tag(0xa3)));
@@ -553,6 +663,8 @@ _Built _tbs(DerReader reader, Uint8List tbs) {
         eku.addAll(_ekuOids(extension.value));
       } else if (_arcs(extension.oid, _san)) {
         names.addAll(_parseSan(extension.value));
+      } else if (_arcs(extension.oid, _tlsFeature)) {
+        mustStaple = _mustStaple(extension);
       }
     }
   }
@@ -561,7 +673,7 @@ _Built _tbs(DerReader reader, Uint8List tbs) {
     PqX509Certificate(
       der: Uint8List(0),
       tbs: tbs,
-      algorithm: algorithm,
+      algorithm: sig.algorithm,
       signature: Uint8List(0),
       issuerDer: issuer.whole(),
       subjectDer: subject.whole(),
@@ -576,8 +688,37 @@ _Built _tbs(DerReader reader, Uint8List tbs) {
       pathLen: pathLen,
       keyUsageBits: keyUsage,
       extKeyUsage: eku,
+      issuerUniqueId: issuerUniqueId,
+      subjectUniqueId: subjectUniqueId,
+      mustStaple: mustStaple,
+      pssSaltLength: sig.pssSalt,
     ),
   );
+}
+
+Uint8List _uniqueId(DerReader reader, int tag) {
+  final bits = _need(reader.tag(tag));
+  if (bits.length < 1 || bits.bytes[bits.start] > 7) _die(PqX509Failure.notDer);
+  return bits.copy();
+}
+
+/// `id-pe-tlsfeature`. An unknown feature inside a critical extension fails.
+bool _mustStaple(PqX509Extension extension) {
+  final reader = DerReader(extension.value);
+  final body = reader.nested(_need(reader.tag(0x30)));
+  if (!reader.finished || body.finished) _die(PqX509Failure.notDer);
+  var staple = false;
+  while (!body.finished) {
+    final number = unsignedInteger(_need(body.tag(0x02)).copy(), maxBytes: 2);
+    if (number == null) _die(PqX509Failure.notDer);
+    final value = _int(number);
+    if (value == 5) {
+      staple = true;
+    } else if (extension.critical) {
+      _die(PqX509Failure.badConstraint);
+    }
+  }
+  return staple;
 }
 
 int _timeTag(DerReader reader) {
@@ -615,27 +756,29 @@ DateTime _time(DerSlice slice) {
   return time;
 }
 
-PqX509Algorithm _algorithm(DerReader reader) {
+_SigId _algorithm(DerReader reader) {
   final oid = _need(reader.tag(0x06)).copy();
   if (_oidIs(oid, _rsaPss)) {
     if (reader.finished) _die(PqX509Failure.unsupportedAlgorithm);
-    final algorithm = _pssParameters(reader.nested(_need(reader.tag(0x30))));
+    final parsed = _pssParameters(reader.nested(_need(reader.tag(0x30))));
     if (!reader.finished) _die(PqX509Failure.notDer);
-    return algorithm;
+    return parsed;
   }
   final algorithm = _algorithmOid(oid);
   if (algorithm == null) _die(PqX509Failure.unsupportedAlgorithm);
   if (reader.finished) {
     if (_isPkcs1(algorithm)) _die(PqX509Failure.notDer);
-    return algorithm;
+    return _SigId(algorithm);
   }
   if (!_isPkcs1(algorithm)) _die(PqX509Failure.notDer);
   final nullValue = _need(reader.tag(0x05));
   if (nullValue.length != 0 || !reader.finished) _die(PqX509Failure.notDer);
-  return algorithm;
+  return _SigId(algorithm);
 }
 
-PqX509Algorithm _pssParameters(DerReader reader) {
+/// RFC 4055. An omitted salt length is 20. An omitted hash is SHA-1, which
+/// this library does not accept.
+_SigId _pssParameters(DerReader reader) {
   if (reader.finished || reader.bytes[reader.offset] != 0xa0) {
     _die(PqX509Failure.unsupportedAlgorithm);
   }
@@ -649,7 +792,6 @@ PqX509Algorithm _pssParameters(DerReader reader) {
     384 => PqX509Algorithm.rsaPssSha384,
     _ => PqX509Algorithm.rsaPssSha512,
   };
-  final salt = hash ~/ 8;
   if (reader.offset >= reader.end || reader.bytes[reader.offset] != 0xa1) {
     _die(PqX509Failure.unsupportedAlgorithm);
   }
@@ -661,16 +803,18 @@ PqX509Algorithm _pssParameters(DerReader reader) {
   if (_hashKind(mgfBody) != hash || !mgfBody.finished) {
     _die(PqX509Failure.unsupportedAlgorithm);
   }
-  if (reader.offset >= reader.end || reader.bytes[reader.offset] != 0xa2) {
-    _die(PqX509Failure.unsupportedAlgorithm);
-  }
-  final saltWrap = reader.nested(_need(reader.tag(0xa2)));
-  final saltValue = unsignedInteger(
-    _need(saltWrap.tag(0x02)).copy(),
-    maxBytes: 2,
-  );
-  if (!saltWrap.finished || saltValue == null || _int(saltValue) != salt) {
-    _die(PqX509Failure.unsupportedAlgorithm);
+  var salt = 20;
+  if (reader.offset < reader.end && reader.bytes[reader.offset] == 0xa2) {
+    final saltWrap = reader.nested(_need(reader.tag(0xa2)));
+    final saltValue = unsignedInteger(
+      _need(saltWrap.tag(0x02)).copy(),
+      maxBytes: 2,
+    );
+    if (!saltWrap.finished || saltValue == null) {
+      _die(PqX509Failure.unsupportedAlgorithm);
+    }
+    salt = _int(saltValue);
+    if (salt > 512) _die(PqX509Failure.unsupportedAlgorithm);
   }
   if (!reader.finished) {
     if (reader.bytes[reader.offset] != 0xa3) _die(PqX509Failure.notDer);
@@ -687,7 +831,7 @@ PqX509Algorithm _pssParameters(DerReader reader) {
     }
   }
   if (!reader.finished) _die(PqX509Failure.notDer);
-  return algorithm;
+  return _SigId(algorithm, salt);
 }
 
 int? _hashKind(DerReader reader) {
@@ -705,7 +849,8 @@ int? _hashKind(DerReader reader) {
   return kind;
 }
 
-PqX509PublicKey _publicKey(DerReader reader, PqX509Algorithm algorithm) {
+PqX509PublicKey _publicKey(DerReader reader, _SigId signature) {
+  final algorithm = signature.algorithm;
   final algorithmId = reader.nested(_need(reader.tag(0x30)));
   final oid = _need(algorithmId.tag(0x06)).copy();
   final bits = _need(reader.tag(0x03));
@@ -732,12 +877,13 @@ PqX509PublicKey _publicKey(DerReader reader, PqX509Algorithm algorithm) {
       if (!_oidIs(curve, p256 ? _p256 : _p384) || !algorithmId.finished) {
         _die(PqX509Failure.unsupportedAlgorithm);
       }
-      final length = p256 ? 65 : 97;
-      if (key.length != length || key[0] != 0x04) {
-        _die(PqX509Failure.unsupportedAlgorithm);
-      }
-      final copy = Uint8List.fromList(key);
-      return p256 ? PqX509EcdsaP256Key(copy) : PqX509EcdsaP384Key(copy);
+      final normalized = p256
+          ? PqEcdsaP256.normalizePoint(Uint8List.fromList(key))
+          : PqEcdsaP384.normalizePoint(Uint8List.fromList(key));
+      if (normalized == null) _die(PqX509Failure.unsupportedAlgorithm);
+      return p256
+          ? PqX509EcdsaP256Key(normalized)
+          : PqX509EcdsaP384Key(normalized);
     case PqX509Algorithm.ed25519:
       if (!algorithmId.finished || !_oidIs(oid, _ed25519)) {
         _die(PqX509Failure.unsupportedAlgorithm);
@@ -750,12 +896,29 @@ PqX509PublicKey _publicKey(DerReader reader, PqX509Algorithm algorithm) {
     case PqX509Algorithm.rsaPssSha256:
     case PqX509Algorithm.rsaPssSha384:
     case PqX509Algorithm.rsaPssSha512:
-      if (!_oidIs(oid, _rsaEncryption)) {
+      final pssKey = _oidIs(oid, _rsaPss);
+      if (!_oidIs(oid, _rsaEncryption) && !pssKey) {
         _die(PqX509Failure.unsupportedAlgorithm);
       }
-      final nullValue = _need(algorithmId.tag(0x05));
-      if (nullValue.length != 0 || !algorithmId.finished) {
-        _die(PqX509Failure.notDer);
+      if (pssKey) {
+        if (!_isPss(algorithm)) _die(PqX509Failure.unsupportedAlgorithm);
+        if (algorithmId.finished ||
+            algorithmId.bytes[algorithmId.offset] == 0x05) {
+          _die(PqX509Failure.unsupportedAlgorithm);
+        }
+        final params = _pssParameters(
+          algorithmId.nested(_need(algorithmId.tag(0x30))),
+        );
+        if (!algorithmId.finished ||
+            params.algorithm != algorithm ||
+            params.pssSalt != signature.pssSalt) {
+          _die(PqX509Failure.unsupportedAlgorithm);
+        }
+      } else {
+        final nullValue = _need(algorithmId.tag(0x05));
+        if (nullValue.length != 0 || !algorithmId.finished) {
+          _die(PqX509Failure.notDer);
+        }
       }
       final rsa = DerReader(Uint8List.fromList(key));
       final body = rsa.nested(_need(rsa.tag(0x30)));
@@ -887,6 +1050,7 @@ bool _check(PqX509Certificate certificate, PqX509PublicKey key) {
         message: message,
         signature: signature,
         hash: _rsaHash(certificate.algorithm),
+        saltLength: certificate.pssSaltLength,
       );
   }
 }
@@ -895,6 +1059,8 @@ PqX509Path _path(
   List<PqX509Certificate> certs,
   List<PqX509Certificate> anchors,
   DateTime now,
+  bool ocspResponsePresent,
+  List<List<int>> acceptedCriticalOids,
 ) {
   PqX509Certificate? anchor;
   for (final candidate in anchors) {
@@ -928,8 +1094,11 @@ PqX509Path _path(
     if (now.isAfter(certificate.notAfter)) {
       return const PqX509Path.fail(PqX509Failure.expired);
     }
-    final critical = _critical(certificate);
+    final critical = _critical(certificate, acceptedCriticalOids);
     if (critical != null) return PqX509Path.fail(critical);
+    if (certificate.mustStaple && !ocspResponsePresent) {
+      return const PqX509Path.fail(PqX509Failure.mustStaple);
+    }
   }
   for (var i = 0; i < path.length - 1; i++) {
     final certificate = path[i];
@@ -950,7 +1119,10 @@ PqX509Path _path(
   return PqX509Path.trusted(certs.first);
 }
 
-PqX509Failure? _critical(PqX509Certificate certificate) {
+PqX509Failure? _critical(
+  PqX509Certificate certificate,
+  List<List<int>> accepted,
+) {
   for (final extension in certificate.extensions) {
     if (!extension.critical) continue;
     if (_arcs(extension.oid, _keyUsage) ||
@@ -959,36 +1131,31 @@ PqX509Failure? _critical(PqX509Certificate certificate) {
         _arcs(extension.oid, _san) ||
         _arcs(extension.oid, _ski) ||
         _arcs(extension.oid, _aki) ||
-        _arcs(extension.oid, _names)) {
+        _arcs(extension.oid, _names) ||
+        _arcs(extension.oid, _tlsFeature)) {
       continue;
     }
-    return PqX509Failure.badConstraint;
+    var known = false;
+    for (final oid in accepted) {
+      if (_arcs(extension.oid, oid)) known = true;
+    }
+    if (!known) return PqX509Failure.badConstraint;
   }
   return null;
 }
 
 PqX509Failure? _constraints(List<PqX509Certificate> path) {
-  final permittedDns = <List<String>>[];
-  final excludedDns = <List<String>>[];
-  final permittedIp = <List<Uint8List>>[];
-  final excludedIp = <List<Uint8List>>[];
+  final permitted = <_Subtree>[];
+  final excluded = <_Subtree>[];
   for (var i = 0; i < path.length; i++) {
-    final failed = _constrained(
-      path[i],
-      permittedDns,
-      excludedDns,
-      permittedIp,
-      excludedIp,
-    );
+    final failed = _constrained(path[i], permitted, excluded);
     if (failed != null) return failed;
     for (final extension in path[i].extensions) {
       if (!_arcs(extension.oid, _names)) continue;
       final decoded = _nameConstraints(extension.value);
       if (decoded == null) return PqX509Failure.badConstraint;
-      permittedDns.add(decoded.$1);
-      excludedDns.add(decoded.$2);
-      permittedIp.add(decoded.$3);
-      excludedIp.add(decoded.$4);
+      permitted.add(decoded.$1);
+      excluded.add(decoded.$2);
     }
   }
   return null;
@@ -996,54 +1163,125 @@ PqX509Failure? _constraints(List<PqX509Certificate> path) {
 
 PqX509Failure? _constrained(
   PqX509Certificate certificate,
-  List<List<String>> permittedDns,
-  List<List<String>> excludedDns,
-  List<List<Uint8List>> permittedIp,
-  List<List<Uint8List>> excludedIp,
+  List<_Subtree> permitted,
+  List<_Subtree> excluded,
 ) {
-  for (final name in certificate.subjectAltNames) {
-    if (name is PqX509DnsName) {
-      for (final excluded in excludedDns) {
-        for (final base in excluded) {
-          if (_dnsWithin(name.ascii, base)) return PqX509Failure.badConstraint;
+  final names = <PqX509GeneralName>[...certificate.subjectAltNames];
+  final directoryConstrained =
+      permitted.any((set) => set.directory.isNotEmpty) ||
+      excluded.any((set) => set.directory.isNotEmpty);
+  final subject = directoryConstrained
+      ? _rdns(certificate.subjectDer)
+      : const <List<(Uint8List, String)>>[];
+  if (directoryConstrained && subject == null) {
+    return PqX509Failure.badConstraint;
+  }
+  if (subject != null && subject.isNotEmpty) {
+    names.add(PqX509DirectoryName(certificate.subjectDer));
+  }
+  for (final name in names) {
+    switch (name) {
+      case PqX509DnsName():
+        if (_outside(permitted, excluded, (set, excludedSet) {
+          return _form(
+            set.dns,
+            excludedSet.dns,
+            (base) => _dnsWithin(name.ascii, base),
+          );
+        })) {
+          return PqX509Failure.badConstraint;
         }
-      }
-      for (final permitted in permittedDns) {
-        if (permitted.isEmpty) continue;
-        var matched = false;
-        for (final base in permitted) {
-          if (_dnsWithin(name.ascii, base)) matched = true;
+      case PqX509EmailName():
+        if (_outside(permitted, excluded, (set, excludedSet) {
+          return _form(
+            set.email,
+            excludedSet.email,
+            (base) => _emailWithin(name.mailbox, base),
+          );
+        })) {
+          return PqX509Failure.badConstraint;
         }
-        if (!matched) return PqX509Failure.badConstraint;
-      }
-    } else if (name is PqX509Ip4Name || name is PqX509Ip6Name) {
-      final octets = name is PqX509Ip4Name
-          ? name.octets
-          : (name as PqX509Ip6Name).octets;
-      if (octets.length != 4 && octets.length != 16) continue;
-      for (final excluded in excludedIp) {
-        for (final base in excluded) {
-          if (_ipWithin(octets, base)) return PqX509Failure.badConstraint;
+      case PqX509UriName():
+        if (_outside(permitted, excluded, (set, excludedSet) {
+          return _form(
+            set.uri,
+            excludedSet.uri,
+            (base) => _uriWithin(name.uri, base),
+          );
+        })) {
+          return PqX509Failure.badConstraint;
         }
-      }
-      for (final permitted in permittedIp) {
-        final same = permitted.where(
-          (base) => base.length == octets.length * 2,
-        );
-        if (same.isEmpty) continue;
-        var matched = false;
-        for (final base in same) {
-          if (_ipWithin(octets, base)) matched = true;
+      case PqX509DirectoryName():
+        final rdns = identical(name.name, certificate.subjectDer)
+            ? subject
+            : _rdns(name.name);
+        if (rdns == null) return PqX509Failure.badConstraint;
+        if (_outside(permitted, excluded, (set, excludedSet) {
+          if (excludedSet.directory.any((base) {
+            final constraint = _rdns(base);
+            return constraint != null && _dnWithin(rdns, constraint);
+          })) {
+            return true;
+          }
+          for (final setDir in set.directory) {
+            final constraint = _rdns(setDir);
+            if (constraint == null) return true;
+            if (constraint.isEmpty) continue;
+            if (!_dnWithin(rdns, constraint)) return true;
+          }
+          return false;
+        })) {
+          return PqX509Failure.badConstraint;
         }
-        if (!matched) return PqX509Failure.badConstraint;
-      }
+      case PqX509Ip4Name():
+      case PqX509Ip6Name():
+        final octets = name is PqX509Ip4Name
+            ? name.octets
+            : (name as PqX509Ip6Name).octets;
+        if (octets.length != 4 && octets.length != 16) continue;
+        if (_outside(permitted, excluded, (set, excludedSet) {
+          return _form(
+            set.ip.where((base) => base.length == octets.length * 2).toList(),
+            excludedSet.ip,
+            (base) => _ipWithin(octets, base),
+          );
+        })) {
+          return PqX509Failure.badConstraint;
+        }
+      case PqX509OtherName():
+        break;
     }
   }
   return null;
 }
 
-(List<String>, List<String>, List<Uint8List>, List<Uint8List>)?
-_nameConstraints(Uint8List value) {
+bool _outside(
+  List<_Subtree> permitted,
+  List<_Subtree> excluded,
+  bool Function(_Subtree set, _Subtree excludedSet) one,
+) {
+  for (var i = 0; i < permitted.length; i++) {
+    if (one(permitted[i], excluded[i])) return true;
+  }
+  return false;
+}
+
+bool _form<T>(
+  List<T> permitted,
+  List<T> excluded,
+  bool Function(T base) within,
+) {
+  for (final base in excluded) {
+    if (within(base)) return true;
+  }
+  if (permitted.isEmpty) return false;
+  for (final base in permitted) {
+    if (within(base)) return false;
+  }
+  return true;
+}
+
+(_Subtree, _Subtree)? _nameConstraints(Uint8List value) {
   final reader = DerReader(value);
   DerSlice? bodySlice;
   try {
@@ -1053,45 +1291,56 @@ _nameConstraints(Uint8List value) {
     return null;
   }
   final body = DerReader(value, offset: bodySlice.start, end: bodySlice.end);
-  final permittedDns = <String>[];
-  final excludedDns = <String>[];
-  final permittedIp = <Uint8List>[];
-  final excludedIp = <Uint8List>[];
+  final permitted = _Subtree();
+  final excluded = _Subtree();
   while (!body.finished) {
     final tag = body.bytes[body.offset];
     if (tag != 0xa0 && tag != 0xa1) return null;
+    final into = tag == 0xa0 ? permitted : excluded;
     final subtrees = body.nested(_need(body.tag(tag)));
     if (subtrees.finished) return null;
     while (!subtrees.finished) {
       final tree = subtrees.nested(_need(subtrees.tag(0x30)));
       final base = _generalName(tree);
       if (base == null || !tree.finished) return null;
-      if (tag == 0xa0) {
-        if (base is PqX509DnsName) permittedDns.add(base.ascii);
-        if (base is PqX509Ip4Name || base is PqX509Ip6Name) {
-          final constraint = _ipConstraint(
-            base is PqX509Ip4Name
-                ? base.octets
-                : (base as PqX509Ip6Name).octets,
-          );
+      switch (base) {
+        case PqX509DnsName():
+          into.dns.add(base.ascii);
+        case PqX509EmailName():
+          into.email.add(base.mailbox);
+        case PqX509UriName():
+          into.uri.add(base.uri);
+        case PqX509DirectoryName():
+          into.directory.add(base.name);
+        case PqX509Ip4Name():
+        case PqX509Ip6Name():
+          final octets = base is PqX509Ip4Name
+              ? base.octets
+              : (base as PqX509Ip6Name).octets;
+          final constraint = _ipConstraint(octets);
           if (constraint == null) return null;
-          permittedIp.add(constraint);
-        }
-      } else {
-        if (base is PqX509DnsName) excludedDns.add(base.ascii);
-        if (base is PqX509Ip4Name || base is PqX509Ip6Name) {
-          final constraint = _ipConstraint(
-            base is PqX509Ip4Name
-                ? base.octets
-                : (base as PqX509Ip6Name).octets,
-          );
-          if (constraint == null) return null;
-          excludedIp.add(constraint);
-        }
+          into.ip.add(constraint);
+        case PqX509OtherName():
+          return null;
       }
     }
   }
-  return (permittedDns, excludedDns, permittedIp, excludedIp);
+  return (permitted, excluded);
+}
+
+final class _Subtree {
+  final dns = <String>[];
+  final email = <String>[];
+  final uri = <String>[];
+  final directory = <Uint8List>[];
+  final ip = <Uint8List>[];
+}
+
+final class _SigId {
+  _SigId(this.algorithm, [this.pssSalt]);
+
+  final PqX509Algorithm algorithm;
+  final int? pssSalt;
 }
 
 Uint8List? _ipConstraint(Uint8List octets) {
@@ -1102,24 +1351,85 @@ Uint8List? _ipConstraint(Uint8List octets) {
 PqX509GeneralName? _generalName(DerReader reader) {
   if (reader.offset >= reader.end) return null;
   final tag = reader.bytes[reader.offset];
-  if (tag != 0x82 && tag != 0x87) return null;
+  const known = {0x81, 0x82, 0x86, 0x87, 0xa4};
+  if (!known.contains(tag)) return null;
   final value = _need(reader.tag(tag)).copy();
-  if (tag == 0x82) {
-    if (!_ia5(value)) return null;
-    return PqX509DnsName(String.fromCharCodes(value).toLowerCase());
+  switch (tag) {
+    case 0x81:
+      if (!_ia5(value) || !String.fromCharCodes(value).contains('@')) {
+        return null;
+      }
+      return PqX509EmailName(String.fromCharCodes(value));
+    case 0x82:
+      if (!_ia5(value)) return null;
+      return PqX509DnsName(String.fromCharCodes(value).toLowerCase());
+    case 0x86:
+      if (!_ia5(value)) return null;
+      return PqX509UriName(String.fromCharCodes(value));
+    case 0xa4:
+      if (value.isEmpty || value[0] != 0x30) return null;
+      return PqX509DirectoryName(value);
+    default:
+      if (value.length == 4 || value.length == 8) return PqX509Ip4Name(value);
+      if (value.length == 16 || value.length == 32) return PqX509Ip6Name(value);
+      return null;
   }
-  if (value.length == 4) return PqX509Ip4Name(value);
-  if (value.length == 16) return PqX509Ip6Name(value);
-  if (value.length == 8 || value.length == 32) {
-    return value.length == 8 ? PqX509Ip4Name(value) : PqX509Ip6Name(value);
-  }
-  return null;
 }
 
 bool _dnsWithin(String name, String base) {
   final left = name.toLowerCase();
-  final right = base.toLowerCase();
+  var right = base.toLowerCase();
+  if (right.startsWith('.')) {
+    right = right.substring(1);
+    return left != right && left.endsWith('.$right');
+  }
   return left == right || left.endsWith('.$right');
+}
+
+bool _emailWithin(String mailbox, String base) {
+  final mail = mailbox.toLowerCase();
+  final constraint = base.toLowerCase();
+  final at = mail.lastIndexOf('@');
+  if (at <= 0 || at == mail.length - 1) return false;
+  final host = mail.substring(at + 1);
+  if (constraint.startsWith('.')) {
+    final domain = constraint.substring(1);
+    return host != domain && host.endsWith('.$domain');
+  }
+  if (constraint.contains('@')) return mail == constraint;
+  return host == constraint;
+}
+
+bool _uriWithin(String uri, String base) {
+  final host = _uriHost(uri);
+  if (host == null) return false;
+  final constraint = base.toLowerCase();
+  if (constraint.startsWith('.')) {
+    final domain = constraint.substring(1);
+    return host != domain && host.endsWith('.$domain');
+  }
+  return host == constraint;
+}
+
+String? _uriHost(String uri) {
+  final scheme = uri.indexOf(':');
+  if (scheme <= 0) return null;
+  var rest = uri.substring(scheme + 1);
+  if (!rest.startsWith('//')) return null;
+  rest = rest.substring(2);
+  final at = rest.indexOf('@');
+  if (at >= 0) rest = rest.substring(at + 1);
+  final slash = rest.indexOf('/');
+  if (slash >= 0) rest = rest.substring(0, slash);
+  if (rest.startsWith('[')) {
+    final end = rest.indexOf(']');
+    if (end < 0) return null;
+    return rest.substring(1, end).toLowerCase();
+  }
+  final port = rest.lastIndexOf(':');
+  if (port >= 0) rest = rest.substring(0, port);
+  if (rest.isEmpty) return null;
+  return rest.toLowerCase();
 }
 
 bool _ipWithin(Uint8List address, Uint8List constraint) {
@@ -1209,7 +1519,8 @@ List<PqX509GeneralName> _parseSan(Uint8List value) {
   final names = <PqX509GeneralName>[];
   while (!body.finished) {
     final tag = body.bytes[body.offset];
-    if (tag != 0x82 && tag != 0x87) {
+    const kept = {0x81, 0x82, 0x86, 0x87, 0xa4};
+    if (!kept.contains(tag)) {
       _need(body.tag(tag));
       continue;
     }
@@ -1220,7 +1531,7 @@ List<PqX509GeneralName> _parseSan(Uint8List value) {
   return names;
 }
 
-Uint8List _algorithmDer(PqX509Algorithm algorithm) {
+Uint8List _algorithmDer(PqX509Algorithm algorithm, int? pssSaltLength) {
   final writer = DerWriter();
   if (_isPkcs1(algorithm)) {
     writer.sequence(
@@ -1235,7 +1546,7 @@ Uint8List _algorithmDer(PqX509Algorithm algorithm) {
     writer.sequence(
       (DerWriter()
             ..oid(_rsaPss)
-            ..sequence(_pssDer(algorithm)))
+            ..sequence(_pssDer(algorithm, pssSaltLength)))
           .take(),
     );
   } else {
@@ -1244,13 +1555,15 @@ Uint8List _algorithmDer(PqX509Algorithm algorithm) {
   return writer.take();
 }
 
-Uint8List _pssDer(PqX509Algorithm algorithm) {
+Uint8List _pssDer(PqX509Algorithm algorithm, int? saltLength) {
   final hash = _pssHash(algorithm);
-  final salt = hash == _sha256
-      ? 32
-      : hash == _sha384
-      ? 48
-      : 64;
+  final salt =
+      saltLength ??
+      (hash == _sha256
+          ? 32
+          : hash == _sha384
+          ? 48
+          : 64);
   final hashId =
       (DerWriter()..sequence(
             (DerWriter()
@@ -1270,14 +1583,16 @@ Uint8List _pssDer(PqX509Algorithm algorithm) {
   return (DerWriter()
         ..tlv(0xa0, hashId)
         ..tlv(0xa1, mgf)
-        ..tlv(
-          0xa2,
-          (DerWriter()..integerUnsigned(Uint8List.fromList([salt]))).take(),
-        ))
+        ..tlv(0xa2, (DerWriter()..integerUnsigned(_u16(salt))).take()))
       .take();
 }
 
-Uint8List _spki(PqX509PublicKey key) {
+Uint8List _spki(
+  PqX509PublicKey key, {
+  required PqX509Algorithm algorithm,
+  required bool pssPublicKey,
+  required int? pssSaltLength,
+}) {
   final writer = DerWriter();
   switch (key) {
     case PqX509MlDsaKey():
@@ -1319,14 +1634,21 @@ Uint8List _spki(PqX509PublicKey key) {
             .take(),
       );
     case PqX509RsaKey():
+      if (pssPublicKey && !_isPss(algorithm)) {
+        throw ArgumentError('a PSS public key requires a PSS signature');
+      }
+      final algorithmId = pssPublicKey
+          ? (DerWriter()
+                  ..oid(_rsaPss)
+                  ..sequence(_pssDer(algorithm, pssSaltLength)))
+                .take()
+          : (DerWriter()
+                  ..oid(_rsaEncryption)
+                  ..nullValue())
+                .take();
       writer.sequence(
         (DerWriter()
-              ..sequence(
-                (DerWriter()
-                      ..oid(_rsaEncryption)
-                      ..nullValue())
-                    .take(),
-              )
+              ..sequence(algorithmId)
               ..bitString(
                 (DerWriter()..sequence(
                       (DerWriter()
@@ -1350,7 +1672,15 @@ Uint8List _extensions({
   required bool includeEku,
   required List<PqX509GeneralName> names,
   required List<String> permittedDns,
-  required bool uriNameConstraint,
+  required List<String> excludedDns,
+  required List<String> permittedEmail,
+  required List<String> excludedEmail,
+  required List<String> permittedUri,
+  required List<String> excludedUri,
+  required List<PqX509Name> permittedDirectory,
+  required List<PqX509Name> excludedDirectory,
+  required bool permitOtherName,
+  required bool mustStaple,
 }) {
   final writer = DerWriter();
   writer.sequence(_extensionDer(_basic, true, _basicDer(ca, pathLen)));
@@ -1372,12 +1702,42 @@ Uint8List _extensions({
   if (names.isNotEmpty) {
     writer.sequence(_extensionDer(_san, false, _sanDer(names)));
   }
-  if (permittedDns.isNotEmpty || uriNameConstraint) {
+  if (permittedDns.isNotEmpty ||
+      excludedDns.isNotEmpty ||
+      permittedEmail.isNotEmpty ||
+      excludedEmail.isNotEmpty ||
+      permittedUri.isNotEmpty ||
+      excludedUri.isNotEmpty ||
+      permittedDirectory.isNotEmpty ||
+      excludedDirectory.isNotEmpty ||
+      permitOtherName) {
     writer.sequence(
       _extensionDer(
         _names,
         true,
-        _nameConstraintsDer(permittedDns, uriNameConstraint),
+        _nameConstraintsDer(
+          permittedDns: permittedDns,
+          excludedDns: excludedDns,
+          permittedEmail: permittedEmail,
+          excludedEmail: excludedEmail,
+          permittedUri: permittedUri,
+          excludedUri: excludedUri,
+          permittedDirectory: permittedDirectory,
+          excludedDirectory: excludedDirectory,
+          permitOtherName: permitOtherName,
+        ),
+      ),
+    );
+  }
+  if (mustStaple) {
+    writer.sequence(
+      _extensionDer(
+        _tlsFeature,
+        true,
+        (DerWriter()..sequence(
+              (DerWriter()..integerUnsigned(Uint8List.fromList([5]))).take(),
+            ))
+            .take(),
       ),
     );
   }
@@ -1432,28 +1792,90 @@ Uint8List _sanDer(List<PqX509GeneralName> names) {
           throw ArgumentError.value(name.octets.length, 'ip', 'expected 16');
         }
         writer.tlv(0x87, name.octets);
+      case PqX509EmailName():
+        final bytes = Uint8List.fromList(name.mailbox.codeUnits);
+        if (!_ia5(bytes) || !name.mailbox.contains('@')) {
+          throw ArgumentError.value(name.mailbox, 'email', 'not a mailbox');
+        }
+        writer.tlv(0x81, bytes);
+      case PqX509UriName():
+        final bytes = Uint8List.fromList(name.uri.codeUnits);
+        if (!_ia5(bytes)) {
+          throw ArgumentError.value(name.uri, 'uri', 'not ASCII');
+        }
+        writer.tlv(0x86, bytes);
+      case PqX509DirectoryName():
+        writer.tlv(0xa4, name.name);
+      case PqX509OtherName():
+        writer.tlv(0xa0, (DerWriter()..oid([1, 2, 3])).take());
     }
   }
   return (DerWriter()..sequence(writer.take())).take();
 }
 
-Uint8List _nameConstraintsDer(List<String> permittedDns, bool uri) {
-  final subtrees = DerWriter();
-  for (final name in permittedDns) {
-    final bytes = Uint8List.fromList(name.codeUnits);
-    if (!_ia5(bytes)) {
-      throw ArgumentError.value(name, 'permittedDns', 'not ASCII');
-    }
-    subtrees.sequence((DerWriter()..tlv(0x82, bytes)).take());
+Uint8List _nameConstraintsDer({
+  required List<String> permittedDns,
+  required List<String> excludedDns,
+  required List<String> permittedEmail,
+  required List<String> excludedEmail,
+  required List<String> permittedUri,
+  required List<String> excludedUri,
+  required List<PqX509Name> permittedDirectory,
+  required List<PqX509Name> excludedDirectory,
+  required bool permitOtherName,
+}) {
+  final permitted = _subtrees(
+    dns: permittedDns,
+    email: permittedEmail,
+    uri: permittedUri,
+    directory: permittedDirectory,
+    otherName: permitOtherName,
+  );
+  final excluded = _subtrees(
+    dns: excludedDns,
+    email: excludedEmail,
+    uri: excludedUri,
+    directory: excludedDirectory,
+    otherName: false,
+  );
+  final writer = DerWriter();
+  if (permitted.isNotEmpty) writer.tlv(0xa0, permitted);
+  if (excluded.isNotEmpty) writer.tlv(0xa1, excluded);
+  return (DerWriter()..sequence(writer.take())).take();
+}
+
+Uint8List _subtrees({
+  required List<String> dns,
+  required List<String> email,
+  required List<String> uri,
+  required List<PqX509Name> directory,
+  required bool otherName,
+}) {
+  final writer = DerWriter();
+  for (final name in dns) {
+    writer.sequence((DerWriter()..tlv(0x82, _ia5Name(name, 'dns'))).take());
   }
-  if (uri) {
-    subtrees.sequence(
-      (DerWriter()..tlv(0x86, 'https://example.test'.codeUnits)).take(),
+  for (final name in email) {
+    writer.sequence((DerWriter()..tlv(0x81, _ia5Name(name, 'email'))).take());
+  }
+  for (final name in uri) {
+    writer.sequence((DerWriter()..tlv(0x86, _ia5Name(name, 'uri'))).take());
+  }
+  for (final name in directory) {
+    writer.sequence((DerWriter()..tlv(0xa4, name.der)).take());
+  }
+  if (otherName) {
+    writer.sequence(
+      (DerWriter()..tlv(0xa0, (DerWriter()..oid([1, 2, 3])).take())).take(),
     );
   }
-  return (DerWriter()
-        ..sequence((DerWriter()..tlv(0xa0, subtrees.take())).take()))
-      .take();
+  return writer.take();
+}
+
+Uint8List _ia5Name(String value, String label) {
+  final bytes = Uint8List.fromList(value.codeUnits);
+  if (!_ia5(bytes)) throw ArgumentError.value(value, label, 'not ASCII');
+  return bytes;
 }
 
 Uint8List _validity(DateTime notBefore, DateTime notAfter) =>
@@ -1583,6 +2005,122 @@ bool _isPkcs1(PqX509Algorithm algorithm) =>
     algorithm == PqX509Algorithm.rsaPkcs1Sha256 ||
     algorithm == PqX509Algorithm.rsaPkcs1Sha384 ||
     algorithm == PqX509Algorithm.rsaPkcs1Sha512;
+
+bool _isPss(PqX509Algorithm algorithm) =>
+    algorithm == PqX509Algorithm.rsaPssSha256 ||
+    algorithm == PqX509Algorithm.rsaPssSha384 ||
+    algorithm == PqX509Algorithm.rsaPssSha512;
+
+Uint8List _u16(int value) {
+  if (value <= 0xff) return Uint8List.fromList([value]);
+  return Uint8List.fromList([(value >> 8) & 0xff, value & 0xff]);
+}
+
+List<List<(Uint8List, String)>>? _rdns(Uint8List name) {
+  final reader = DerReader(name);
+  final sequence = reader.tag(0x30);
+  if (!sequence.ok || !reader.finished) return null;
+  final body = reader.nested(sequence.slice!);
+  final rdns = <List<(Uint8List, String)>>[];
+  while (!body.finished) {
+    final set = body.tag(0x31);
+    if (!set.ok) return null;
+    final values = body.nested(set.slice!);
+    if (values.finished) return null;
+    final atvs = <(Uint8List, String)>[];
+    while (!values.finished) {
+      final atv = values.tag(0x30);
+      if (!atv.ok) return null;
+      final inner = values.nested(atv.slice!);
+      final oid = inner.tag(0x06);
+      if (!oid.ok || inner.finished) return null;
+      final tag = inner.bytes[inner.offset];
+      final raw = inner.tag(tag);
+      if (!raw.ok || !inner.finished) return null;
+      final text = _directoryString(tag, raw.slice!.copy());
+      if (text == null) return null;
+      atvs.add((oid.slice!.copy(), text));
+    }
+    rdns.add(atvs);
+  }
+  return rdns;
+}
+
+bool _dnWithin(
+  List<List<(Uint8List, String)>> name,
+  List<List<(Uint8List, String)>> constraint,
+) {
+  if (constraint.length > name.length) return false;
+  for (var i = 0; i < constraint.length; i++) {
+    if (!_rdnEqual(name[i], constraint[i])) return false;
+  }
+  return true;
+}
+
+bool _rdnEqual(
+  List<(Uint8List, String)> left,
+  List<(Uint8List, String)> right,
+) {
+  if (left.length != right.length) return false;
+  final pending = [...right];
+  for (final item in left) {
+    final index = pending.indexWhere(
+      (other) => _same(item.$1, other.$1) && item.$2 == other.$2,
+    );
+    if (index < 0) return false;
+    pending.removeAt(index);
+  }
+  return pending.isEmpty;
+}
+
+String? _directoryString(int tag, Uint8List bytes) {
+  String text;
+  if (tag == 0x0c || tag == 0x13 || tag == 0x16) {
+    try {
+      text = String.fromCharCodes(bytes);
+      if (tag == 0x0c && text.codeUnits.any((unit) => unit > 0x7f)) {
+        text = _utf8(bytes);
+      }
+    } catch (_) {
+      return null;
+    }
+  } else if (tag == 0x1e) {
+    if (bytes.length.isOdd) return null;
+    final units = <int>[];
+    for (var i = 0; i < bytes.length; i += 2) {
+      units.add((bytes[i] << 8) | bytes[i + 1]);
+    }
+    text = String.fromCharCodes(units);
+  } else {
+    return null;
+  }
+  final collapsed = text.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  return collapsed;
+}
+
+String _utf8(Uint8List bytes) {
+  var out = '';
+  for (var i = 0; i < bytes.length;) {
+    final lead = bytes[i];
+    if (lead < 0x80) {
+      out += String.fromCharCode(lead);
+      i++;
+    } else if (lead < 0xe0 && i + 1 < bytes.length) {
+      out += String.fromCharCode(((lead & 0x1f) << 6) | (bytes[i + 1] & 0x3f));
+      i += 2;
+    } else if (i + 2 < bytes.length) {
+      out += String.fromCharCode(
+        ((lead & 0x0f) << 12) |
+            ((bytes[i + 1] & 0x3f) << 6) |
+            (bytes[i + 2] & 0x3f),
+      );
+      i += 3;
+    } else {
+      throw const FormatException('utf8');
+    }
+  }
+  return out;
+}
 
 PqSignatureAlgorithm _mlDsa(PqX509Algorithm algorithm) => switch (algorithm) {
   PqX509Algorithm.mlDsa44 => PqSignatureAlgorithm.mlDsa44,

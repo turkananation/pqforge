@@ -16,6 +16,15 @@ release.
   3072, or 4096 bits.
 - **`PqEd25519`** — synchronous RFC 8032 sign and verify. The field is 16-bit
   limbs so the multiply fits a dart2js-safe integer.
+- Verify accepts the high-S ECDSA encoding OpenSSL and BoringSSL put in a
+  certificate. `sign` still emits low-S. Compressed SEC1 points are accepted.
+  `id-RSASSA-PSS` public keys and a PSS salt other than the hash length are
+  accepted. An omitted salt is the RFC 4055 default, 20. SHA-1 is not.
+  `issuerUniqueID` and `subjectUniqueID` parse. Name constraints cover DNS,
+  IP, email, URI, and directory names. A name form that cannot be evaluated
+  fails closed. `id-pe-tlsfeature` status_request is must-staple: the path
+  fails until the caller says an OCSP response was present. Explicit EC
+  parameters stay rejected, which is what a browser does.
 
 ## 0.4.8
 

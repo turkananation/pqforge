@@ -99,6 +99,37 @@ void main() {
       );
     });
 
+    test('PSS accepts a salt length other than the hash length', () {
+      final message = Uint8List.fromList('salt 20'.codeUnits);
+      final signature = PqRsa.signPss(
+        privateKey: privateKey,
+        message: message,
+        hash: PqRsaHash.sha256,
+        saltLength: 20,
+      );
+      expect(
+        PqRsa.verifyPss(
+          modulus: modulus,
+          exponent: exponent,
+          message: message,
+          signature: signature,
+          hash: PqRsaHash.sha256,
+          saltLength: 20,
+        ),
+        isTrue,
+      );
+      expect(
+        PqRsa.verifyPss(
+          modulus: modulus,
+          exponent: exponent,
+          message: message,
+          signature: signature,
+          hash: PqRsaHash.sha256,
+        ),
+        isFalse,
+      );
+    });
+
     test('refuses a modulus size outside 2048, 3072, and 4096', () {
       expect(
         () => PqRsa.generateKeyPair(modulusBits: 1024),

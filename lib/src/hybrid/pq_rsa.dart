@@ -129,19 +129,24 @@ class PqRsa {
     }
   }
 
-  /// RSASSA-PSS. The salt length equals the hash length. Trailer is `0xBC`.
+  /// RSASSA-PSS. [saltLength] defaults to the hash length. Trailer is `0xBC`.
   static Uint8List signPss({
     required PqRsaPrivateKey privateKey,
     required Uint8List message,
     required PqRsaHash hash,
+    int? saltLength,
   }) {
+    final salt = saltLength ?? hash.digestBytes;
+    if (salt < 0 || salt > 512) {
+      throw ArgumentError.value(salt, 'saltLength', 'expected 0..512');
+    }
     final signer = pc.PSSSigner(pc.RSAEngine(), _digest(hash), _digest(hash))
       ..init(
         true,
         pc.ParametersWithSaltConfiguration(
           pc.PrivateKeyParameter<pc.RSAPrivateKey>(_private(privateKey)),
           _seededFortuna(),
-          hash.digestBytes,
+          salt,
         ),
       );
     final signature = signer.generateSignature(message);
@@ -149,13 +154,19 @@ class PqRsa {
   }
 
   /// Returns false for a bad modulus, exponent, length, or signature.
+  ///
+  /// [saltLength] defaults to the hash length. RFC 4055's omitted salt is 20,
+  /// which a caller passes explicitly.
   static bool verifyPss({
     required Uint8List modulus,
     required Uint8List exponent,
     required Uint8List message,
     required Uint8List signature,
     required PqRsaHash hash,
+    int? saltLength,
   }) {
+    final salt = saltLength ?? hash.digestBytes;
+    if (salt < 0 || salt > 512) return false;
     final key = _public(modulus, exponent);
     if (key == null || signature.length != key.modulus!.bitLength ~/ 8) {
       return false;
@@ -167,7 +178,7 @@ class PqRsa {
           pc.ParametersWithSaltConfiguration(
             pc.PublicKeyParameter<pc.RSAPublicKey>(key),
             _seededFortuna(),
-            hash.digestBytes,
+            salt,
           ),
         );
       return signer.verifySignature(message, pc.PSSSignature(signature));

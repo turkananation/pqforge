@@ -6,8 +6,8 @@
 /// `r || s`, and it hashes the message with SHA-384. Do not pass it a key
 /// share or a shared secret.
 ///
-/// Same hardening as `PqEcdsaP256`: RFC 6979 nonces, low-S on sign, high-S
-/// rejected on verify. `verify` returns false and does not throw.
+/// Same hardening as `PqEcdsaP256`: RFC 6979 nonces, low-S on sign. Verify
+/// accepts high-S, which is what an X.509 certificate from OpenSSL carries.
 library;
 
 import 'dart:math';
@@ -106,22 +106,19 @@ class PqEcdsaP384 {
 
   /// Verifies raw `r || s` over [message] under [publicKey].
   ///
-  /// Returns false for a bad length, an off-curve point, high-S, or a bad
-  /// signature. SHA-384 is applied inside the signer.
+  /// [publicKey] may be uncompressed or compressed SEC1. High-S is accepted.
+  /// SHA-384 is applied inside the signer.
   static bool verify({
     required Uint8List publicKey,
     required Uint8List message,
     required Uint8List signature,
   }) {
-    if (publicKey.length != publicKeyBytes ||
-        signature.length != signatureBytes ||
-        publicKey[0] != 0x04) {
-      return false;
-    }
+    final encoded = normalizePoint(publicKey);
+    if (encoded == null || signature.length != signatureBytes) return false;
     try {
-      final point = _domain.curve.decodePoint(publicKey);
+      final point = _domain.curve.decodePoint(encoded);
       if (point == null || point.isInfinity) return false;
-      final verifier = _newSigner()
+      final verifier = _verifier()
         ..init(
           false,
           pc.PublicKeyParameter<pc.ECPublicKey>(pc.ECPublicKey(point, _domain)),
@@ -140,10 +137,17 @@ class PqEcdsaP384 {
     }
   }
 
+  /// Uncompressed `0x04 || X || Y`, or null when [encoded] is not a P-384 point.
+  static Uint8List? normalizePoint(Uint8List encoded) =>
+      _normalizePoint(encoded, _domain, publicKeyBytes);
+
   static pc.NormalizedECDSASigner _newSigner() => pc.NormalizedECDSASigner(
     pc.ECDSASigner(pc.SHA384Digest(), pc.HMac(pc.SHA384Digest(), 128)),
     enforceNormalized: true,
   );
+
+  static pc.ECDSASigner _verifier() =>
+      pc.ECDSASigner(pc.SHA384Digest(), pc.HMac(pc.SHA384Digest(), 128));
 
   static Uint8List _bigIntToFixed(BigInt value, int length) {
     final out = Uint8List(length);
@@ -173,5 +177,29 @@ class PqEcdsaP384 {
     }
     fortuna.seed(pc.KeyParameter(seed));
     return fortuna;
+  }
+}
+
+Uint8List? _normalizePoint(
+  Uint8List encoded,
+  pc.ECDomainParameters domain,
+  int uncompressedLength,
+) {
+  if (encoded.isEmpty) return null;
+  final tag = encoded[0];
+  final compressed = tag == 0x02 || tag == 0x03;
+  if (tag != 0x04 && !compressed) return null;
+  final expected = compressed
+      ? (uncompressedLength ~/ 2) + 1
+      : uncompressedLength;
+  if (encoded.length != expected) return null;
+  try {
+    final point = domain.curve.decodePoint(encoded);
+    if (point == null || point.isInfinity) return null;
+    final raw = point.getEncoded(false);
+    if (raw.length != uncompressedLength || raw[0] != 0x04) return null;
+    return Uint8List.fromList(raw);
+  } catch (_) {
+    return null;
   }
 }
