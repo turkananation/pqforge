@@ -23,8 +23,11 @@ release.
   against both: ECDSA P-256 and P-384, Ed25519, RSA PKCS#1 SHA-256/384/512,
   RSASSA-PSS (hash-length salt, salt 20, and an `id-RSASSA-PSS` public key),
   and ML-DSA-44/65/87. The same job parses a certificate OpenSSL minted for
-  each of those. BoringSSL rejects a PSS salt other than the hash length, so
-  the RFC 4055 salt of 20 is checked with OpenSSL only. The AEAD
+  each of those. OpenSSL is the conformance oracle. BoringSSL is a second
+  verifier, not a second certificate branch: it rejects a PSS salt other
+  than the hash length and an `id-RSASSA-PSS` SubjectPublicKeyInfo, so those
+  two chains are checked with OpenSSL only. Hash-length PSS with an
+  `rsaEncryption` public key is checked against both. The AEAD
   interop harness links that OpenSSL, not the Ubuntu package. The BoringSSL
   install also builds the `bssl` tool, which `cmake --install` requires.
   The chain checker is linked with the C++ driver because `libcrypto.a` is

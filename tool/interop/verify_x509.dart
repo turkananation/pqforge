@@ -73,11 +73,21 @@ void _verifyOurs(
   File(leaf).writeAsStringSync(_pem('CERTIFICATE', leafDer));
   stdout.writeln('ours $name');
   _run(openssl, ['verify', '-CAfile', ca, leaf]);
-  // BoringSSL only accepts a PSS salt equal to the hash length. Salt 20 is
-  // the RFC 4055 DEFAULT, and OpenSSL verifies it. BoringSSL returns
-  // INVALID_PSS_PARAMETERS.
-  if (name == 'pss-sha256-salt20') {
-    stdout.writeln('boringssl skips $name (salt must equal the hash)');
+  // OpenSSL is the conformance oracle. BoringSSL is a second verifier with
+  // a narrower X.509 profile. These two encodings are legal (RFC 4055) and
+  // OpenSSL accepts them. BoringSSL does not, and that is not a second
+  // certificate format for this library to grow a branch for.
+  //
+  // - pss-sha256-salt20: salt length 20 is the RFC 4055 DEFAULT. BoringSSL
+  //   requires the salt length to equal the hash length and returns
+  //   INVALID_PSS_PARAMETERS.
+  // - pss-sha256-spki: the SubjectPublicKeyInfo algorithm is id-RSASSA-PSS.
+  //   BoringSSL only decodes an rsaEncryption public key and returns
+  //   PUBLIC_KEY_DECODE_ERROR. The hash-length PSS cases above use
+  //   rsaEncryption and BoringSSL verifies those.
+  const boringsslRefuses = {'pss-sha256-salt20', 'pss-sha256-spki'};
+  if (boringsslRefuses.contains(name)) {
+    stdout.writeln('boringssl skips $name (RFC 4055 form BoringSSL rejects)');
     return;
   }
   _run(boring, [leaf, ca]);
