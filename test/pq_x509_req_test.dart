@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:pqforge/pqforge.dart';
 import 'package:test/test.dart';
 
 void main() {

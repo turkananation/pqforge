@@ -50,7 +50,9 @@ cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release \
 ninja -C build bssl
 cmake --install build
 mkdir -p "$prefix/boringssl/bin"
-cc -O2 -o "$prefix/boringssl/bin/boringssl_verify" \
+# libcrypto.a is C++. The C driver must be linked with the C++ runtime or
+# sized operator delete is missing.
+c++ -O2 -o "$prefix/boringssl/bin/boringssl_verify" \
   "$root/tool/interop/boringssl_verify.c" \
   -I"$prefix/boringssl/include" \
   "$prefix/boringssl/lib/libcrypto.a" \

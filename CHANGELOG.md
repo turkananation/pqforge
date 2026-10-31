@@ -22,6 +22,7 @@ release.
   `tool/interop/pins.env` and checks a P-256 chain against both. The AEAD
   interop harness links that OpenSSL, not the Ubuntu package. The BoringSSL
   install also builds the `bssl` tool, which `cmake --install` requires.
+  The chain checker is linked with the C++ driver because `libcrypto.a` is C++.
 - `cert req`, `cert issue`, and `cert sign` match `openssl req` and
   `openssl x509 -req`: `--subj`, repeatable `--addext`, and a PEM private key
   or a keygen secret. A request is a PKCS#10 `CERTIFICATE REQUEST`. Signing a
