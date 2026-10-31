@@ -16,6 +16,9 @@ release.
   3072, or 4096 bits.
 - **`PqEd25519`** — synchronous RFC 8032 sign and verify. The field is 16-bit
   limbs so the multiply fits a dart2js-safe integer.
+- CI builds pinned OpenSSL 4.1.0 and BoringSSL 0.20261020.0 from
+  `tool/interop/pins.env` and checks a P-256 chain against both. The AEAD
+  interop harness links that OpenSSL, not the Ubuntu package.
 - Verify accepts the high-S ECDSA encoding OpenSSL and BoringSSL put in a
   certificate. `sign` still emits low-S. Compressed SEC1 points are accepted.
   `id-RSASSA-PSS` public keys and a PSS salt other than the hash length are

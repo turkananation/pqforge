@@ -12,3 +12,6 @@ doc/api/
 
 # Local MCP traffic logs and scratch output.
 *.mcp.log
+
+# Pinned OpenSSL and BoringSSL builds. CI caches this path.
+tool/interop/.build/

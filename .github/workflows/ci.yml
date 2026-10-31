@@ -170,7 +170,7 @@ jobs:
         run: dart test -p chrome test/pq_kdf_aead_exports_test.dart --name "sync ChaCha20-Poly1305"
 
   openssl-interop:
-    name: OpenSSL EVP interop verification
+    name: Pinned OpenSSL 4.1.0 and BoringSSL 0.20261020.0
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -181,14 +181,32 @@ jobs:
         with:
           sdk: stable
 
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake golang ninja-build
+
+      - name: Cache pinned OpenSSL and BoringSSL
+        uses: actions/cache@v4
+        with:
+          path: tool/interop/.build
+          key: pinned-tls-${{ hashFiles('tool/interop/pins.env') }}-${{ runner.os }}
+
+      - name: Build the pinned releases
+        run: sh tool/interop/build_pinned.sh
+
       - name: Install dependencies
         run: |
           dart pub get
           dart pub get --directory tool/openssl_interop
 
-      # Byte-compatibility of both AEAD suites on both pure-Dart engines
-      # against the system libcrypto (R6 — dev-tool policy mirroring
-      # pqcrypto's tool/openssl_interop; no FFI ships in the package).
-      - name: Verify AEAD interop against system OpenSSL
+      # Certificate path: pqforge mint verified by both libraries, and an
+      # OpenSSL-minted leaf parsed by pqforge. Versions must match pins.env.
+      - name: Verify X.509 against the pinned libraries
+        run: REQUIRE_PINNED_TLS=1 dart run tool/interop/verify_x509.dart
+
+      # AEAD byte-compatibility against the same OpenSSL, not the Ubuntu package.
+      - name: Verify AEAD interop against pinned OpenSSL
         working-directory: tool/openssl_interop
-        run: REQUIRE_OPENSSL=1 dart run bin/verify_interop.dart
+        run: >-
+          LIBCRYPTO_PATH="$GITHUB_WORKSPACE/tool/interop/.build/openssl/lib/libcrypto.so"
+          REQUIRE_OPENSSL=1
+          dart run bin/verify_interop.dart
