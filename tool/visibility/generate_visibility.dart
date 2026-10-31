@@ -119,6 +119,7 @@ String _llms(JsonMap manifest) {
     ..writeln('- Package: ${project['pub_dev']}')
     ..writeln('- API docs: ${project['api_docs']}')
     ..writeln('- Wiki: ${project['wiki']}')
+    ..writeln('- Lab: ${project['lab_name']} (${project['lab_url']})')
     ..writeln('- Built on pqcrypto: ${pqcrypto['pqcrypto_pub_dev']}')
     ..writeln()
     ..writeln('## Built On pqcrypto')
@@ -196,6 +197,7 @@ String _llmsFull(JsonMap manifest) {
     ..writeln('Repository: ${project['repository']}')
     ..writeln('Package: ${project['pub_dev']}')
     ..writeln('API docs: ${project['api_docs']}')
+    ..writeln('Lab: ${project['lab_name']} (${project['lab_url']})')
     ..writeln('Version: $_packageVersion')
     ..writeln()
     ..writeln('## Identity')
@@ -312,8 +314,14 @@ String _identityJson(JsonMap manifest) {
     'softwareVersion': _packageVersion,
     'applicationCategory': 'Cryptography composition library',
     'keywords': _strings(manifest['keywords']),
-    'maintainer': {'@type': 'Organization', 'name': project['maintainer']},
+    'maintainer': {'@type': 'Person', 'name': project['maintainer']},
+    'publisher': {
+      '@type': 'Organization',
+      'name': project['lab_name'],
+      'url': project['lab_url'],
+    },
     'sameAs': [
+      project['lab_url'],
       project['repository'],
       project['pub_dev'],
       project['api_docs'],
@@ -547,6 +555,7 @@ String _siteIndex(JsonMap manifest) {
       <div class="topbar-links">
         <a class="ext" href="${_html(project['pub_dev'] as String)}" rel="noopener">${_icon('pub')}<span>pub.dev</span></a>
         <a class="ext" href="${_html(project['wiki'] as String)}" rel="noopener">${_icon('book')}<span>Wiki</span></a>
+        <a class="ext" href="${_html(project['lab_url'] as String)}" rel="noopener">${_icon('blocks')}<span>${_html(project['lab_name'] as String)}</span></a>
         <a class="ext" href="${_html(project['repository'] as String)}" rel="noopener">${_icon('github')}<span>GitHub</span></a>
       </div>
     </div>
@@ -555,7 +564,7 @@ String _siteIndex(JsonMap manifest) {
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Post-quantum application recipes for Dart</p>
+        <p class="eyebrow">From <a href="${_html(project['lab_url'] as String)}" rel="noopener">${_html(project['lab_name'] as String)}</a>, the lab behind pqforge</p>
         <h1>Encrypt files, folders, text, media, webhooks, tokens, and server sessions.</h1>
         <p class="lede">${_html(project['summary'] as String)}</p>
         <div class="hero-actions">
@@ -660,6 +669,7 @@ dart run pqforge sign --kind media --signer-secret keys/vault.sign.secret.wrappe
     <a href="${_html(project['repository'] as String)}" rel="noopener">${_icon('github')}<span>GitHub</span></a>
     <a href="${_html(project['pub_dev'] as String)}" rel="noopener">${_icon('pub')}<span>pub.dev</span></a>
     <a href="${_html(project['wiki'] as String)}" rel="noopener">${_icon('book')}<span>Wiki</span></a>
+    <a href="${_html(project['lab_url'] as String)}" rel="noopener">${_icon('blocks')}<span>${_html(project['lab_name'] as String)}</span></a>
     <a href="${_html(pqcrypto['pqcrypto_pub_dev'] as String)}" rel="noopener">${_icon('blocks')}<span>pqcrypto</span></a>
   </footer>
 </body>

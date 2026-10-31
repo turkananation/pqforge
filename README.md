@@ -8,6 +8,7 @@ workflows.
 [![pub package](https://img.shields.io/badge/pub.dev-pqforge-0175c2?style=for-the-badge&logo=dart&logoColor=white)](https://pub.dev/packages/pqforge)
 [![API docs](https://img.shields.io/badge/API-reference-0ea5e9?style=for-the-badge&logo=dart&logoColor=white)](https://pub.dev/documentation/pqforge/latest/)
 [![GitHub Pages](https://img.shields.io/badge/Pages-use_cases_site-52e0d5?style=for-the-badge&logo=githubpages&logoColor=0b1220)](https://turkananation.github.io/pqforge/)
+[![Yardenah PQ](https://img.shields.io/badge/Lab-Yardenah_PQ-b6f25c?style=for-the-badge)](https://yardenah.com)
 [![Wiki](https://img.shields.io/badge/Wiki-recipes_%26_CLI-f5c35b?style=for-the-badge&logo=wikipedia&logoColor=0b1220)](https://github.com/turkananation/pqforge/wiki)
 
 ## Cryptographic Surface

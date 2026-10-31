@@ -40,10 +40,16 @@
     "harvest-now-decrypt-later defense"
   ],
   "maintainer": {
-    "@type": "Organization",
+    "@type": "Person",
     "name": "Turkana Nation"
   },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Yardenah PQ",
+    "url": "https://yardenah.com"
+  },
   "sameAs": [
+    "https://yardenah.com",
     "https://github.com/turkananation/pqforge",
     "https://pub.dev/packages/pqforge",
     "https://pub.dev/documentation/pqforge/latest/",

@@ -9,7 +9,7 @@ pqcrypto is the primitives layer: FIPS 203 ML-KEM, FIPS 204 ML-DSA, FIPS 205 SLH
 
 ## Does pqforge compose SLH-DSA?
 
-Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.1 (current on pub.dev) ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow.
+Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow.
 
 ## Is pqforge post-quantum / quantum-safe?
 

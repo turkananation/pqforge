@@ -1,5 +1,7 @@
 # pqforge
 
+[Yardenah PQ](https://yardenah.com) is the lab behind pqforge and pqcrypto.
+
 `pqforge` is a pure-Dart, web-safe package for **post-quantum application
 workflows**: encrypted files, folders, text, media, email payloads, records,
 signed documents, signed webhooks, signed tokens, software artifacts,

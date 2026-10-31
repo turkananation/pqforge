@@ -45,7 +45,9 @@ if [ "$got" != "$BORINGSSL_COMMIT" ]; then
 fi
 cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$prefix/boringssl"
-ninja -C build crypto ssl
+# crypto and ssl alone are not enough. cmake --install also installs the
+# bssl tool, and that target is not built unless it is named.
+ninja -C build bssl
 cmake --install build
 mkdir -p "$prefix/boringssl/bin"
 cc -O2 -o "$prefix/boringssl/bin/boringssl_verify" \

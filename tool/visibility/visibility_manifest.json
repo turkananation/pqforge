@@ -18,7 +18,9 @@
     "wiki": "https://github.com/turkananation/pqforge/wiki",
     "issues": "https://github.com/turkananation/pqforge/issues",
     "security_advisory": "https://github.com/turkananation/pqforge/security/advisories/new",
-    "contact_email": "turkananation@gmail.com"
+    "contact_email": "turkananation@gmail.com",
+    "lab_name": "Yardenah PQ",
+    "lab_url": "https://yardenah.com"
   },
   "pqcrypto_relationship": {
     "summary": "pqforge is the application layer built on top of pqcrypto. pqcrypto provides the post-quantum primitives; pqforge provides everything you need to ship a feature with them.",
@@ -292,7 +294,7 @@
     },
     {
       "question": "Does pqforge compose SLH-DSA?",
-      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.1 (current on pub.dev) ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
+      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
     },
     {
       "question": "Is pqforge post-quantum / quantum-safe?",

@@ -16,9 +16,12 @@ release.
   3072, or 4096 bits.
 - **`PqEd25519`** — synchronous RFC 8032 sign and verify. The field is 16-bit
   limbs so the multiply fits a dart2js-safe integer.
+- Depend on `pqcrypto` 0.4.4. That release publishes
+  `SlhDsa.generateKeyPairSeeded`. No wire-format change.
 - CI builds pinned OpenSSL 4.1.0 and BoringSSL 0.20261020.0 from
   `tool/interop/pins.env` and checks a P-256 chain against both. The AEAD
-  interop harness links that OpenSSL, not the Ubuntu package.
+  interop harness links that OpenSSL, not the Ubuntu package. The BoringSSL
+  install also builds the `bssl` tool, which `cmake --install` requires.
 - `cert req`, `cert issue`, and `cert sign` match `openssl req` and
   `openssl x509 -req`: `--subj`, repeatable `--addext`, and a PEM private key
   or a keygen secret. A request is a PKCS#10 `CERTIFICATE REQUEST`. Signing a

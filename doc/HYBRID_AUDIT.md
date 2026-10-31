@@ -12,7 +12,7 @@ wiki page.
 
 ## Evidence Summary
 
-`pqcrypto` 0.4.1 (current on pub.dev) is pure post-quantum cryptography: ML-KEM (FIPS 203), ML-DSA
+`pqcrypto` 0.4.4 is pure post-quantum cryptography: ML-KEM (FIPS 203), ML-DSA
 (FIPS 204), SLH-DSA (FIPS 205, all 12 parameter sets), SHA-2, SHA-3/SHAKE
 building blocks, and zero runtime dependencies. It does not expose classical
 KEX/signatures, AES, ChaCha20-Poly1305, or RC4.
@@ -80,7 +80,7 @@ ECDH over P-256/P-384 is a separate type, `PqNistEcdh`. It does not overload
 
 ### SLH-DSA
 
-`pqcrypto` 0.4.1 (current on pub.dev) ships all 12 FIPS 205 parameter sets. pqforge composes them
+`pqcrypto` 0.4.4 ships all 12 FIPS 205 parameter sets. pqforge composes them
 as a sibling signature family of ML-DSA:
 
 ```dart
