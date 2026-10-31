@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import '../algorithms/pq_algorithms.dart';
@@ -309,6 +310,44 @@ abstract final class PqX509 {
       roots.add(parsed.certificate!);
     }
     return _path(certs, roots, now, ocspResponsePresent, acceptedCriticalOids);
+  }
+
+  /// OpenSSL's `CERTIFICATE` PEM. The body is base64 in lines of 64.
+  static String toPem(Uint8List der) {
+    if (der.isEmpty) throw ArgumentError.value(der, 'der', 'empty');
+    final encoded = base64.encode(der);
+    final buffer = StringBuffer('-----BEGIN CERTIFICATE-----\n');
+    for (var i = 0; i < encoded.length; i += 64) {
+      final end = i + 64 < encoded.length ? i + 64 : encoded.length;
+      buffer.writeln(encoded.substring(i, end));
+    }
+    buffer.write('-----END CERTIFICATE-----\n');
+    return buffer.toString();
+  }
+
+  /// Every `CERTIFICATE` or `X509 CERTIFICATE` block in [pem], in order.
+  ///
+  /// A file may hold a leaf and then its intermediates, which is the order
+  /// OpenSSL writes and the order [validate] expects.
+  static List<Uint8List> fromPem(String pem) {
+    final blocks = RegExp(
+      '-----BEGIN ([A-Z0-9 ]+)-----\\r?\\n([A-Za-z0-9+/=\\r\\n]+)-----END \\1-----',
+    ).allMatches(pem);
+    if (blocks.isEmpty) {
+      throw const FormatException('no PEM certificate');
+    }
+    final out = <Uint8List>[];
+    for (final block in blocks) {
+      final label = block.group(1)!;
+      if (label != 'CERTIFICATE' && label != 'X509 CERTIFICATE') {
+        throw FormatException('unexpected PEM label $label');
+      }
+      final body = block.group(2)!.replaceAll(RegExp(r'\s+'), '');
+      final der = base64.decode(body);
+      if (der.isEmpty) throw const FormatException('empty PEM certificate');
+      out.add(Uint8List.fromList(der));
+    }
+    return out;
   }
 
   /// Self-signed v3 TLS leaf. [sign] is called once, on the exact TBS bytes

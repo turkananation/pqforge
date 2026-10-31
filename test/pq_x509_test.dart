@@ -429,6 +429,30 @@ void main() {
       expect(PqX509.checkSignature(parsed, parsed.publicKey), isTrue);
     });
 
+    test('PEM round-trips and rejects a private key block', () {
+      final keys = PqEcdsaP256.generateKeyPair();
+      final der = _leaf(
+        publicKey: PqX509EcdsaP256Key(keys.publicKey),
+        algorithm: PqX509Algorithm.ecdsaP256Sha256,
+        sign: (tbs) => PqX509.encodeEcdsaSignature(
+          PqEcdsaP256.sign(privateKey: keys.secretKey, message: tbs),
+        ),
+        notBefore: notBefore,
+        notAfter: notAfter,
+      );
+      final pem = PqX509.toPem(der);
+      expect(pem, startsWith('-----BEGIN CERTIFICATE-----\n'));
+      expect(pem, endsWith('-----END CERTIFICATE-----\n'));
+      expect(PqX509.fromPem(pem).single, orderedEquals(der));
+      expect(PqX509.fromPem('$pem$pem'), hasLength(2));
+      expect(
+        () => PqX509.fromPem(
+          '-----BEGIN RSA PRIVATE KEY-----\nYQ==\n-----END RSA PRIVATE KEY-----\n',
+        ),
+        throwsFormatException,
+      );
+    });
+
     test('hostile DER stops before a signature check', () {
       expect(PqX509.parse(Uint8List(0)).failure, PqX509Failure.truncated);
       expect(

@@ -11,6 +11,7 @@ import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
 import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
+import 'src/cert_commands.dart';
 import 'src/console.dart';
 import 'src/hybrid_commands.dart';
 import 'src/lifecycle_commands.dart';
@@ -41,6 +42,7 @@ const Map<String, List<String>> _groups = {
     'ecdsa-sign',
     'ecdsa-verify',
   ],
+  'Certificates': ['cert'],
   'Maintenance': ['version', 'uninstall'],
 };
 
@@ -121,6 +123,7 @@ final class PqForgeRunner extends CommandRunner<void> {
     addCommand(HybridVerifyCommand());
     addCommand(EcdsaSignCommand());
     addCommand(EcdsaVerifyCommand());
+    addCommand(CertCommand());
     addCommand(VersionCommand());
     addCommand(UninstallCommand());
   }

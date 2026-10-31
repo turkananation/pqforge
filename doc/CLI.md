@@ -489,6 +489,28 @@ dart run pqforge ecdsa-verify \
 `verify`, `hybrid-verify`, and `ecdsa-verify` exit `0` on a valid signature and
 `1` on a failed one, so they slot directly into shell `&&` chains and CI gates.
 
+## Certificates
+
+`cert issue` writes a self-signed X.509 certificate. The default file is PEM,
+the same `-----BEGIN CERTIFICATE-----` block `openssl x509` reads. `--der`
+writes the raw certificate. The secret is an ECDSA-P256, Ed25519, or ML-DSA
+key from `keygen`. ML-DSA also needs `--public`. When `--dns` is omitted, the
+common name is the DNS subject alternative name.
+
+```bash
+dart run pqforge cert issue \
+  --secret keys/vault.ecdsa-p256.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --cn localhost \
+  --out localhost.pem
+
+dart run pqforge cert inspect --in localhost.pem
+dart run pqforge cert verify --in localhost.pem --anchor localhost.pem
+openssl x509 -in localhost.pem -noout -text
+```
+
+`cert verify` exits `0` when the chain is trusted and `1` when it is not.
+
 ## Threshold roots (pqthreshold companion)
 
 **pqforge** covers **single-party** hybrid keys on each device (ML-KEM, ML-DSA,
