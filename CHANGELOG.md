@@ -19,12 +19,15 @@ release.
 - Depend on `pqcrypto` 0.4.4. That release publishes
   `SlhDsa.generateKeyPairSeeded`. No wire-format change.
 - CI builds pinned OpenSSL 4.1.0 and BoringSSL 0.20261020.0 from
-  `tool/interop/pins.env` and checks a P-256 chain against both. The AEAD
-  interop harness links that OpenSSL, not the Ubuntu package. The BoringSSL
-  install also builds the `bssl` tool, which `cmake --install` requires.
-  The chain checker is linked with the C++ driver because `libcrypto.a` is C++.
-  `install_ssldirs` puts `openssl.cnf` in `OPENSSLDIR`; `req` will not start
-  without it.
+  `tool/interop/pins.env` and checks a chain for every signature algorithm
+  against both: ECDSA P-256 and P-384, Ed25519, RSA PKCS#1 SHA-256/384/512,
+  RSASSA-PSS (hash-length salt, salt 20, and an `id-RSASSA-PSS` public key),
+  and ML-DSA-44/65/87. The same job parses a certificate OpenSSL minted for
+  each of those. The AEAD interop harness links that OpenSSL, not the Ubuntu
+  package. The BoringSSL install also builds the `bssl` tool, which
+  `cmake --install` requires. The chain checker is linked with the C++ driver
+  because `libcrypto.a` is C++. `install_ssldirs` puts `openssl.cnf` in
+  `OPENSSLDIR`; `req` will not start without it.
 - `cert req`, `cert issue`, and `cert sign` match `openssl req` and
   `openssl x509 -req`: `--subj`, repeatable `--addext`, and a PEM private key
   or a keygen secret. A request is a PKCS#10 `CERTIFICATE REQUEST`. Signing a

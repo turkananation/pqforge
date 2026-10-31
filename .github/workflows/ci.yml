@@ -202,8 +202,9 @@ jobs:
           dart pub get
           dart pub get --directory tool/openssl_interop
 
-      # Certificate path: pqforge mint verified by both libraries, and an
-      # OpenSSL-minted leaf parsed by pqforge. Versions must match pins.env.
+      # Certificate path: every signature algorithm, both directions.
+      # pqforge-minted chains are verified by both libraries. OpenSSL-minted
+      # certificates are parsed and checked here. Versions must match pins.env.
       - name: Verify X.509 against the pinned libraries
         run: REQUIRE_PINNED_TLS=1 dart run tool/interop/verify_x509.dart
 
