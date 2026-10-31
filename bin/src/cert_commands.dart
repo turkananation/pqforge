@@ -9,6 +9,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
 import 'package:pqforge/pqforge.dart';
 
@@ -18,6 +19,8 @@ import 'support.dart';
 final class CertCommand extends Command<void> {
   CertCommand() {
     addSubcommand(CertIssueCommand());
+    addSubcommand(CertRequestCommand());
+    addSubcommand(CertSignCommand());
     addSubcommand(CertInspectCommand());
     addSubcommand(CertVerifyCommand());
   }
@@ -30,7 +33,8 @@ final class CertCommand extends Command<void> {
       'Issue, inspect, or verify an X.509 certificate (PEM by default).';
 
   @override
-  String get invocation => 'pqforge cert <issue|inspect|verify> [arguments]';
+  String get invocation =>
+      'pqforge cert <issue|req|sign|inspect|verify> [arguments]';
 }
 
 final class CertIssueCommand extends Command<void> {
@@ -38,29 +42,47 @@ final class CertIssueCommand extends Command<void> {
     argParser
       ..addOption(
         'secret',
-        mandatory: true,
         valueHelp: 'file',
         help:
-            'Signing secret from keygen: ecdsa-p256, ed25519, or an ML-DSA '
-            'sign secret. Wrapped keys need a passphrase.',
+            'keygen secret: ecdsa-p256, ed25519, or ML-DSA. Wrapped keys need '
+            'a passphrase. Mutually exclusive with --key.',
+      )
+      ..addOption(
+        'key',
+        valueHelp: 'file',
+        help:
+            'OpenSSL PEM private key (PRIVATE KEY, EC PRIVATE KEY, or '
+            'RSA PRIVATE KEY), the file openssl req -keyout writes.',
       )
       ..addOption(
         'public',
         valueHelp: 'file',
         help:
-            'Matching public key. Required for ML-DSA. Derived for '
-            'ecdsa-p256 and ed25519 when omitted.',
+            'Matching public key. Required for an ML-DSA --secret. Derived '
+            'for ecdsa-p256, ed25519, and --key.',
       )
       ..addOption(
         'cn',
-        mandatory: true,
         valueHelp: 'name',
-        help: 'Subject common name. Also the DNS SAN when --dns is omitted.',
+        help: 'Subject common name. Shorthand for --subj /CN=name.',
+      )
+      ..addOption(
+        'subj',
+        valueHelp: '/CN=...',
+        help:
+            'OpenSSL -subj. Example: /C=KE/ST=Nairobi/O=pqforge/CN=localhost.',
       )
       ..addMultiOption(
         'dns',
         valueHelp: 'name',
         help: 'DNS subject alternative name. Repeat for more than one.',
+      )
+      ..addMultiOption(
+        'addext',
+        valueHelp: 'name=value',
+        help:
+            'OpenSSL -addext. Repeatable. subjectAltName, keyUsage, '
+            'extendedKeyUsage, basicConstraints.',
       )
       ..addOption(
         'days',
@@ -92,61 +114,218 @@ final class CertIssueCommand extends Command<void> {
 
   @override
   String get usageFooter => usageExamples([
-    'pqforge cert issue --secret keys/ci.ecdsa-p256.secret.wrapped.json \\',
-    '  --passphrase-env PQFORGE_PASSPHRASE --cn localhost --out localhost.pem',
+    'pqforge cert issue --key key.pem --subj /C=KE/O=pqforge/CN=localhost \\',
+    '  --addext subjectAltName=DNS:localhost --out localhost.pem',
   ]);
 
   @override
   Future<void> run() async {
     final results = argResults!;
-    final passphrase = await passphraseFrom(results);
-    final secret = await readKey(
-      results['secret'] as String,
-      passphrase: passphrase,
-    );
-    final publicPath = results['public'] as String?;
-    final public = publicPath == null ? null : await readKey(publicPath);
-    final cn = results['cn'] as String;
+    final cn = results['cn'] as String?;
+    final subj = results['subj'] as String?;
     final dns = results['dns'] as List<String>;
+    final addext = PqX509Addext.parse(results['addext'] as List<String>);
+    if ((cn == null) == (subj == null)) {
+      throw const PqForgeException('Provide one of --cn or --subj.');
+    }
+    if (dns.isNotEmpty && addext.hasSan) {
+      throw const PqForgeException('Use --dns or --addext subjectAltName.');
+    }
     final days = int.tryParse(results['days'] as String);
     if (days == null || days < 1 || days > 8250) {
       throw const PqForgeException('--days must be from 1 to 8250.');
     }
-    final ca = results['ca'] as bool;
-    final built = _identity(secret, public);
+    final ca = addext.hasBasic ? addext.ca : results['ca'] as bool;
+    final built = await _signer(results);
+    final subject = subj == null
+        ? PqX509Name.commonName(cn!)
+        : PqX509Name.subject(subj);
+    final names = addext.hasSan
+        ? addext.names
+        : [
+            for (final name in (dns.isEmpty ? [?cn, ?_cnOf(subj)] : dns))
+              if (name.isNotEmpty) PqX509DnsName(name),
+          ];
     final notBefore = DateTime.now().toUtc();
     final der = PqX509.mint(
-      issuer: PqX509Name.commonName(cn),
-      subject: PqX509Name.commonName(cn),
+      issuer: subject,
+      subject: subject,
       publicKey: built.publicKey,
       algorithm: built.algorithm,
       sign: built.sign,
       notBefore: notBefore,
       notAfter: notBefore.add(Duration(days: days)),
       serial: _serial(),
-      subjectAltNames: ca
-          ? const []
-          : [
-              for (final name in (dns.isEmpty ? [cn] : dns))
-                PqX509DnsName(name),
-            ],
+      subjectAltNames: ca ? const [] : names,
       ca: ca,
-      digitalSignature: !ca,
-      keyCertSign: ca,
-      includeEku: !ca,
+      pathLen: addext.pathLen,
+      digitalSignature: !ca && !addext.hasKeyUsage,
+      keyCertSign: ca && !addext.hasKeyUsage,
+      includeEku:
+          !ca &&
+          (addext.hasEku ? addext.serverAuth || addext.clientAuth : true),
+      serverAuth: addext.hasEku ? addext.serverAuth : true,
+      clientAuth: addext.clientAuth,
+      keyUsageMask: addext.hasKeyUsage ? addext.keyUsage : null,
+      basicCritical: addext.hasBasic ? addext.basicCritical : true,
+      keyUsageCritical: addext.hasKeyUsage ? addext.keyUsageCritical : true,
+      ekuCritical: addext.ekuCritical,
+      sanCritical: addext.sanCritical,
     );
-    final out = File(results['out'] as String);
-    await out.parent.create(recursive: true);
-    if (results['der'] as bool) {
-      await out.writeAsBytes(der);
-    } else {
-      await out.writeAsString(PqX509.toPem(der));
-    }
+    await _write(results, der, 'CERTIFICATE');
     if (!quietFrom(results)) {
       console.detail('algorithm', _algorithmName(built.algorithm), pad: 12);
-      console.detail('subject', 'CN=$cn', pad: 12);
-      console.created(out.path);
+      console.detail('subject', subj ?? 'CN=$cn', pad: 12);
+      console.created(results['out'] as String);
     }
+  }
+}
+
+final class CertRequestCommand extends Command<void> {
+  CertRequestCommand() {
+    argParser
+      ..addOption('secret', valueHelp: 'file', help: 'keygen secret.')
+      ..addOption('key', valueHelp: 'file', help: 'OpenSSL PEM private key.')
+      ..addOption('public', valueHelp: 'file', help: 'ML-DSA public key.')
+      ..addOption('cn', valueHelp: 'name', help: 'Shorthand for --subj /CN=.')
+      ..addOption('subj', valueHelp: '/CN=...', help: 'OpenSSL -subj.')
+      ..addMultiOption('dns', valueHelp: 'name', help: 'DNS SAN.')
+      ..addMultiOption(
+        'addext',
+        valueHelp: 'name=value',
+        help: 'OpenSSL -addext. Repeatable.',
+      )
+      ..addOption('out', mandatory: true, valueHelp: 'file', help: 'CSR PEM.')
+      ..addFlag('der', negatable: false, help: 'Write DER.');
+    addPassphraseOptions(argParser);
+    addQuietOption(argParser);
+  }
+
+  @override
+  String get name => 'req';
+
+  @override
+  String get description =>
+      'Write a PKCS#10 request. openssl req -verify reads it.';
+
+  @override
+  String get usageFooter => usageExamples([
+    'pqforge cert req --key key.pem --subj /CN=localhost \\',
+    '  --addext subjectAltName=DNS:localhost --out localhost.csr',
+  ]);
+
+  @override
+  Future<void> run() async {
+    final results = argResults!;
+    final cn = results['cn'] as String?;
+    final subj = results['subj'] as String?;
+    final dns = results['dns'] as List<String>;
+    final addext = PqX509Addext.parse(results['addext'] as List<String>);
+    if ((cn == null) == (subj == null)) {
+      throw const PqForgeException('Provide one of --cn or --subj.');
+    }
+    final built = await _signer(results);
+    final subject = subj == null
+        ? PqX509Name.commonName(cn!)
+        : PqX509Name.subject(subj);
+    final names = addext.hasSan
+        ? addext.names
+        : [for (final name in dns) PqX509DnsName(name)];
+    final der = PqX509.mintRequest(
+      subject: subject,
+      publicKey: built.publicKey,
+      algorithm: built.algorithm,
+      sign: built.sign,
+      subjectAltNames: names,
+      ca: addext.ca,
+      pathLen: addext.pathLen,
+      includeBasic: addext.hasBasic,
+      keyUsageMask: addext.keyUsage,
+      includeEku: addext.hasEku,
+      clientAuth: addext.clientAuth,
+    );
+    await _write(results, der, 'CERTIFICATE REQUEST');
+    if (!quietFrom(results)) console.created(results['out'] as String);
+  }
+}
+
+final class CertSignCommand extends Command<void> {
+  CertSignCommand() {
+    argParser
+      ..addOption('in', mandatory: true, valueHelp: 'file', help: 'CSR PEM.')
+      ..addOption(
+        'ca',
+        mandatory: true,
+        valueHelp: 'file',
+        help: 'CA certificate PEM or DER.',
+      )
+      ..addOption('ca-secret', valueHelp: 'file', help: 'CA keygen secret.')
+      ..addOption(
+        'ca-key',
+        valueHelp: 'file',
+        help: 'CA OpenSSL PEM private key.',
+      )
+      ..addOption('ca-public', valueHelp: 'file', help: 'CA ML-DSA public key.')
+      ..addOption('days', defaultsTo: '365', valueHelp: 'n')
+      ..addOption('out', mandatory: true, valueHelp: 'file')
+      ..addFlag('der', negatable: false, help: 'Write DER.');
+    addPassphraseOptions(argParser);
+    addQuietOption(argParser);
+  }
+
+  @override
+  String get name => 'sign';
+
+  @override
+  String get description =>
+      'Sign a request with a CA. openssl x509 -req -copy_extensions copy.';
+
+  @override
+  String get usageFooter => usageExamples([
+    'pqforge cert sign --in localhost.csr --ca ca.pem \\',
+    '  --ca-key ca.key --days 365 --out localhost.pem',
+  ]);
+
+  @override
+  Future<void> run() async {
+    final results = argResults!;
+    final days = int.tryParse(results['days'] as String);
+    if (days == null || days < 1 || days > 8250) {
+      throw const PqForgeException('--days must be from 1 to 8250.');
+    }
+    final caDer = _readCertificates(
+      await File(results['ca'] as String).readAsBytes(),
+    );
+    if (caDer.length != 1) {
+      throw const PqForgeException('The CA file must hold one certificate.');
+    }
+    final ca = PqX509.parse(caDer.single).certificate;
+    if (ca == null || ca.ca != true) {
+      throw const PqForgeException('The CA certificate is not a CA.');
+    }
+    final built = await _signer(
+      results,
+      secretName: 'ca-secret',
+      keyName: 'ca-key',
+      publicName: 'ca-public',
+    );
+    final request = await File(results['in'] as String).readAsBytes();
+    final csr = String.fromCharCodes(request).contains('-----BEGIN ')
+        ? PqX509.pemBlocks(String.fromCharCodes(request)).single.der
+        : request;
+    final notBefore = DateTime.now().toUtc();
+    final der = PqX509.signRequest(
+      request: csr,
+      issuer: PqX509Name(ca.subjectDer),
+      algorithm: ca.algorithm,
+      sign: built.sign,
+      notBefore: notBefore,
+      notAfter: notBefore.add(Duration(days: days)),
+      serial: _serial(),
+      pssSaltLength: ca.pssSaltLength,
+    );
+    await _write(results, der, 'CERTIFICATE');
+    if (!quietFrom(results)) console.created(results['out'] as String);
   }
 }
 
@@ -173,7 +352,33 @@ final class CertInspectCommand extends Command<void> {
   @override
   Future<void> run() async {
     final input = argResults!['in'] as String;
-    final certs = _readCertificates(await File(input).readAsBytes());
+    final bytes = await File(input).readAsBytes();
+    final text = String.fromCharCodes(bytes);
+    if (text.contains('CERTIFICATE REQUEST')) {
+      for (final block in PqX509.pemBlocks(text)) {
+        if (block.label != 'CERTIFICATE REQUEST' &&
+            block.label != 'NEW CERTIFICATE REQUEST') {
+          continue;
+        }
+        final parsed = PqX509.parseRequest(block.der);
+        final request = parsed.request;
+        if (request == null) {
+          throw PqForgeException(
+            'Request did not parse (${parsed.failure!.name}).',
+          );
+        }
+        console.detail('kind', 'request', pad: 12);
+        console.detail('algorithm', _algorithmName(request.algorithm), pad: 12);
+        console.detail('subject', _commonName(request.subject.der), pad: 12);
+        final dns = [
+          for (final name in request.names)
+            if (name is PqX509DnsName) name.ascii,
+        ];
+        if (dns.isNotEmpty) console.detail('san', dns.join(', '), pad: 12);
+      }
+      return;
+    }
+    final certs = _readCertificates(bytes);
     for (var i = 0; i < certs.length; i++) {
       final parsed = PqX509.parse(certs[i]);
       final certificate = parsed.certificate;
@@ -261,6 +466,44 @@ final class CertVerifyCommand extends Command<void> {
     }
     if (!quietFrom(results)) console.info('OK');
   }
+}
+
+Future<_Built> _signer(
+  ArgResults results, {
+  String secretName = 'secret',
+  String keyName = 'key',
+  String publicName = 'public',
+}) async {
+  final secretPath = results[secretName] as String?;
+  final keyPath = results[keyName] as String?;
+  if ((secretPath == null) == (keyPath == null)) {
+    throw PqForgeException('Provide one of --$secretName or --$keyName.');
+  }
+  if (keyPath != null) {
+    final pem = PqX509.readPrivateKey(await File(keyPath).readAsString());
+    return _Built(pem.algorithm, pem.publicKey, pem.sign);
+  }
+  final passphrase = await passphraseFrom(results);
+  final secret = await readKey(secretPath!, passphrase: passphrase);
+  final publicPath = results[publicName] as String?;
+  final public = publicPath == null ? null : await readKey(publicPath);
+  return _identity(secret, public);
+}
+
+Future<void> _write(ArgResults results, Uint8List der, String label) async {
+  final out = File(results['out'] as String);
+  await out.parent.create(recursive: true);
+  if (results['der'] as bool) {
+    await out.writeAsBytes(der);
+  } else {
+    await out.writeAsString(PqX509.toPem(der, label: label));
+  }
+}
+
+String? _cnOf(String? subj) {
+  if (subj == null) return null;
+  final match = RegExp(r'(?:^|/)CN=([^/+]+)').firstMatch(subj);
+  return match?.group(1);
 }
 
 final class _Built {

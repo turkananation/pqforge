@@ -29,7 +29,9 @@ workflows.
 domain-separated application workflows: encrypted files, folders, text, media,
 email payloads, records, signed documents, signed webhooks, signed tokens,
 release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody,
-and a reusable CLI. SLH-DSA (FIPS 205, all 12 parameter sets) is composed into
+and a reusable CLI. `cert req`, `cert issue`, and `cert sign` produce the PEM
+certificate and PKCS#10 request that `openssl req` and `openssl x509 -req`
+read. SLH-DSA (FIPS 205, all 12 parameter sets) is composed into
 `keygen`, key custody, and detached `sign`/`verify`. Envelope headers, streaming
 signatures, and `hybrid-sign` remain **ML-DSA-only**.
 

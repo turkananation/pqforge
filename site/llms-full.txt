@@ -9,7 +9,7 @@ Version: 0.4.9
 
 ## Identity
 
-pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.
+pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.
 
 ## Relationship To pqcrypto
 
@@ -143,7 +143,7 @@ Forbidden claims:
 
 ### Hybrid And Classical Signatures
 
-- Surface: CLI: hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify
+- Surface: CLI: hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify, cert req, cert issue, cert sign
 - Apps: release artifacts, firmware, long-lived approvals, dual-trust signing
 - APIs: PqForgeHybridSigner, PqEcdsaP256, PqEcdsaP384, PqEd25519, PqRsa, PqX509, dualSign, dualVerify
 - Caveat: require-both vs accept-either is the app's policy; --digest signs the streamed SHA-256 for gigabyte inputs.

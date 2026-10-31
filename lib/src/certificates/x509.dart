@@ -9,6 +9,8 @@ import '../hybrid/pq_rsa.dart';
 import '../primitives/pq_primitives.dart';
 import 'x509_der.dart';
 
+part 'x509_req.dart';
+
 /// A parsed certificate, or the first reason parsing stopped.
 final class PqX509Parsed {
   const PqX509Parsed.ok(this.certificate) : failure = null;
@@ -125,6 +127,11 @@ final class PqX509Name {
     final set = DerWriter()..tlv(0x31, atv.take());
     return PqX509Name((DerWriter()..sequence(set.take())).take());
   }
+
+  /// OpenSSL `req -subj`. The string starts with `/` and uses the short names
+  /// `C`, `ST`, `L`, `O`, `OU`, `CN`, and `emailAddress`. `+` joins a
+  /// multivalued RDN. A backslash escapes `/`, `+`, and `=`.
+  factory PqX509Name.subject(String subj) => _subjectFromOpenssl(subj);
 
   final Uint8List der;
 }
@@ -312,43 +319,100 @@ abstract final class PqX509 {
     return _path(certs, roots, now, ocspResponsePresent, acceptedCriticalOids);
   }
 
-  /// OpenSSL's `CERTIFICATE` PEM. The body is base64 in lines of 64.
-  static String toPem(Uint8List der) {
+  /// PEM. [label] is `CERTIFICATE` or `CERTIFICATE REQUEST`.
+  static String toPem(Uint8List der, {String label = 'CERTIFICATE'}) {
     if (der.isEmpty) throw ArgumentError.value(der, 'der', 'empty');
+    if (label != 'CERTIFICATE' && label != 'CERTIFICATE REQUEST') {
+      throw ArgumentError.value(label, 'label', 'not a certificate PEM label');
+    }
     final encoded = base64.encode(der);
-    final buffer = StringBuffer('-----BEGIN CERTIFICATE-----\n');
+    final buffer = StringBuffer('-----BEGIN $label-----\n');
     for (var i = 0; i < encoded.length; i += 64) {
       final end = i + 64 < encoded.length ? i + 64 : encoded.length;
       buffer.writeln(encoded.substring(i, end));
     }
-    buffer.write('-----END CERTIFICATE-----\n');
+    buffer.write('-----END $label-----\n');
     return buffer.toString();
   }
 
-  /// Every `CERTIFICATE` or `X509 CERTIFICATE` block in [pem], in order.
+  /// Every PEM block, with its label. Accepts `CERTIFICATE`,
+  /// `X509 CERTIFICATE`, `CERTIFICATE REQUEST`, and `NEW CERTIFICATE REQUEST`.
+  static List<({String label, Uint8List der})> pemBlocks(String pem) =>
+      _pemBlocks(pem);
+
+  /// Every certificate block in [pem], in order.
   ///
   /// A file may hold a leaf and then its intermediates, which is the order
   /// OpenSSL writes and the order [validate] expects.
   static List<Uint8List> fromPem(String pem) {
-    final blocks = RegExp(
-      '-----BEGIN ([A-Z0-9 ]+)-----\\r?\\n([A-Za-z0-9+/=\\r\\n]+)-----END \\1-----',
-    ).allMatches(pem);
-    if (blocks.isEmpty) {
-      throw const FormatException('no PEM certificate');
-    }
     final out = <Uint8List>[];
-    for (final block in blocks) {
-      final label = block.group(1)!;
-      if (label != 'CERTIFICATE' && label != 'X509 CERTIFICATE') {
-        throw FormatException('unexpected PEM label $label');
+    for (final block in pemBlocks(pem)) {
+      if (block.label != 'CERTIFICATE' && block.label != 'X509 CERTIFICATE') {
+        throw FormatException('unexpected PEM label ${block.label}');
       }
-      final body = block.group(2)!.replaceAll(RegExp(r'\s+'), '');
-      final der = base64.decode(body);
-      if (der.isEmpty) throw const FormatException('empty PEM certificate');
-      out.add(Uint8List.fromList(der));
+      out.add(block.der);
     }
+    if (out.isEmpty) throw const FormatException('no PEM certificate');
     return out;
   }
+
+  /// PKCS#10 request, the PEM `CERTIFICATE REQUEST` that `openssl req` writes.
+  static Uint8List mintRequest({
+    required PqX509Name subject,
+    required PqX509PublicKey publicKey,
+    required PqX509Algorithm algorithm,
+    required Uint8List Function(Uint8List info) sign,
+    List<PqX509GeneralName> subjectAltNames = const [],
+    bool ca = false,
+    int? pathLen,
+    bool includeBasic = false,
+    int? keyUsageMask,
+    bool includeEku = false,
+    bool clientAuth = false,
+    int? pssSaltLength,
+    bool pssPublicKey = false,
+  }) => _mintRequest(
+    subject: subject,
+    publicKey: publicKey,
+    algorithm: algorithm,
+    sign: sign,
+    subjectAltNames: subjectAltNames,
+    ca: ca,
+    pathLen: pathLen,
+    includeBasic: includeBasic,
+    keyUsageMask: keyUsageMask,
+    includeEku: includeEku,
+    clientAuth: clientAuth,
+    pssSaltLength: pssSaltLength,
+    pssPublicKey: pssPublicKey,
+  );
+
+  static PqX509RequestParsed parseRequest(Uint8List der) => _parseRequest(der);
+
+  /// Sign a PKCS#10 request. Extensions in the request are copied. This is
+  /// `openssl x509 -req -copy_extensions copy`.
+  static Uint8List signRequest({
+    required Uint8List request,
+    required PqX509Name issuer,
+    required PqX509Algorithm algorithm,
+    required Uint8List Function(Uint8List tbs) sign,
+    required DateTime notBefore,
+    required DateTime notAfter,
+    required Uint8List serial,
+    int? pssSaltLength,
+  }) => _signRequest(
+    request: request,
+    issuer: issuer,
+    algorithm: algorithm,
+    sign: sign,
+    notBefore: notBefore,
+    notAfter: notAfter,
+    serial: serial,
+    pssSaltLength: pssSaltLength,
+  );
+
+  /// An OpenSSL `PRIVATE KEY`, `EC PRIVATE KEY`, or `RSA PRIVATE KEY` block.
+  static PqX509PrivateKey readPrivateKey(String pem) => _readPrivateKey(pem);
 
   /// Self-signed v3 TLS leaf. [sign] is called once, on the exact TBS bytes
   /// embedded in the result. ECDSA signatures are DER `SEQUENCE { r, s }`
@@ -408,6 +472,14 @@ abstract final class PqX509 {
     Uint8List? issuerUniqueId,
     Uint8List? subjectUniqueId,
     bool version3 = true,
+    int? keyUsageMask,
+    bool clientAuth = false,
+    bool includeBasic = true,
+    bool basicCritical = true,
+    bool keyUsageCritical = true,
+    bool ekuCritical = false,
+    bool sanCritical = false,
+    bool serverAuth = true,
   }) {
     _requireUtc(notBefore, 'notBefore');
     _requireUtc(notAfter, 'notAfter');
@@ -488,6 +560,14 @@ abstract final class PqX509 {
                 excludedDirectory: excludedDirectory,
                 permitOtherName: permitOtherName,
                 mustStaple: mustStaple,
+                keyUsageMask: keyUsageMask,
+                clientAuth: clientAuth,
+                includeBasic: includeBasic,
+                basicCritical: basicCritical,
+                keyUsageCritical: keyUsageCritical,
+                ekuCritical: ekuCritical,
+                sanCritical: sanCritical,
+                serverAuth: serverAuth,
               ),
             ))
             .take(),
@@ -549,6 +629,7 @@ const _aki = [2, 5, 29, 35];
 const _names = [2, 5, 29, 30];
 const _tlsFeature = [1, 3, 6, 1, 5, 5, 7, 1, 24];
 const _serverAuth = [1, 3, 6, 1, 5, 5, 7, 3, 1];
+const _clientAuth = [1, 3, 6, 1, 5, 5, 7, 3, 2];
 
 final class _Stop implements Exception {
   _Stop(this.failure);
@@ -1032,17 +1113,31 @@ Uint8List _ecdsaRaw(Uint8List der, int width) {
 }
 
 bool _check(PqX509Certificate certificate, PqX509PublicKey key) {
-  final message = certificate.tbs;
-  final signature = certificate.signature;
-  switch (certificate.algorithm) {
+  return _verifySignature(
+    algorithm: certificate.algorithm,
+    key: key,
+    message: certificate.tbs,
+    signature: certificate.signature,
+    pssSaltLength: certificate.pssSaltLength,
+  );
+}
+
+bool _verifySignature({
+  required PqX509Algorithm algorithm,
+  required PqX509PublicKey key,
+  required Uint8List message,
+  required Uint8List signature,
+  int? pssSaltLength,
+}) {
+  switch (algorithm) {
     case PqX509Algorithm.mlDsa44:
     case PqX509Algorithm.mlDsa65:
     case PqX509Algorithm.mlDsa87:
-      if (key is! PqX509MlDsaKey || key.algorithm != certificate.algorithm) {
+      if (key is! PqX509MlDsaKey || key.algorithm != algorithm) {
         return false;
       }
       return PqSignaturePrimitives.verify(
-        _mlDsa(certificate.algorithm),
+        _mlDsa(algorithm),
         key.raw,
         message,
         signature,
@@ -1077,7 +1172,7 @@ bool _check(PqX509Certificate certificate, PqX509PublicKey key) {
         exponent: key.exponent,
         message: message,
         signature: signature,
-        hash: _rsaHash(certificate.algorithm),
+        hash: _rsaHash(algorithm),
       );
     case PqX509Algorithm.rsaPssSha256:
     case PqX509Algorithm.rsaPssSha384:
@@ -1088,8 +1183,8 @@ bool _check(PqX509Certificate certificate, PqX509PublicKey key) {
         exponent: key.exponent,
         message: message,
         signature: signature,
-        hash: _rsaHash(certificate.algorithm),
-        saltLength: certificate.pssSaltLength,
+        hash: _rsaHash(algorithm),
+        saltLength: pssSaltLength,
       );
   }
 }
@@ -1720,26 +1815,42 @@ Uint8List _extensions({
   required List<PqX509Name> excludedDirectory,
   required bool permitOtherName,
   required bool mustStaple,
+  int? keyUsageMask,
+  bool clientAuth = false,
+  bool includeBasic = true,
+  bool basicCritical = true,
+  bool keyUsageCritical = true,
+  bool ekuCritical = false,
+  bool sanCritical = false,
+  bool serverAuth = true,
 }) {
   final writer = DerWriter();
-  writer.sequence(_extensionDer(_basic, true, _basicDer(ca, pathLen)));
-  var mask = 0;
-  if (digitalSignature) mask |= 1;
-  if (keyCertSign) mask |= 1 << 5;
-  if (mask != 0) {
-    writer.sequence(_extensionDer(_keyUsage, true, _keyUsageDer(mask)));
+  if (includeBasic) {
+    writer.sequence(
+      _extensionDer(_basic, basicCritical, _basicDer(ca, pathLen)),
+    );
   }
-  if (includeEku) {
+  final mask =
+      keyUsageMask ?? ((digitalSignature ? 1 : 0) | (keyCertSign ? 1 << 5 : 0));
+  if (mask != 0) {
+    writer.sequence(
+      _extensionDer(_keyUsage, keyUsageCritical, _keyUsageDer(mask)),
+    );
+  }
+  if (includeEku && (serverAuth || clientAuth)) {
+    final purposes = DerWriter();
+    if (serverAuth) purposes.oid(_serverAuth);
+    if (clientAuth) purposes.oid(_clientAuth);
     writer.sequence(
       _extensionDer(
         _eku,
-        false,
-        (DerWriter()..sequence((DerWriter()..oid(_serverAuth)).take())).take(),
+        ekuCritical,
+        (DerWriter()..sequence(purposes.take())).take(),
       ),
     );
   }
   if (names.isNotEmpty) {
-    writer.sequence(_extensionDer(_san, false, _sanDer(names)));
+    writer.sequence(_extensionDer(_san, sanCritical, _sanDer(names)));
   }
   if (permittedDns.isNotEmpty ||
       excludedDns.isNotEmpty ||

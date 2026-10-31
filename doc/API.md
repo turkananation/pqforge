@@ -359,6 +359,13 @@ or `--passphrase`, secret keys are written as Argon2id/AES-GCM `PqWrappedKey`
 JSON (`*.wrapped.json`); without a passphrase, the CLI writes raw secret-key JSON
 and emits a warning.
 
+`PqX509` parses and mints certificates, and it speaks `openssl req`.
+`PqX509Name.subject` is `-subj`. `PqX509Addext.parse` is `-addext`.
+`PqX509.mintRequest` writes a PKCS#10 `CERTIFICATE REQUEST`.
+`PqX509.readPrivateKey` reads the PEM key from `-keyout`.
+`PqX509.signRequest` is `openssl x509 -req -copy_extensions copy`.
+The CLI is `pqforge cert`. See [CLI.md](CLI.md).
+
 ---
 
 ## Runnable examples

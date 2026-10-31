@@ -9,6 +9,8 @@ Allowed claims:
   streaming signatures, and `hybrid-sign` remain ML-DSA-only.
 - Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key
   custody, signatures, recipes, and CLI workflows.
+- X.509 certificates and PKCS#10 requests that `openssl req` can read. That
+  is not a WebPKI CA and not a trust store.
 - Best-effort zeroization in Dart.
 
 Forbidden claims:

@@ -491,23 +491,43 @@ dart run pqforge ecdsa-verify \
 
 ## Certificates
 
-`cert issue` writes a self-signed X.509 certificate. The default file is PEM,
-the same `-----BEGIN CERTIFICATE-----` block `openssl x509` reads. `--der`
-writes the raw certificate. The secret is an ECDSA-P256, Ed25519, or ML-DSA
-key from `keygen`. ML-DSA also needs `--public`. When `--dns` is omitted, the
-common name is the DNS subject alternative name.
+`cert` speaks the same objects as `openssl req` and `openssl x509 -req`.
+PEM is the default. `--der` writes the raw encoding. `--key` reads the PEM
+private key `openssl req -keyout` writes (`PRIVATE KEY`, `EC PRIVATE KEY`, or
+`RSA PRIVATE KEY`). `--secret` reads a keygen JSON file instead.
+
+| OpenSSL | pqforge |
+| --- | --- |
+| `req -new -key key.pem -subj ... -addext ... -out req.pem` | `cert req --key key.pem --subj ... --addext ... --out req.pem` |
+| `req -x509 -key key.pem -days 365 -subj ... -out cert.pem` | `cert issue --key key.pem --days 365 --subj ... --out cert.pem` |
+| `x509 -req -in req.pem -CA ca.pem -CAkey ca.key -copy_extensions copy` | `cert sign --in req.pem --ca ca.pem --ca-key ca.key --out cert.pem` |
+| `req -in req.pem -noout -verify -text` | `cert inspect --in req.pem` |
+| `verify -CAfile ca.pem cert.pem` | `cert verify --in cert.pem --anchor ca.pem` |
+
+`--subj` is the OpenSSL subject string. It starts with `/` and uses `C`, `ST`,
+`L`, `O`, `OU`, `CN`, and `emailAddress`. `+` joins one RDN. `--cn` is
+shorthand for `/CN=`. `--addext` is repeatable and accepts `subjectAltName`
+(`DNS`, `IP`, `email`, `URI`), `keyUsage`, `extendedKeyUsage`
+(`serverAuth`, `clientAuth`), and `basicConstraints`. A request's extensions
+are copied when `cert sign` issues the certificate.
 
 ```bash
-dart run pqforge cert issue \
-  --secret keys/vault.ecdsa-p256.secret.wrapped.json \
-  --passphrase-env PQFORGE_PASSPHRASE \
-  --cn localhost \
-  --out localhost.pem
+openssl ecparam -name prime256v1 -genkey -noout -out leaf.key
+dart run pqforge cert req \
+  --key leaf.key \
+  --subj /C=KE/ST=Nairobi/O=pqforge/CN=localhost \
+  --addext subjectAltName=DNS:localhost \
+  --out localhost.csr
+openssl req -in localhost.csr -noout -verify
 
-dart run pqforge cert inspect --in localhost.pem
-dart run pqforge cert verify --in localhost.pem --anchor localhost.pem
-openssl x509 -in localhost.pem -noout -text
+dart run pqforge cert issue --key ca.key --subj /CN=pqforge-ca --ca --out ca.pem
+dart run pqforge cert sign --in localhost.csr --ca ca.pem --ca-key ca.key --out localhost.pem
+openssl verify -CAfile ca.pem localhost.pem
 ```
+
+This is not `openssl req -config`, not an interactive prompt, and not
+`-newkey`. Generate the key with `keygen` or with OpenSSL, then pass it in.
+It is not a WebPKI CA and not a trust store.
 
 `cert verify` exits `0` when the chain is trusted and `1` when it is not.
 
