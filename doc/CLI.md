@@ -502,6 +502,7 @@ private key `openssl req -keyout` writes (`PRIVATE KEY`, `EC PRIVATE KEY`, or
 | `req -x509 -key key.pem -days 365 -subj ... -out cert.pem` | `cert issue --key key.pem --days 365 --subj ... --out cert.pem` |
 | `x509 -req -in req.pem -CA ca.pem -CAkey ca.key -copy_extensions copy` | `cert sign --in req.pem --ca ca.pem --ca-key ca.key --out cert.pem` |
 | `req -in req.pem -noout -verify -text` | `cert inspect --in req.pem` |
+| `x509 -in cert.pem -noout -text` | `cert inspect --in cert.pem` |
 | `verify -CAfile ca.pem cert.pem` | `cert verify --in cert.pem --anchor ca.pem` |
 
 `--subj` is the OpenSSL subject string. It starts with `/` and uses `C`, `ST`,
@@ -528,6 +529,12 @@ openssl verify -CAfile ca.pem localhost.pem
 This is not `openssl req -config`, not an interactive prompt, and not
 `-newkey`. Generate the key with `keygen` or with OpenSSL, then pass it in.
 It is not a WebPKI CA and not a trust store.
+
+`cert inspect --in file.pem` prints each PEM block: version, serial,
+algorithm, issuer, subject, validity, public key, basic constraints, key
+usage, extended key usage, subject alternative names, and whether the
+signature matches the key in that file. A private-key block prints the
+algorithm and the public key only. The secret is not printed.
 
 `cert verify` exits `0` when the chain is trusted and `1` when it is not.
 

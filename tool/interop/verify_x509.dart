@@ -73,6 +73,13 @@ void _verifyOurs(
   File(leaf).writeAsStringSync(_pem('CERTIFICATE', leafDer));
   stdout.writeln('ours $name');
   _run(openssl, ['verify', '-CAfile', ca, leaf]);
+  // BoringSSL only accepts a PSS salt equal to the hash length. Salt 20 is
+  // the RFC 4055 DEFAULT, and OpenSSL verifies it. BoringSSL returns
+  // INVALID_PSS_PARAMETERS.
+  if (name == 'pss-sha256-salt20') {
+    stdout.writeln('boringssl skips $name (salt must equal the hash)');
+    return;
+  }
   _run(boring, [leaf, ca]);
 }
 

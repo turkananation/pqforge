@@ -146,7 +146,9 @@ jobs:
           printf 'tampered\n' > "$tmp/tampered.txt"
           if dart run pqforge ecdsa-verify --public "$tmp/keys/ci.ecdsa-p256.public.json" --in "$tmp/tampered.txt" --signature "$tmp/ec.json"; then echo "tamper not detected" && exit 1; fi
           dart run pqforge cert issue --secret "$tmp/keys/ci.ecdsa-p256.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --cn localhost --dns localhost --out "$tmp/localhost.pem"
-          dart run pqforge cert inspect --in "$tmp/localhost.pem"
+          dart run pqforge cert inspect --in "$tmp/localhost.pem" | tee "$tmp/inspect.txt"
+          grep -q 'ecdsa-with-SHA256' "$tmp/inspect.txt"
+          grep -q 'localhost' "$tmp/inspect.txt"
           dart run pqforge cert verify --in "$tmp/localhost.pem" --anchor "$tmp/localhost.pem"
           openssl x509 -in "$tmp/localhost.pem" -noout -subject | grep -q 'localhost'
 

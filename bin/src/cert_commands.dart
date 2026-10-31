@@ -5,6 +5,7 @@
 /// ML-DSA. The certificate is self-signed.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -335,7 +336,8 @@ final class CertInspectCommand extends Command<void> {
       'in',
       mandatory: true,
       valueHelp: 'file',
-      help: 'PEM or DER certificate. A PEM file may hold several.',
+      help:
+          'PEM or DER. A PEM file may hold certificates, requests, and private keys.',
     );
   }
 
@@ -343,7 +345,8 @@ final class CertInspectCommand extends Command<void> {
   String get name => 'inspect';
 
   @override
-  String get description => 'Print the subject, issuer, dates, and algorithm.';
+  String get description =>
+      'Print a certificate, request, or private key. The secret is not printed.';
 
   @override
   String get usageFooter =>
@@ -353,64 +356,33 @@ final class CertInspectCommand extends Command<void> {
   Future<void> run() async {
     final input = argResults!['in'] as String;
     final bytes = await File(input).readAsBytes();
+    if (bytes.isEmpty) {
+      throw const PqForgeException('The file is empty.');
+    }
     final text = String.fromCharCodes(bytes);
-    if (text.contains('CERTIFICATE REQUEST')) {
-      for (final block in PqX509.pemBlocks(text)) {
-        if (block.label != 'CERTIFICATE REQUEST' &&
-            block.label != 'NEW CERTIFICATE REQUEST') {
-          continue;
-        }
-        final parsed = PqX509.parseRequest(block.der);
-        final request = parsed.request;
-        if (request == null) {
-          throw PqForgeException(
-            'Request did not parse (${parsed.failure!.name}).',
-          );
-        }
-        console.detail('kind', 'request', pad: 12);
-        console.detail('algorithm', _algorithmName(request.algorithm), pad: 12);
-        console.detail('subject', _commonName(request.subject.der), pad: 12);
-        final dns = [
-          for (final name in request.names)
-            if (name is PqX509DnsName) name.ascii,
-        ];
-        if (dns.isNotEmpty) console.detail('san', dns.join(', '), pad: 12);
-      }
+    if (!text.contains('-----BEGIN ')) {
+      _printCertificate(bytes);
       return;
     }
-    final certs = _readCertificates(bytes);
-    for (var i = 0; i < certs.length; i++) {
-      final parsed = PqX509.parse(certs[i]);
-      final certificate = parsed.certificate;
-      if (certificate == null) {
-        throw PqForgeException(
-          'Certificate ${i + 1} did not parse (${parsed.failure!.name}).',
-        );
+    final blocks = PqX509.pemBlocks(text);
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks.length > 1) console.section('block ${i + 1}');
+      final block = blocks[i];
+      switch (block.label) {
+        case 'CERTIFICATE':
+        case 'X509 CERTIFICATE':
+          _printCertificate(block.der);
+        case 'CERTIFICATE REQUEST':
+        case 'NEW CERTIFICATE REQUEST':
+          _printRequest(block.der);
+        case 'PRIVATE KEY':
+        case 'EC PRIVATE KEY':
+        case 'RSA PRIVATE KEY':
+          _printPrivateKey(block.label, block.der);
+        default:
+          console.detail('kind', block.label, pad: _pad);
+          console.detail('bytes', '${block.der.length}', pad: _pad);
       }
-      if (certs.length > 1) console.info('certificate ${i + 1}');
-      console.detail(
-        'algorithm',
-        _algorithmName(certificate.algorithm),
-        pad: 12,
-      );
-      console.detail('subject', _commonName(certificate.subjectDer), pad: 12);
-      console.detail('issuer', _commonName(certificate.issuerDer), pad: 12);
-      console.detail(
-        'not before',
-        certificate.notBefore.toIso8601String(),
-        pad: 12,
-      );
-      console.detail(
-        'not after',
-        certificate.notAfter.toIso8601String(),
-        pad: 12,
-      );
-      console.detail('ca', '${certificate.ca == true}', pad: 12);
-      final dns = [
-        for (final name in certificate.subjectAltNames)
-          if (name is PqX509DnsName) name.ascii,
-      ];
-      if (dns.isNotEmpty) console.detail('san', dns.join(', '), pad: 12);
     }
   }
 }
@@ -617,6 +589,327 @@ String _algorithmName(PqX509Algorithm algorithm) => switch (algorithm) {
   PqX509Algorithm.rsaPssSha384 => 'RSASSA-PSS-SHA384',
   PqX509Algorithm.rsaPssSha512 => 'RSASSA-PSS-SHA512',
 };
+
+const _pad = 12;
+
+void _printCertificate(Uint8List der) {
+  final parsed = PqX509.parse(der);
+  final certificate = parsed.certificate;
+  if (certificate == null) {
+    throw PqForgeException(
+      'Certificate did not parse (${parsed.failure!.name}).',
+    );
+  }
+  console.detail('kind', 'certificate', pad: _pad);
+  console.detail('version', '${certificate.version}', pad: _pad);
+  console.detail('serial', _hex(certificate.serial), pad: _pad);
+  console.detail('algorithm', _algorithmName(certificate.algorithm), pad: _pad);
+  if (certificate.pssSaltLength != null) {
+    console.detail('pss salt', '${certificate.pssSaltLength}', pad: _pad);
+  }
+  console.detail('issuer', _name(certificate.issuerDer), pad: _pad);
+  console.detail('subject', _name(certificate.subjectDer), pad: _pad);
+  console.detail(
+    'not before',
+    certificate.notBefore.toIso8601String(),
+    pad: _pad,
+  );
+  console.detail(
+    'not after',
+    certificate.notAfter.toIso8601String(),
+    pad: _pad,
+  );
+  console.detail('public key', _keyText(certificate.publicKey), pad: _pad);
+  if (certificate.ca != null) {
+    final path = certificate.pathLen == null
+        ? ''
+        : ', pathlen ${certificate.pathLen}';
+    console.detail('ca', '${certificate.ca}$path', pad: _pad);
+  }
+  if (certificate.keyUsageBits != null) {
+    console.detail(
+      'key usage',
+      _keyUsage(certificate.keyUsageBits!),
+      pad: _pad,
+    );
+  }
+  if (certificate.extKeyUsage.isNotEmpty) {
+    console.detail(
+      'eku',
+      certificate.extKeyUsage.map(_dotted).join(', '),
+      pad: _pad,
+    );
+  }
+  if (certificate.subjectAltNames.isNotEmpty) {
+    console.detail(
+      'san',
+      certificate.subjectAltNames.map(_generalName).join(', '),
+      pad: _pad,
+    );
+  }
+  if (certificate.mustStaple) console.detail('must staple', 'yes', pad: _pad);
+  for (final extension in certificate.extensions) {
+    final flag = extension.critical ? ' critical' : '';
+    console.detail('extension', '${extension.oid.join('.')}$flag', pad: _pad);
+  }
+  console.detail(
+    'signature',
+    PqX509.checkSignature(certificate, certificate.publicKey)
+        ? 'valid under this public key'
+        : 'not signed by this public key',
+    pad: _pad,
+  );
+  console.detail('bytes', '${der.length}', pad: _pad);
+}
+
+void _printRequest(Uint8List der) {
+  final parsed = PqX509.parseRequest(der);
+  final request = parsed.request;
+  if (request == null) {
+    throw PqForgeException('Request did not parse (${parsed.failure!.name}).');
+  }
+  console.detail('kind', 'request', pad: _pad);
+  console.detail('algorithm', _algorithmName(request.algorithm), pad: _pad);
+  if (request.pssSaltLength != null) {
+    console.detail('pss salt', '${request.pssSaltLength}', pad: _pad);
+  }
+  console.detail('subject', _name(request.subject.der), pad: _pad);
+  console.detail('public key', _keyText(request.publicKey), pad: _pad);
+  if (request.hasBasic) {
+    final path = request.pathLen == null ? '' : ', pathlen ${request.pathLen}';
+    console.detail('ca', '${request.ca == true}$path', pad: _pad);
+  }
+  if (request.keyUsageBits != null) {
+    console.detail('key usage', _keyUsage(request.keyUsageBits!), pad: _pad);
+  }
+  final eku = [
+    if (request.serverAuth) 'serverAuth',
+    if (request.clientAuth) 'clientAuth',
+  ];
+  if (eku.isNotEmpty) console.detail('eku', eku.join(', '), pad: _pad);
+  if (request.names.isNotEmpty) {
+    console.detail(
+      'san',
+      request.names.map(_generalName).join(', '),
+      pad: _pad,
+    );
+  }
+  console.detail(
+    'signature',
+    PqX509.checkRequest(request) ? 'valid' : 'invalid',
+    pad: _pad,
+  );
+  console.detail('bytes', '${der.length}', pad: _pad);
+}
+
+void _printPrivateKey(String label, Uint8List der) {
+  final PqX509PrivateKey key;
+  try {
+    key = PqX509.readPrivateKey(PqX509.toPem(der, label: label));
+  } on FormatException catch (error) {
+    throw PqForgeException('Private key did not parse (${error.message}).');
+  }
+  console.detail('kind', label, pad: _pad);
+  console.detail('algorithm', _algorithmName(key.algorithm), pad: _pad);
+  console.detail('public key', _keyText(key.publicKey), pad: _pad);
+  console.detail('secret', 'not printed', pad: _pad);
+}
+
+String _keyText(PqX509PublicKey key) => switch (key) {
+  PqX509EcdsaP256Key() => 'ECDSA P-256 ${_preview(key.uncompressed)}',
+  PqX509EcdsaP384Key() => 'ECDSA P-384 ${_preview(key.uncompressed)}',
+  PqX509Ed25519Key() => 'Ed25519 ${_preview(key.raw)}',
+  PqX509MlDsaKey() => '${_algorithmName(key.algorithm)} ${_preview(key.raw)}',
+  PqX509RsaKey() =>
+    'RSA ${_bits(key.modulus)} e=${_unsigned(key.exponent)} ${_preview(key.modulus)}',
+};
+
+String _keyUsage(int bits) {
+  const names = [
+    'digitalSignature',
+    'nonRepudiation',
+    'keyEncipherment',
+    'dataEncipherment',
+    'keyAgreement',
+    'keyCertSign',
+    'cRLSign',
+    'encipherOnly',
+    'decipherOnly',
+  ];
+  final used = <String>[];
+  for (var i = 0; i < names.length; i++) {
+    if ((bits & (1 << i)) != 0) used.add(names[i]);
+  }
+  return used.isEmpty ? 'none' : used.join(', ');
+}
+
+String _generalName(PqX509GeneralName name) => switch (name) {
+  PqX509DnsName() => 'DNS:${name.ascii}',
+  PqX509Ip4Name() => 'IP:${name.octets.join('.')}',
+  PqX509Ip6Name() => 'IP:${_hex(name.octets)}',
+  PqX509EmailName() => 'email:${name.mailbox}',
+  PqX509UriName() => 'URI:${name.uri}',
+  PqX509DirectoryName() => 'dir:${_name(name.name)}',
+  PqX509OtherName() => 'otherName',
+};
+
+String _name(Uint8List der) {
+  final outer = _tlv(der, 0);
+  if (outer == null || outer.tag != 0x30 || outer.total != der.length) {
+    return _commonName(der);
+  }
+  final parts = <String>[];
+  var offset = 0;
+  while (offset < outer.value.length) {
+    final set = _tlv(outer.value, offset);
+    if (set == null || set.tag != 0x31) return _commonName(der);
+    final rdn = <String>[];
+    var inner = 0;
+    while (inner < set.value.length) {
+      final atv = _tlv(set.value, inner);
+      if (atv == null || atv.tag != 0x30) return _commonName(der);
+      final oid = _tlv(atv.value, 0);
+      if (oid == null || oid.tag != 0x06) return _commonName(der);
+      final value = _tlv(atv.value, oid.total);
+      if (value == null) return _commonName(der);
+      rdn.add('${_attr(oid.value)}=${_chars(value.value)}');
+      inner += atv.total;
+    }
+    parts.add(rdn.join('+'));
+    offset += set.total;
+  }
+  return parts.isEmpty ? _commonName(der) : parts.join(', ');
+}
+
+String _attr(Uint8List oid) {
+  if (_rawIs(oid, const [0x55, 0x04, 0x03])) return 'CN';
+  if (_rawIs(oid, const [0x55, 0x04, 0x06])) return 'C';
+  if (_rawIs(oid, const [0x55, 0x04, 0x07])) return 'L';
+  if (_rawIs(oid, const [0x55, 0x04, 0x08])) return 'ST';
+  if (_rawIs(oid, const [0x55, 0x04, 0x0a])) return 'O';
+  if (_rawIs(oid, const [0x55, 0x04, 0x0b])) return 'OU';
+  if (_rawIs(oid, const [
+    0x2a,
+    0x86,
+    0x48,
+    0x86,
+    0xf7,
+    0x0d,
+    0x01,
+    0x09,
+    0x01,
+  ])) {
+    return 'emailAddress';
+  }
+  return _dotted(_decodeOid(oid) ?? const [0]);
+}
+
+String _dotted(List<int> arcs) {
+  const server = [1, 3, 6, 1, 5, 5, 7, 3, 1];
+  const client = [1, 3, 6, 1, 5, 5, 7, 3, 2];
+  if (_arcsEqual(arcs, server)) return 'serverAuth';
+  if (_arcsEqual(arcs, client)) return 'clientAuth';
+  return arcs.join('.');
+}
+
+bool _arcsEqual(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+String _chars(Uint8List bytes) {
+  try {
+    return utf8.decode(bytes);
+  } on FormatException {
+    return _hex(bytes);
+  }
+}
+
+String _hex(Uint8List bytes) =>
+    bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+
+String _preview(Uint8List bytes) {
+  if (bytes.length <= 20) return _hex(bytes);
+  return '${_hex(Uint8List.sublistView(bytes, 0, 8))}… ${bytes.length} bytes';
+}
+
+int _bits(Uint8List modulus) {
+  var bits = (modulus.length - 1) * 8;
+  var top = modulus[0];
+  while (top > 0) {
+    bits++;
+    top >>= 1;
+  }
+  return bits;
+}
+
+int _unsigned(Uint8List bytes) {
+  var value = 0;
+  for (final byte in bytes) {
+    value = (value << 8) | byte;
+  }
+  return value;
+}
+
+List<int>? _decodeOid(Uint8List contents) {
+  if (contents.isEmpty) return null;
+  final arcs = <int>[contents[0] ~/ 40, contents[0] % 40];
+  var value = 0;
+  var pending = false;
+  for (var i = 1; i < contents.length; i++) {
+    value = (value << 7) | (contents[i] & 0x7f);
+    pending = true;
+    if ((contents[i] & 0x80) == 0) {
+      arcs.add(value);
+      value = 0;
+      pending = false;
+    }
+  }
+  return pending ? null : arcs;
+}
+
+bool _rawIs(Uint8List oid, List<int> expected) {
+  if (oid.length != expected.length) return false;
+  for (var i = 0; i < oid.length; i++) {
+    if (oid[i] != expected[i]) return false;
+  }
+  return true;
+}
+
+final class _Tlv {
+  _Tlv(this.tag, this.value, this.total);
+
+  final int tag;
+  final Uint8List value;
+  final int total;
+}
+
+_Tlv? _tlv(Uint8List bytes, int offset) {
+  if (offset + 1 >= bytes.length) return null;
+  final tag = bytes[offset];
+  var length = bytes[offset + 1];
+  var header = 2;
+  if (length & 0x80 != 0) {
+    final count = length & 0x7f;
+    if (count == 0 || count > 3 || offset + 2 + count > bytes.length) {
+      return null;
+    }
+    length = 0;
+    for (var i = 0; i < count; i++) {
+      length = (length << 8) | bytes[offset + 2 + i];
+    }
+    header = 2 + count;
+  }
+  if (offset + header + length > bytes.length) return null;
+  return _Tlv(
+    tag,
+    Uint8List.sublistView(bytes, offset + header, offset + header + length),
+    header + length,
+  );
+}
 
 String _commonName(Uint8List name) {
   const oid = [0x06, 0x03, 0x55, 0x04, 0x03];

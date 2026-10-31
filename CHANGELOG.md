@@ -23,16 +23,19 @@ release.
   against both: ECDSA P-256 and P-384, Ed25519, RSA PKCS#1 SHA-256/384/512,
   RSASSA-PSS (hash-length salt, salt 20, and an `id-RSASSA-PSS` public key),
   and ML-DSA-44/65/87. The same job parses a certificate OpenSSL minted for
-  each of those. The AEAD interop harness links that OpenSSL, not the Ubuntu
-  package. The BoringSSL install also builds the `bssl` tool, which
-  `cmake --install` requires. The chain checker is linked with the C++ driver
-  because `libcrypto.a` is C++. `install_ssldirs` puts `openssl.cnf` in
-  `OPENSSLDIR`; `req` will not start without it.
+  each of those. BoringSSL rejects a PSS salt other than the hash length, so
+  the RFC 4055 salt of 20 is checked with OpenSSL only. The AEAD
+  interop harness links that OpenSSL, not the Ubuntu package. The BoringSSL
+  install also builds the `bssl` tool, which `cmake --install` requires.
+  The chain checker is linked with the C++ driver because `libcrypto.a` is
+  C++. `install_ssldirs` puts `openssl.cnf` in `OPENSSLDIR`; `req` will not
+  start without it.
 - `cert req`, `cert issue`, and `cert sign` match `openssl req` and
   `openssl x509 -req`: `--subj`, repeatable `--addext`, and a PEM private key
   or a keygen secret. A request is a PKCS#10 `CERTIFICATE REQUEST`. Signing a
-  request copies its extensions. `cert inspect` and `cert verify` read PEM or
-  DER.
+  request copies its extensions. `cert inspect` prints a certificate, a
+  PKCS#10 request, or a private-key PEM (the secret itself is not printed).
+  `cert verify` reads PEM or DER.
 - Verify accepts the high-S ECDSA encoding OpenSSL and BoringSSL put in a
   certificate. `sign` still emits low-S. Compressed SEC1 points are accepted.
   `id-RSASSA-PSS` public keys and a PSS salt other than the hash length are

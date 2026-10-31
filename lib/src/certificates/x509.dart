@@ -283,6 +283,21 @@ abstract final class PqX509 {
     }
   }
 
+  /// PKCS#10 signature under the request's own public key.
+  static bool checkRequest(PqX509Request request) {
+    try {
+      return _verifySignature(
+        algorithm: request.algorithm,
+        key: request.publicKey,
+        message: request.info,
+        signature: request.signature,
+        pssSaltLength: request.pssSaltLength,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// [ocspResponsePresent] must be true when any certificate on the path
   /// requires OCSP stapling (RFC 7633). [acceptedCriticalOids] are extensions
   /// this process implements. Any other critical extension is `badConstraint`.
