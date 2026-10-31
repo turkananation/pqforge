@@ -5,7 +5,7 @@ Canonical URL: https://turkananation.github.io/pqforge/
 Repository: https://github.com/turkananation/pqforge
 Package: https://pub.dev/packages/pqforge
 API docs: https://pub.dev/documentation/pqforge/latest/
-Version: 0.4.8
+Version: 0.4.9
 
 ## Identity
 
@@ -145,7 +145,7 @@ Forbidden claims:
 
 - Surface: CLI: hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify
 - Apps: release artifacts, firmware, long-lived approvals, dual-trust signing
-- APIs: PqForgeHybridSigner, PqEcdsaP256, dualSign, dualVerify
+- APIs: PqForgeHybridSigner, PqEcdsaP256, PqEcdsaP384, PqEd25519, PqRsa, PqX509, dualSign, dualVerify
 - Caveat: require-both vs accept-either is the app's policy; --digest signs the streamed SHA-256 for gigabyte inputs.
 
 ### Webhook Integrity

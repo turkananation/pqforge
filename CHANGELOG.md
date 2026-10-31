@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.9
+
+X.509 certificates and the classical signatures those certificates use.
+No `.pqf` / `.pqfs` wire-format change. 0.4.8 stays the ChaCha20 keystream
+release.
+
+- **`PqX509`** — DER parse, self-signed or issued mint, one signature check,
+  and a path check against caller-supplied anchors. No sockets, no system
+  trust store, no AIA, OCSP, or CT. `now` is an argument.
+- **`PqEcdsaP384`** — ECDSA P-384 / SHA-384, raw `r || s`, low-S. This is not
+  `p384SharedSecret`. That function remains the SecP384r1MLKEM1024 key share.
+- **`PqRsa`** — PKCS#1 v1.5 and RSASSA-PSS, SHA-256/384/512. The modulus and
+  exponent stay bytes. A `BigInt` is built only after the modulus is 2048,
+  3072, or 4096 bits.
+- **`PqEd25519`** — synchronous RFC 8032 sign and verify. The field is 16-bit
+  limbs so the multiply fits a dart2js-safe integer.
+
 ## 0.4.8
 
 Additive ChaCha20 keystream for QUIC header protection (RFC 9001 §5.4.4).

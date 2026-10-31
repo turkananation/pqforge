@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-09-17",
+  "last_updated": "2026-10-31",
   "generated_by": "dart run tool/visibility/generate_visibility.dart",
   "project": {
     "name": "pqforge",
@@ -163,7 +163,7 @@
       "name": "Hybrid And Classical Signatures",
       "surface": "CLI: hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify",
       "apps": "release artifacts, firmware, long-lived approvals, dual-trust signing",
-      "apis": "PqForgeHybridSigner, PqEcdsaP256, dualSign, dualVerify",
+      "apis": "PqForgeHybridSigner, PqEcdsaP256, PqEcdsaP384, PqEd25519, PqRsa, PqX509, dualSign, dualVerify",
       "caveat": "require-both vs accept-either is the app's policy; --digest signs the streamed SHA-256 for gigabyte inputs."
     },
     {
@@ -336,7 +336,7 @@
     },
     {
       "question": "What does hybrid mean in pqforge?",
-      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256."
+      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256. PqEcdsaP384 is the P-384 signature, not that shared secret. PqX509 parses and checks an X.509 certificate against anchors the caller supplies. It is not a trust store and not TLS."
     },
     {
       "question": "Where does the CLI store keys?",
