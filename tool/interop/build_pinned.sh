@@ -33,6 +33,8 @@ cd "openssl-${OPENSSL_TAG#openssl-}"
   --openssldir="$prefix/openssl/ssl" shared
 make -j"$jobs"
 make install_sw
+# install_sw leaves OPENSSLDIR empty. req refuses to run without openssl.cnf.
+make install_ssldirs
 cd "$src"
 
 git clone --depth 1 --branch "$BORINGSSL_TAG" \
