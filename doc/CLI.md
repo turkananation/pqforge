@@ -489,6 +489,55 @@ dart run pqforge ecdsa-verify \
 `verify`, `hybrid-verify`, and `ecdsa-verify` exit `0` on a valid signature and
 `1` on a failed one, so they slot directly into shell `&&` chains and CI gates.
 
+## Certificates
+
+`cert` speaks the same objects as `openssl req` and `openssl x509 -req`.
+PEM is the default. `--der` writes the raw encoding. `--key` reads the PEM
+private key `openssl req -keyout` writes (`PRIVATE KEY`, `EC PRIVATE KEY`, or
+`RSA PRIVATE KEY`). `--secret` reads a keygen JSON file instead.
+
+| OpenSSL | pqforge |
+| --- | --- |
+| `req -new -key key.pem -subj ... -addext ... -out req.pem` | `cert req --key key.pem --subj ... --addext ... --out req.pem` |
+| `req -x509 -key key.pem -days 365 -subj ... -out cert.pem` | `cert issue --key key.pem --days 365 --subj ... --out cert.pem` |
+| `x509 -req -in req.pem -CA ca.pem -CAkey ca.key -copy_extensions copy` | `cert sign --in req.pem --ca ca.pem --ca-key ca.key --out cert.pem` |
+| `req -in req.pem -noout -verify -text` | `cert inspect --in req.pem` |
+| `x509 -in cert.pem -noout -text` | `cert inspect --in cert.pem` |
+| `verify -CAfile ca.pem cert.pem` | `cert verify --in cert.pem --anchor ca.pem` |
+
+`--subj` is the OpenSSL subject string. It starts with `/` and uses `C`, `ST`,
+`L`, `O`, `OU`, `CN`, and `emailAddress`. `+` joins one RDN. `--cn` is
+shorthand for `/CN=`. `--addext` is repeatable and accepts `subjectAltName`
+(`DNS`, `IP`, `email`, `URI`), `keyUsage`, `extendedKeyUsage`
+(`serverAuth`, `clientAuth`), and `basicConstraints`. A request's extensions
+are copied when `cert sign` issues the certificate.
+
+```bash
+openssl ecparam -name prime256v1 -genkey -noout -out leaf.key
+dart run pqforge cert req \
+  --key leaf.key \
+  --subj /C=KE/ST=Nairobi/O=pqforge/CN=localhost \
+  --addext subjectAltName=DNS:localhost \
+  --out localhost.csr
+openssl req -in localhost.csr -noout -verify
+
+dart run pqforge cert issue --key ca.key --subj /CN=pqforge-ca --ca --out ca.pem
+dart run pqforge cert sign --in localhost.csr --ca ca.pem --ca-key ca.key --out localhost.pem
+openssl verify -CAfile ca.pem localhost.pem
+```
+
+This is not `openssl req -config`, not an interactive prompt, and not
+`-newkey`. Generate the key with `keygen` or with OpenSSL, then pass it in.
+It is not a WebPKI CA and not a trust store.
+
+`cert inspect --in file.pem` prints each PEM block: version, serial,
+algorithm, issuer, subject, validity, public key, basic constraints, key
+usage, extended key usage, subject alternative names, and whether the
+signature matches the key in that file. A private-key block prints the
+algorithm and the public key only. The secret is not printed.
+
+`cert verify` exits `0` when the chain is trusted and `1` when it is not.
+
 ## Threshold roots (pqthreshold companion)
 
 **pqforge** covers **single-party** hybrid keys on each device (ML-KEM, ML-DSA,

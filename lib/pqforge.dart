@@ -50,12 +50,17 @@ export 'src/cipher/pq_secure_session.dart';
 export 'src/codecs/pq_envelope.dart';
 export 'src/codecs/pq_streaming_envelope.dart';
 
+export 'src/certificates/x509.dart';
+
 export 'src/hybrid/pq_hybrid_combiner.dart';
 export 'src/hybrid/pq_classical_hybrid.dart';
 export 'src/hybrid/pq_classical_provider.dart';
 export 'src/hybrid/pq_cryptography_extensions.dart';
 export 'src/hybrid/pq_ecdsa_p256.dart';
+export 'src/hybrid/pq_ecdsa_p384.dart';
+export 'src/hybrid/pq_ed25519.dart';
 export 'src/hybrid/pq_nist_ecdh.dart';
+export 'src/hybrid/pq_rsa.dart';
 export 'src/hybrid/pqforge_hybrid_signer.dart';
 export 'src/hybrid/pq_hybrid_signature.dart';
 export 'src/hybrid/pqforge_hybrid_key_agreement.dart';

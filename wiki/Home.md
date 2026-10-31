@@ -1,5 +1,7 @@
 # pqforge
 
+[Yardenah PQ](https://yardenah.com) is the lab behind pqforge and pqcrypto.
+
 `pqforge` is a pure-Dart, web-safe package for **post-quantum application
 workflows**: encrypted files, folders, text, media, email payloads, records,
 signed documents, signed webhooks, signed tokens, software artifacts,
@@ -53,7 +55,7 @@ dart run pqforge decrypt-folder \
 - Bounded-memory gigabyte streaming and whole-folder `pack`/`unpack`.
 - Multi-recipient envelopes — one sealed payload, key-wrapped per recipient.
 - Argon2id + AES-GCM wrapped key custody (PBKDF2 under FIPS mode).
-- Named recipes and a universal CLI (18 commands) with AOT release binaries. File, folder, text, media, pack, unpack, sign, verify, hybrid-sign, and ecdsa-sign commands report live progress (folder jobs include isolate-forwarded byte progress); `--quiet` mutes per-file lines.
+- Named recipes and a universal CLI (19 commands) with AOT release binaries. File, folder, text, media, pack, unpack, sign, verify, hybrid-sign, ecdsa-sign, and cert commands are included. File commands report live progress (folder jobs include isolate-forwarded byte progress); `--quiet` mutes per-file lines.
 
 ## Important boundary
 

@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-09-17",
+  "last_updated": "2026-10-31",
   "generated_by": "dart run tool/visibility/generate_visibility.dart",
   "project": {
     "name": "pqforge",
     "title": "pqforge: Post-Quantum Application Recipes for Dart",
     "short_title": "pqforge",
     "tagline": "Post-quantum encryption, signing, hybrid sessions, gigabyte-scale streaming, and a CLI for Dart, Flutter, and Serverpod — built on pqcrypto ML-KEM/ML-DSA/SLH-DSA.",
-    "summary": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.",
+    "summary": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.",
     "license": "MIT",
     "maintainer": "Turkana Nation",
     "canonical_url": "https://turkananation.github.io/pqforge/",
@@ -18,7 +18,9 @@
     "wiki": "https://github.com/turkananation/pqforge/wiki",
     "issues": "https://github.com/turkananation/pqforge/issues",
     "security_advisory": "https://github.com/turkananation/pqforge/security/advisories/new",
-    "contact_email": "turkananation@gmail.com"
+    "contact_email": "turkananation@gmail.com",
+    "lab_name": "Yardenah PQ",
+    "lab_url": "https://yardenah.com"
   },
   "pqcrypto_relationship": {
     "summary": "pqforge is the application layer built on top of pqcrypto. pqcrypto provides the post-quantum primitives; pqforge provides everything you need to ship a feature with them.",
@@ -161,9 +163,9 @@
     },
     {
       "name": "Hybrid And Classical Signatures",
-      "surface": "CLI: hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify",
+      "surface": "CLI: hybrid-sign, hybrid-verify, ecdsa-sign, ecdsa-verify, cert req, cert issue, cert sign",
       "apps": "release artifacts, firmware, long-lived approvals, dual-trust signing",
-      "apis": "PqForgeHybridSigner, PqEcdsaP256, dualSign, dualVerify",
+      "apis": "PqForgeHybridSigner, PqEcdsaP256, PqEcdsaP384, PqEd25519, PqRsa, PqX509, dualSign, dualVerify",
       "caveat": "require-both vs accept-either is the app's policy; --digest signs the streamed SHA-256 for gigabyte inputs."
     },
     {
@@ -292,7 +294,7 @@
     },
     {
       "question": "Does pqforge compose SLH-DSA?",
-      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.1 (current on pub.dev) ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
+      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
     },
     {
       "question": "Is pqforge post-quantum / quantum-safe?",
@@ -336,7 +338,7 @@
     },
     {
       "question": "What does hybrid mean in pqforge?",
-      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256."
+      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256. PqEcdsaP384 is the P-384 signature, not that shared secret. PqX509 parses, mints, and checks an X.509 certificate, and it writes the PKCS#10 request openssl req verifies. cert req, cert issue, and cert sign are that CLI. It is not a trust store and not TLS."
     },
     {
       "question": "Where does the CLI store keys?",

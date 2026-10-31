@@ -1,12 +1,27 @@
 # CLI Guide
 
-The `pqforge` CLI has 18 commands for reusable keys, wrapped secret keys, file /
+The `pqforge` CLI has 19 commands for reusable keys, wrapped secret keys, file /
 folder / text / media encryption, gigabyte streaming, whole-folder packing,
 multi-recipient and hybrid encryption, recipe-specific and hybrid signatures,
-and artifact inspection. The full reference is in
+X.509 certificates (`cert`, the `openssl req` flow), and artifact inspection. The full reference is in
 [doc/CLI.md](https://github.com/turkananation/pqforge/blob/main/doc/CLI.md).
 
 `pqforge <command> --help` prints worked examples for any command.
+
+## Certificates
+
+`cert req`, `cert issue`, and `cert sign` are `openssl req` and
+`openssl x509 -req`. `--subj` and `--addext` use the OpenSSL syntax. `--key`
+reads the PEM private key OpenSSL writes. The default output is PEM.
+
+```bash
+dart run pqforge cert req --key leaf.key --subj /CN=localhost \
+  --addext subjectAltName=DNS:localhost --out localhost.csr
+openssl req -in localhost.csr -noout -verify
+```
+
+The command reference, including the flag table, is in
+[doc/CLI.md](https://github.com/turkananation/pqforge/blob/main/doc/CLI.md).
 
 ## Wrapped keys
 

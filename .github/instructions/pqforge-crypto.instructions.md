@@ -13,7 +13,7 @@
   - Text Snippets: sealText, openText, signText, verifyText
   - Media Assets: sealMedia, openMedia, signMedia, verifyMedia
   - Document Signing: signDocument, verifyDocument
-  - Hybrid And Classical Signatures: PqForgeHybridSigner, PqEcdsaP256, dualSign, dualVerify
+  - Hybrid And Classical Signatures: PqForgeHybridSigner, PqEcdsaP256, PqEcdsaP384, PqEd25519, PqRsa, PqX509, dualSign, dualVerify
   - Webhook Integrity: signWebhook, verifyWebhook
   - Signed Tokens: issueToken, verifyToken
   - Private Email Payloads: sealEmail, openEmail

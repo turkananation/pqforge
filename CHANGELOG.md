@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.4.9
+
+X.509 certificates and the classical signatures those certificates use.
+No `.pqf` / `.pqfs` wire-format change. 0.4.8 stays the ChaCha20 keystream
+release.
+
+- **`PqX509`** — DER parse, self-signed or issued mint, one signature check,
+  and a path check against caller-supplied anchors. No sockets, no system
+  trust store, no AIA, OCSP, or CT. `now` is an argument.
+- **`PqEcdsaP384`** — ECDSA P-384 / SHA-384, raw `r || s`, low-S. This is not
+  `p384SharedSecret`. That function remains the SecP384r1MLKEM1024 key share.
+- **`PqRsa`** — PKCS#1 v1.5 and RSASSA-PSS, SHA-256/384/512. The modulus and
+  exponent stay bytes. A `BigInt` is built only after the modulus is 2048,
+  3072, or 4096 bits.
+- **`PqEd25519`** — synchronous RFC 8032 sign and verify. The field is 16-bit
+  limbs so the multiply fits a dart2js-safe integer.
+- Depend on `pqcrypto` 0.4.4. That release publishes
+  `SlhDsa.generateKeyPairSeeded`. No wire-format change.
+- CI builds pinned OpenSSL 4.1.0 and BoringSSL 0.20261020.0 from
+  `tool/interop/pins.env` and checks a chain for every signature algorithm
+  against both: ECDSA P-256 and P-384, Ed25519, RSA PKCS#1 SHA-256/384/512,
+  RSASSA-PSS (hash-length salt, salt 20, and an `id-RSASSA-PSS` public key),
+  and ML-DSA-44/65/87. The same job parses a certificate OpenSSL minted for
+  each of those. OpenSSL is the conformance oracle. BoringSSL is a second
+  verifier, not a second certificate branch: it rejects a PSS salt other
+  than the hash length and an `id-RSASSA-PSS` SubjectPublicKeyInfo, so those
+  two chains are checked with OpenSSL only. Hash-length PSS with an
+  `rsaEncryption` public key is checked against both. The AEAD
+  interop harness links that OpenSSL, not the Ubuntu package. The BoringSSL
+  install also builds the `bssl` tool, which `cmake --install` requires.
+  The chain checker is linked with the C++ driver because `libcrypto.a` is
+  C++. `install_ssldirs` puts `openssl.cnf` in `OPENSSLDIR`; `req` will not
+  start without it.
+- `cert req`, `cert issue`, and `cert sign` match `openssl req` and
+  `openssl x509 -req`: `--subj`, repeatable `--addext`, and a PEM private key
+  or a keygen secret. A request is a PKCS#10 `CERTIFICATE REQUEST`. Signing a
+  request copies its extensions. `cert inspect` prints a certificate, a
+  PKCS#10 request, or a private-key PEM (the secret itself is not printed).
+  `cert verify` reads PEM or DER.
+- Verify accepts the high-S ECDSA encoding OpenSSL and BoringSSL put in a
+  certificate. `sign` still emits low-S. Compressed SEC1 points are accepted.
+  `id-RSASSA-PSS` public keys and a PSS salt other than the hash length are
+  accepted. An omitted salt is the RFC 4055 default, 20. SHA-1 is not.
+  `issuerUniqueID` and `subjectUniqueID` parse. Name constraints cover DNS,
+  IP, email, URI, and directory names. A name form that cannot be evaluated
+  fails closed. `id-pe-tlsfeature` status_request is must-staple: the path
+  fails until the caller says an OCSP response was present. Explicit EC
+  parameters stay rejected, which is what a browser does.
+
 ## 0.4.8
 
 Additive ChaCha20 keystream for QUIC header protection (RFC 9001 §5.4.4).

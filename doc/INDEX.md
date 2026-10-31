@@ -38,7 +38,7 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | --- | --- |
 | [API.md](API.md) | Facade, hybrid KEM combining, hybrid key agreement, dual signatures, AEAD sessions, engines, supporting types |
 | [HYBRID_AUDIT.md](HYBRID_AUDIT.md) | What `pqforge` composes on top of `pqcrypto`, the SLH-DSA keygen/sign boundary, and the explicit rejections (RC4, AES-as-signature) |
-| [CLI.md](CLI.md) | Every command and flag: keys, files, folders, text, media, streaming, pack, multi-recipient, hybrid, signing, inspect, `--quiet` / progress |
+| [CLI.md](CLI.md) | Every command and flag, including `cert` (`openssl req` / `x509 -req`) |
 
 ### Cookbook
 

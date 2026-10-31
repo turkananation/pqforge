@@ -8,7 +8,9 @@ Allowed wording:
   `keygen`, key custody, and detached `sign`/`verify`. Envelope headers,
   streaming signatures, and `hybrid-sign` remain ML-DSA-only.
 - Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key
-  custody, signatures, recipes, hybrid helpers, and CLI workflows.
+  custody, signatures, recipes, hybrid helpers, X.509 certificates, PKCS#10
+  requests, and CLI workflows. A certificate that `openssl req` can read is
+  not a WebPKI CA and not a trust store.
 - Best-effort cleanup in Dart.
 
 Forbidden wording:

@@ -10,7 +10,8 @@
 ///   message via HMAC-SHA-256, so there is no RNG dependency at signing time and
 ///   no catastrophic `k`-reuse failure mode.
 /// * **Low-S normalization.** Signatures are emitted in canonical low-S form and
-///   verification rejects high-S, closing the ECDSA malleability gap.
+///   verification accepts the high-S form X.509 and TLS send. [sign] still
+///   returns low-S.
 ///
 /// Byte encodings:
 /// * private key — the scalar `d` as a fixed 32-byte big-endian integer;
@@ -119,39 +120,52 @@ class PqEcdsaP256 {
 
   /// Verifies a raw `r || s` [signature] over [message] under [publicKey].
   ///
-  /// Returns `false` (never throws) for any malformed input, an off-curve point,
-  /// a non-canonical high-S signature, or a genuine verification failure.
+  /// [publicKey] may be uncompressed (`0x04`) or compressed (`0x02` / `0x03`).
+  /// High-S is accepted. X.509 and TLS do not require low-S. Returns false
+  /// for a bad length, an off-curve point, or a bad signature.
   static bool verify({
     required Uint8List publicKey,
     required Uint8List message,
     required Uint8List signature,
   }) {
-    if (publicKey.length != publicKeyBytes ||
-        signature.length != signatureBytes) {
-      return false;
-    }
+    final encoded = normalizePoint(publicKey);
+    if (encoded == null || signature.length != signatureBytes) return false;
     try {
-      final point = _domain.curve.decodePoint(publicKey);
+      final point = _domain.curve.decodePoint(encoded);
       if (point == null || point.isInfinity) return false;
-      final verifier = _newSigner()
+      final verifier = _verifier()
         ..init(
           false,
           pc.PublicKeyParameter<pc.ECPublicKey>(pc.ECPublicKey(point, _domain)),
         );
       final r = _bytesToBigInt(Uint8List.sublistView(signature, 0, 32));
       final s = _bytesToBigInt(Uint8List.sublistView(signature, 32, 64));
+      if (r == BigInt.zero ||
+          s == BigInt.zero ||
+          r >= _domain.n ||
+          s >= _domain.n) {
+        return false;
+      }
       return verifier.verifySignature(message, pc.ECSignature(r, s));
     } catch (_) {
       return false;
     }
   }
 
-  // Deterministic (RFC 6979) ECDSA-SHA-256 signer that always normalizes to
-  // low-S and rejects high-S on verification.
+  /// Uncompressed `0x04 || X || Y`, or null when [encoded] is not a P-256 point.
+  ///
+  /// Accepts the compressed SEC1 forms. Hybrid `0x06` / `0x07` is rejected.
+  static Uint8List? normalizePoint(Uint8List encoded) =>
+      _normalizePoint(encoded, _domain, publicKeyBytes);
+
+  // RFC 6979 on sign, low-S on sign. Verify does not force low-S.
   static pc.NormalizedECDSASigner _newSigner() => pc.NormalizedECDSASigner(
     pc.ECDSASigner(pc.SHA256Digest(), pc.HMac(pc.SHA256Digest(), 64)),
     enforceNormalized: true,
   );
+
+  static pc.ECDSASigner _verifier() =>
+      pc.ECDSASigner(pc.SHA256Digest(), pc.HMac(pc.SHA256Digest(), 64));
 
   static Uint8List _bigIntToFixed(BigInt value, int length) {
     final out = Uint8List(length);
@@ -181,5 +195,29 @@ class PqEcdsaP256 {
     }
     fortuna.seed(pc.KeyParameter(seed));
     return fortuna;
+  }
+}
+
+Uint8List? _normalizePoint(
+  Uint8List encoded,
+  pc.ECDomainParameters domain,
+  int uncompressedLength,
+) {
+  if (encoded.isEmpty) return null;
+  final tag = encoded[0];
+  final compressed = tag == 0x02 || tag == 0x03;
+  if (tag != 0x04 && !compressed) return null;
+  final expected = compressed
+      ? (uncompressedLength ~/ 2) + 1
+      : uncompressedLength;
+  if (encoded.length != expected) return null;
+  try {
+    final point = domain.curve.decodePoint(encoded);
+    if (point == null || point.isInfinity) return null;
+    final raw = point.getEncoded(false);
+    if (raw.length != uncompressedLength || raw[0] != 0x04) return null;
+    return Uint8List.fromList(raw);
+  } catch (_) {
+    return null;
   }
 }

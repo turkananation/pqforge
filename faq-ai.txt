@@ -9,7 +9,7 @@ pqcrypto is the primitives layer: FIPS 203 ML-KEM, FIPS 204 ML-DSA, FIPS 205 SLH
 
 ## Does pqforge compose SLH-DSA?
 
-Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.1 (current on pub.dev) ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow.
+Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow.
 
 ## Is pqforge post-quantum / quantum-safe?
 
@@ -53,7 +53,7 @@ Yes. pqforge pack collapses a whole folder into one encrypted streaming archive 
 
 ## What does hybrid mean in pqforge?
 
-Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256.
+Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256. PqEcdsaP384 is the P-384 signature, not that shared secret. PqX509 parses, mints, and checks an X.509 certificate, and it writes the PKCS#10 request openssl req verifies. cert req, cert issue, and cert sign are that CLI. It is not a trust store and not TLS.
 
 ## Where does the CLI store keys?
 
