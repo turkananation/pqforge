@@ -30,20 +30,20 @@ compose SLH-DSA into envelope headers, streaming signatures, or `hybrid-sign`.
 | --- | --- |
 | ML-KEM | 512, 768, 1024 through `PqKemAlgorithm` |
 | ML-DSA | 44, 65, 87 through `PqSignatureAlgorithm` |
-| SLH-DSA | All 12 FIPS 205 sets through `PqSlhDsaAlgorithm` / `PqSlhDsaPrimitives`. `keygen` and detached `sign`/`verify`. **Not** in envelopes, `.pqfs` headers, or `hybrid-sign` |
+| SLH-DSA | All 12 FIPS 205 sets through `PqSlhDsaAlgorithm` / `PqSlhDsaPrimitives`. `keygen` and detached `sign`/`verify`. **Not** in envelopes, `.pqfs` headers, or `hybrid-sign`. One opted-in leg of `compose-sign` |
 | KEM-DEM encryption | `encrypt`, `decrypt`, `sealToKemPublicKey`, file/record/email/text/media/folder helpers |
-| Signatures | raw ML-DSA signatures, documents, text, media, webhooks, artifacts, logs, tokens |
+| Signatures | raw ML-DSA signatures, documents, text, media, webhooks, artifacts, logs, tokens, identity bindings. Detached recipes also accept SLH-DSA via `slhDsa:` |
 | Hybrid KDF | `PqForgeCombiner` (`combine` = classical\|\|PQ then HKDF); `concatenateSharedSecrets` (concat only, for RFC 10024) |
-| Built-in hybrid KEX | X25519 + ML-KEM through `PqForgeHybridKeyAgreement`; P-256/P-384 ECDH through `PqNistEcdh` (TLS hybrid groups, not the X25519 handshake) |
-| Built-in hybrid signatures | ML-DSA + Ed25519 **or ECDSA-P256** through `PqForgeHybridSigner` |
-| Built-in classical signatures | ECDSA-P256 (`PqEcdsaP256`, pure-Dart PointyCastle, RFC 6979, low-S) — `ecdsa-sign`/`ecdsa-verify` |
+| Built-in hybrid KEX | X25519 + ML-KEM through `PqForgeHybridKeyAgreement`; P-256/P-384 ECDH through `PqNistEcdh` (TLS hybrid groups, not the X25519 handshake). X448 and P-521 ECDH are HPKE shares, not TLS groups |
+| Built-in hybrid signatures | ML-DSA + Ed25519 **or ECDSA-P256** through `PqForgeHybridSigner`. The classical leg may also be opt-in ECDSA-P384 or ECDSA-P521 |
+| Built-in classical signatures | ECDSA-P256 (`PqEcdsaP256`), ECDSA-P384 (`PqEcdsaP384`), and ECDSA-P521 (`PqEcdsaP521`): pure-Dart PointyCastle, RFC 6979, low-S. `ecdsa-sign`/`ecdsa-verify` follow the key. P-384 and P-521 are `keygen --classical` opt-ins. `PqEcdsaP521` is not `p521SharedSecret` |
 | App-supplied hybrid signatures | `dualSign` / `dualVerify` for any other classical verifier callback |
 | AEAD | AES-256-GCM and ChaCha20-Poly1305 on a pure-Dart or native (`package:cryptography`) engine; sync caller-nonce helpers (`PqSymmetricPrimitives.chacha20Poly1305Encrypt`, Dart engine, dart2js-safe) distinct from `PqForgeSecureSession` |
 | KDF / digests | HKDF-SHA-256/384 Extract+Expand (RFC 5869); SHA-256/384/512 and HMAC-SHA-256/384/512 facades |
 | KEM check | `PqKemPrimitives.checkEncapsulationKey` — FIPS 203 §7.2 via pqcrypto, no lattice reimplementation |
 | Large files | Bounded-memory `.pqfs` streaming (auto ≥ 8 MiB) and `pack`/`unpack` whole-folder archives |
 | Multi-recipient | One sealed payload, DEM key wrapped per recipient (`PqMultiRecipient`), no wire-format change |
-| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/pack/unpack/inspect/sign/verify/hybrid-sign/hybrid-verify/ecdsa-sign/ecdsa-verify`. File encrypt/decrypt, text (`--out`), media, folder, pack/unpack, sign/verify, hybrid-sign/verify, and ecdsa-sign/verify report live progress (folder jobs forward byte progress from isolates; `keygen` reports wrapping progress). `--quiet`/`-q` mutes per-file lines; non-regular files are skipped. `decrypt-text` without `--out` writes only plaintext. |
+| CLI | `dart run pqforge keygen/encrypt/decrypt/encrypt-folder/decrypt-folder/encrypt-text/decrypt-text/encrypt-media/decrypt-media/pack/unpack/inspect/sign/verify/hybrid-sign/hybrid-verify/compose-sign/compose-verify/ecdsa-sign/ecdsa-verify`. File encrypt/decrypt, text (`--out`), media, folder, pack/unpack, sign/verify, hybrid-sign/verify, compose-sign/verify, and ecdsa-sign/verify report live progress (folder jobs forward byte progress from isolates; `keygen` reports wrapping progress). `--quiet`/`-q` mutes per-file lines; non-regular files are skipped. `decrypt-text` without `--out` writes only plaintext. |
 
 ## Rejections And Boundaries
 
@@ -108,8 +108,10 @@ What remains ML-DSA-only:
 - `hybrid-sign` / `PqForgeHybridSigner` stay one ML-DSA leg plus one classical
   leg. That classical leg is Ed25519, ECDSA-P256, ECDSA-P384, or ECDSA-P521.
 - `dualSign` is the same ML-DSA-plus-callback shape.
-- `compose-sign` is the opt-in 2-leg or 3-leg container. SLH-DSA is a leg only
-  when the caller passes it. Envelope headers stay ML-DSA.
+
+`compose-sign` is separate. It is an opt-in 2-leg or 3-leg container. SLH-DSA
+is a leg only when the caller passes it. That does not put SLH-DSA on an
+envelope or on `hybrid-sign`.
 
 `issueToken`, signed logs, and identity bindings accepted only ML-DSA through
 0.4.9 because those containers stored a `PqSignatureAlgorithm`. 0.4.10 stores

@@ -52,11 +52,11 @@ dart run pqforge decrypt-folder \
 - ML-DSA signatures, plus hybrid ML-DSA + Ed25519/ECDSA-P256 and standalone ECDSA-P256. `hybrid-sign` also accepts opt-in ECDSA-P384 and ECDSA-P521. `compose-sign` is a separate 2-leg or 3-leg command.
 - SLH-DSA (FIPS 205, all 12 sets) composed into `keygen`, custody, and detached `sign`/`verify` (documents, text, media, webhooks, artifacts, tokens, logs, identity bindings). Not used for envelopes or `hybrid-sign`. It can be one opted-in leg of `compose-sign`.
 - AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart or native engine.
-- X25519 + ML-KEM hybrid key agreement, P-256/P-384 ECDH (`PqNistEcdh`), and hybrid KEM-DEM.
+- X25519 + ML-KEM hybrid key agreement, X448, P-256/P-384 ECDH for TLS hybrid groups, and P-521 ECDH for HPKE (`PqNistEcdh`). P-521 ECDH is not a signature.
 - Bounded-memory gigabyte streaming and whole-folder `pack`/`unpack`.
 - Multi-recipient envelopes — one sealed payload, key-wrapped per recipient.
 - Argon2id + AES-GCM wrapped key custody (PBKDF2 under FIPS mode).
-- Named recipes and a universal CLI (19 commands) with AOT release binaries. File, folder, text, media, pack, unpack, sign, verify, hybrid-sign, ecdsa-sign, and cert commands are included. File commands report live progress (folder jobs include isolate-forwarded byte progress); `--quiet` mutes per-file lines.
+- Named recipes and a universal CLI (21 commands, plus `version` and `uninstall`) with AOT release binaries. File, folder, text, media, pack, unpack, sign, verify, hybrid-sign, compose-sign, ecdsa-sign, and cert commands are included. File commands report live progress (folder jobs include isolate-forwarded byte progress); `--quiet` mutes per-file lines.
 
 ## Important boundary
 

@@ -16,7 +16,8 @@ post-quantum primitives.
   hybrid sessions, wrapped key custody, streaming, multi-recipient envelopes,
   and a CLI. SLH-DSA is composed into `keygen` and detached `sign`/`verify`,
   including tokens, signed logs, and identity bindings; envelopes and
-  `hybrid-sign` remain ML-DSA-only.
+  `hybrid-sign` remain ML-DSA-only. `compose-sign` can take one SLH-DSA leg
+  when that key is passed.
 
 ## Which one do I want?
 
@@ -27,6 +28,8 @@ post-quantum primitives.
 | Encrypt a file, folder, or gigabyte media stream | **pqforge** |
 | Sign a document, release artifact, webhook, or token | **pqforge** |
 | Add an X25519/Ed25519/ECDSA-P256 hybrid leg | **pqforge** |
+| Opt into ECDSA-P384 or ECDSA-P521, or compose 2–3 signature legs | **pqforge** (`keygen --classical`, `compose-sign`) |
+| Seal with RFC 9180 HPKE, including X448 and P-521 | **pqforge** |
 | Wrap secret keys with a passphrase (Argon2id + AES-GCM) | **pqforge** |
 | Encrypt once for many recipients | **pqforge** |
 | Ship a CLI to ops or a release pipeline | **pqforge** |
@@ -43,10 +46,12 @@ the rest of the stack a real application needs:
 - **Symmetric AEAD** — AES-256-GCM and ChaCha20-Poly1305, on a pure-Dart
   (PointyCastle) or native (`package:cryptography`) engine.
 - **Classical hybrid tier** — X25519 key agreement, Ed25519 and ECDSA-P256
-  signatures, P-256/P-384 ECDH (`PqNistEcdh`), combined with ML-KEM/ML-DSA so
-  security holds if *either* the post-quantum or the classical assumption
-  survives. SLH-DSA is a composed detached-signature family, not a hybrid-signer
-  leg.
+  signatures, P-256/P-384 ECDH (`PqNistEcdh`) for TLS hybrid groups, combined
+  with ML-KEM/ML-DSA so security holds if *either* the post-quantum or the
+  classical assumption survives. X448 and P-521 ECDH are HPKE shares, not TLS
+  groups. ECDSA-P384 and ECDSA-P521 are signature opt-ins. `PqEcdsaP521` is
+  not the P-521 HPKE share. SLH-DSA is a composed detached-signature family,
+  not a `hybrid-sign` leg. It can be one opted-in leg of `compose-sign`.
 - **Key custody** — Argon2id + AES-256-GCM wrapped keys (PBKDF2 under FIPS mode)
   and pluggable stores.
 - **Streaming and packing** — bounded-memory gigabyte files and one-archive
