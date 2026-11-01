@@ -18,4 +18,5 @@ tool/interop/.build/
 
 # Jaspr build output. The source lives in site/; Pages builds it.
 site/build/
+site/public/
 site/.dart_tool/
