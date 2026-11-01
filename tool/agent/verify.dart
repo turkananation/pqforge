@@ -95,6 +95,7 @@ Future<void> _runExamples() async {
       'secure_session_example.dart',
       'hybrid_key_agreement_example.dart',
       'catalog_recipes_example.dart',
+      'compose_signature_example.dart',
     ]) {
       await _run('example: $name', ['dart', 'run', 'example/$name']);
     }

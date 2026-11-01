@@ -105,7 +105,11 @@ What remains ML-DSA-only:
 
 - `PqSignatureAlgorithm` (still `mlDsa44` / `mlDsa65` / `mlDsa87`).
 - Envelope and `.pqfs` header signatures.
-- `hybrid-sign` / `PqForgeHybridSigner` / `dualSign`.
+- `hybrid-sign` / `PqForgeHybridSigner` stay one ML-DSA leg plus one classical
+  leg. That classical leg is Ed25519, ECDSA-P256, ECDSA-P384, or ECDSA-P521.
+- `dualSign` is the same ML-DSA-plus-callback shape.
+- `compose-sign` is the opt-in 2-leg or 3-leg container. SLH-DSA is a leg only
+  when the caller passes it. Envelope headers stay ML-DSA.
 
 `issueToken`, signed logs, and identity bindings accepted only ML-DSA through
 0.4.9 because those containers stored a `PqSignatureAlgorithm`. 0.4.10 stores

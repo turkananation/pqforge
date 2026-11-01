@@ -442,6 +442,50 @@ dart run pqforge sign \
 `s` (small signature) sets are slow by design; `pqcrypto` requires an explicit
 opt-in to sign with them. The CLI passes that opt-in when you hand it an `s`-set
 secret. Envelope `--signer-secret` and `hybrid-sign` still reject SLH-DSA keys.
+`compose-sign` accepts an SLH-DSA leg because you passed `--slh-secret`.
+
+## Composed signatures
+
+`compose-sign` is 2 legs (dual) or 3 legs (triple). Each flag is one algorithm.
+Omit a flag and that algorithm is not in the signature.
+
+| Flag | Leg |
+| --- | --- |
+| `--ml-dsa-secret` | the ML-DSA set stored in that key |
+| `--slh-secret` | the SLH-DSA set stored in that key |
+| `--classical-secret` | Ed25519, ECDSA-P256, ECDSA-P384, or ECDSA-P521. Repeatable |
+
+ECDSA-P384 and ECDSA-P521 are not in the default `keygen` set:
+
+```bash
+dart run pqforge keygen \
+  --key-id vault \
+  --out-dir keys \
+  --classical ecdsa-p384 \
+  --classical ecdsa-p521 \
+  --passphrase-env PQFORGE_PASSPHRASE
+
+dart run pqforge compose-sign \
+  --ml-dsa-secret keys/vault.sign.secret.wrapped.json \
+  --slh-secret keys/vault.slh-dsa-shake-128f.secret.wrapped.json \
+  --classical-secret keys/vault.ecdsa-p384.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --policy require-all \
+  --in firmware.bin \
+  --out firmware.triple.json
+
+dart run pqforge compose-verify \
+  --ml-dsa-public keys/vault.sign.public.json \
+  --slh-public keys/vault.slh-dsa-shake-128f.public.json \
+  --classical-public keys/vault.ecdsa-p384.public.json \
+  --in firmware.bin \
+  --signature firmware.triple.json
+```
+
+`--policy accept-any` succeeds when one leg verifies. The default is
+`require-all`. `hybrid-sign` is still exactly one ML-DSA leg plus one
+classical leg, and that classical leg may now be P-384 or P-521.
+`ecdsa-sign` follows the key's algorithm id.
 
 ## Hybrid Signatures
 
@@ -476,12 +520,13 @@ SHA-256 of the input (O(1) memory) under a domain-separation label, recorded in
 the signature JSON so `hybrid-verify` re-hashes automatically — no `--digest`
 flag needed on verify.
 
-## Standalone ECDSA-P256
+## Standalone ECDSA
 
-`ecdsa-sign` / `ecdsa-verify` use the pure classical ECDSA-P256 path (RFC 6979
-deterministic nonces, canonical low-S) over the raw file bytes — no
-post-quantum key involved. They also accept `--digest` for the same streamed
-SHA-256 pre-hash described above.
+`ecdsa-sign` / `ecdsa-verify` follow the key: P-256, P-384, or P-521 (RFC 6979
+deterministic nonces, canonical low-S) over the raw file bytes. No
+post-quantum key is involved. P-384 and P-521 are `keygen --classical` opt-ins.
+They also accept `--digest` for the same streamed SHA-256 pre-hash described
+above. P-521 here is a signature, not an HPKE share and not a TLS group.
 
 ```bash
 dart run pqforge ecdsa-sign \
