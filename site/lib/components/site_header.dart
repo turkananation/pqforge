@@ -43,10 +43,9 @@ class SiteHeader extends StatelessComponent {
           bottom: BorderSide(color: Color('#d6f25c33'), width: 1.px),
         ),
       ),
-      css('.pqf-title').styles(
-        fontWeight: FontWeight.w800,
-        letterSpacing: Unit.zero,
-      ),
+      css(
+        '.pqf-title',
+      ).styles(fontWeight: FontWeight.w800, letterSpacing: Unit.zero),
       css('.pqf-nav', [
         css('&').styles(
           display: Display.flex,
