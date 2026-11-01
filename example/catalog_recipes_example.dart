@@ -103,6 +103,21 @@ void main() {
     PqSignedToken.fromJson(token.toJson()),
     nowMs: timestampMs + 1000,
   );
+  final slhKeys = forge.generateSlhDsaKeyPair();
+  final slhToken = forge.issueToken(
+    signerSecretKey: slhKeys.secretKey,
+    issuer: 'pqforge-demo',
+    subject: 'user-1',
+    issuedAtMs: timestampMs,
+    expiresAtMs: timestampMs + 60000,
+    claims: {'role': 'reader'},
+    slhDsa: forge.profile.slhDsa,
+  );
+  final slhTokenOk = forge.verifyToken(
+    slhKeys.publicKey,
+    PqSignedToken.fromJson(slhToken.toJson()),
+    nowMs: timestampMs + 1000,
+  );
 
   print('webhook verified: $webhookOk');
   print('sealed email profile: ${sealedEmail.profile.name}');
@@ -110,4 +125,5 @@ void main() {
   print('text verified: $textOk');
   print('media verified: $mediaOk');
   print('token verified: $tokenOk');
+  print('slh token verified: $slhTokenOk (${slhToken.algorithmId})');
 }

@@ -34,6 +34,17 @@ RFC 9180 HPKE as a public API. No `.pqf` / `.pqfs` wire-format change.
   P-256, or P-384, and not a BoringSSL claim for X448 or P-521.
 - `dispose` on an `HpkeContext` is best-effort zeroization. It is not a
   claim that the key has left process memory.
+- Detached recipes that still serialized only `PqSignatureAlgorithm` now
+  accept SLH-DSA the same way artifacts do. `issueToken` / `verifyToken`,
+  `appendSignedLogEntry` / `verifySignedLogEntry`, and
+  `createIdentityBinding` / `verifyIdentityBinding` take an optional
+  `slhDsa:`. Pass exactly one of `algorithm` (ML-DSA) or `slhDsa`. Token
+  JSON stays version 1; `signatureAlgorithm` holds either id. An ML-DSA
+  token, log, or identity binding is still signed with `preHash: false`,
+  so a 0.4.9 token still verifies. SLH-DSA recipe calls use the same
+  pre-hash path as `signDocument`. `sign --kind webhook` writes that
+  recipe from the CLI (`--event-type`, `--timestamp-ms`). Envelope
+  headers, `.pqfs` signatures, and `hybrid-sign` stay ML-DSA-only.
 
 ## 0.4.9
 

@@ -345,12 +345,13 @@ Methods, grouped:
 
 Import `package:pqcrypto/pqcrypto.dart` for `SlhDsa` / `SlhDsaParams` /
 `SlhDsaPreHash`. They are not re-exported from `pqforge.dart`.
-`PqForge.generateSlhDsaKeyPair` and CLI `keygen` emit SLH-DSA keys; detached
-`sign`/`verify` (`document`, `text`, `media`, `artifact`) and recipe helpers
-(`signDocument`, `signText`, `signMedia`, `signWebhook`, `signArtifact`) accept
-them. Envelope headers, `.pqfs` signatures, `PqForgeHybridSigner`, signed
-tokens, signed logs, and identity bindings stay ML-DSA-only. See
-[HYBRID_AUDIT.md](HYBRID_AUDIT.md).
+`PqForge.generateSlhDsaKeyPair` and CLI `keygen` emit SLH-DSA keys. Detached
+`sign`/`verify` (`document`, `text`, `media`, `artifact`, `webhook`) and the
+recipe helpers (`signDocument`, `signText`, `signMedia`, `signWebhook`,
+`signArtifact`, `issueToken`, `appendSignedLogEntry`, `createIdentityBinding`)
+accept them via `slhDsa:`. Pass exactly one of the ML-DSA algorithm and
+`slhDsa`. Envelope headers, `.pqfs` signatures, and `PqForgeHybridSigner`
+stay ML-DSA-only. See [HYBRID_AUDIT.md](HYBRID_AUDIT.md).
 
 ---
 

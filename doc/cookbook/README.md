@@ -22,6 +22,12 @@ line workflows.
 Every recipe follows the same rule: state what `pqforge` provides, state what
 the app supplies, then state the caveat.
 
+Detached signatures accept ML-DSA or SLH-DSA. Pass `slhDsa:` (and not `algorithm`)
+for a hash-based key from `keygen`. That covers documents, text, media, webhooks,
+artifacts, tokens, signed logs, and identity bindings. Encryption envelopes,
+`.pqfs` header signatures, and `hybrid-sign` stay ML-DSA. An SLH-DSA signature
+is 8–50 KiB. The `s` sets are slow; the CLI opts in when the secret is an `s` set.
+
 ## Recipe Docs
 
 | Need | Document |

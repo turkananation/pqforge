@@ -369,6 +369,55 @@ void main() {
     ]);
   });
 
+  test('sign and verify round-trip an SLH-DSA webhook from keygen', () async {
+    await runCli([
+      'keygen',
+      '--profile',
+      'compact',
+      '--key-id',
+      'hook',
+      '--out-dir',
+      outDir.path,
+      '--slh-dsa-only',
+    ]);
+
+    final payload = File('${outDir.path}/event.json');
+    await payload.writeAsString('{"invoice":"paid"}\n');
+    final signaturePath = '${outDir.path}/event.sig.json';
+
+    await runCli([
+      'sign',
+      '--signer-secret',
+      '${outDir.path}/hook.slh-dsa-shake-128f.secret.json',
+      '--kind',
+      'webhook',
+      '--event-type',
+      'invoice.paid',
+      '--timestamp-ms',
+      '1700000000000',
+      '--in',
+      payload.path,
+      '--out',
+      signaturePath,
+    ]);
+
+    final sigJson = jsonDecode(await File(signaturePath).readAsString()) as Map;
+    expect(sigJson['signatureAlgorithm'], PqSlhDsaAlgorithm.shake128f.id);
+    expect(sigJson['kind'], 'webhook');
+    expect(sigJson['eventType'], 'invoice.paid');
+    expect(sigJson['timestampMs'], 1700000000000);
+
+    await runCli([
+      'verify',
+      '--signer-public',
+      '${outDir.path}/hook.slh-dsa-shake-128f.public.json',
+      '--in',
+      payload.path,
+      '--signature',
+      signaturePath,
+    ]);
+  });
+
   test('envelope signer-secret rejects an SLH-DSA key', () {
     final key = PqExportedKey(
       kind: PqKeyKind.signatureSecret,

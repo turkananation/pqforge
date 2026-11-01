@@ -110,8 +110,10 @@ dart run pqforge inspect --in report.pqf
 ## Signatures
 
 ```bash
-# Recipe-bound signature (document / text / media / artifact)
+# Recipe-bound signature (document / text / media / artifact / webhook).
+# The signer may be ML-DSA or SLH-DSA. Webhook needs --event-type.
 dart run pqforge sign --signer-secret keys/vault.sign.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --kind media --in cover.png --mime-type image/png --out cover.sig.json
+dart run pqforge sign --signer-secret keys/vault.slh-dsa-shake-128f.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --kind webhook --event-type invoice.paid --in payload.json --out payload.slh.sig.json
 dart run pqforge verify --signer-public keys/vault.sign.public.json --in cover.png --signature cover.sig.json
 
 # Hybrid ML-DSA + Ed25519/ECDSA-P256 (--digest for gigabyte inputs)

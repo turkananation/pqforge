@@ -14,8 +14,9 @@ post-quantum primitives.
 - **`pqforge` is the application toolkit.** It turns ML-KEM, ML-DSA, and SLH-DSA into
   encrypted files, folders, text, media, signed documents, webhooks, tokens,
   hybrid sessions, wrapped key custody, streaming, multi-recipient envelopes,
-  and a CLI. SLH-DSA is composed into `keygen` and detached `sign`/`verify`;
-  envelopes and `hybrid-sign` remain ML-DSA-only.
+  and a CLI. SLH-DSA is composed into `keygen` and detached `sign`/`verify`,
+  including tokens, signed logs, and identity bindings; envelopes and
+  `hybrid-sign` remain ML-DSA-only.
 
 ## Which one do I want?
 

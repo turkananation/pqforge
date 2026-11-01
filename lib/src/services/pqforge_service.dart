@@ -920,8 +920,8 @@ class PqForge {
     required int expiresAtMs,
     Map<String, Object?> claims = const {},
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    final sigAlg = algorithm ?? PqSignatureAlgorithm.mlDsa44;
     final message = PqRecipeMessages.token(
       issuer: issuer,
       subject: subject,
@@ -929,12 +929,27 @@ class PqForge {
       expiresAtMs: expiresAtMs,
       claims: claims,
     );
-    final signature = sign(
-      signerSecretKey,
-      message,
-      algorithm: sigAlg,
-      context: PqBytes.utf8Bytes('pqforge/signed-token/v1'),
-    );
+    const context = 'pqforge/signed-token/v1';
+    final Uint8List signature;
+    final PqSignatureAlgorithm? sigAlg;
+    if (slhDsa != null) {
+      signature = _signRecipe(
+        signerSecretKey,
+        message,
+        context: PqBytes.utf8Bytes(context),
+        algorithm: algorithm,
+        slhDsa: slhDsa,
+      );
+      sigAlg = null;
+    } else {
+      sigAlg = algorithm ?? PqSignatureAlgorithm.mlDsa44;
+      signature = sign(
+        signerSecretKey,
+        message,
+        algorithm: sigAlg,
+        context: PqBytes.utf8Bytes(context),
+      );
+    }
     return PqSignedToken(
       issuer: issuer,
       subject: subject,
@@ -942,6 +957,7 @@ class PqForge {
       expiresAtMs: expiresAtMs,
       claims: claims,
       signatureAlgorithm: sigAlg,
+      slhDsa: slhDsa,
       signature: signature,
     );
   }
@@ -955,12 +971,22 @@ class PqForge {
         (nowMs < token.issuedAtMs || nowMs >= token.expiresAtMs)) {
       return false;
     }
+    const context = 'pqforge/signed-token/v1';
+    if (token.slhDsa != null) {
+      return _verifyRecipe(
+        signerPublicKey,
+        token.message(),
+        token.signature,
+        context: PqBytes.utf8Bytes(context),
+        slhDsa: token.slhDsa,
+      );
+    }
     return verify(
       signerPublicKey,
       token.message(),
       token.signature,
       algorithm: token.signatureAlgorithm,
-      context: PqBytes.utf8Bytes('pqforge/signed-token/v1'),
+      context: PqBytes.utf8Bytes(context),
     );
   }
 
@@ -1201,26 +1227,42 @@ class PqForge {
     required int notBeforeMs,
     required int expiresAtMs,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    final sigAlg = algorithm ?? profile.signature;
     final message = PqRecipeMessages.identityBinding(
       subjectId: subjectId,
       identityPublicKey: identityPublicKey,
       notBeforeMs: notBeforeMs,
       expiresAtMs: expiresAtMs,
     );
-    final signature = sign(
-      authoritySecretKey,
-      message,
-      algorithm: sigAlg,
-      context: PqBytes.utf8Bytes('pqforge/identity-binding/v1'),
-    );
+    const context = 'pqforge/identity-binding/v1';
+    final Uint8List signature;
+    final PqSignatureAlgorithm? sigAlg;
+    if (slhDsa != null) {
+      signature = _signRecipe(
+        authoritySecretKey,
+        message,
+        context: PqBytes.utf8Bytes(context),
+        algorithm: algorithm,
+        slhDsa: slhDsa,
+      );
+      sigAlg = null;
+    } else {
+      sigAlg = algorithm ?? profile.signature;
+      signature = sign(
+        authoritySecretKey,
+        message,
+        algorithm: sigAlg,
+        context: PqBytes.utf8Bytes(context),
+      );
+    }
     return PqIdentityBinding(
       subjectId: subjectId,
       identityPublicKey: identityPublicKey,
       notBeforeMs: notBeforeMs,
       expiresAtMs: expiresAtMs,
       signatureAlgorithm: sigAlg,
+      slhDsa: slhDsa,
       authoritySignature: signature,
     );
   }
@@ -1229,12 +1271,22 @@ class PqForge {
     Uint8List authorityPublicKey,
     PqIdentityBinding binding,
   ) {
+    const context = 'pqforge/identity-binding/v1';
+    if (binding.slhDsa != null) {
+      return _verifyRecipe(
+        authorityPublicKey,
+        binding.message(),
+        binding.authoritySignature,
+        context: PqBytes.utf8Bytes(context),
+        slhDsa: binding.slhDsa,
+      );
+    }
     return verify(
       authorityPublicKey,
       binding.message(),
       binding.authoritySignature,
       algorithm: binding.signatureAlgorithm,
-      context: PqBytes.utf8Bytes('pqforge/identity-binding/v1'),
+      context: PqBytes.utf8Bytes(context),
     );
   }
 
@@ -1244,35 +1296,61 @@ class PqForge {
     required Uint8List payload,
     required int timestampMs,
     PqSignatureAlgorithm? algorithm,
+    PqSlhDsaAlgorithm? slhDsa,
   }) {
-    final sigAlg = algorithm ?? PqSignatureAlgorithm.mlDsa44;
     final message = PqRecipeMessages.logEntry(
       previousHash: previousHash,
       payload: payload,
       timestampMs: timestampMs,
     );
-    final signature = sign(
-      signerSecretKey,
-      message,
-      algorithm: sigAlg,
-      context: PqBytes.utf8Bytes('pqforge/signed-log/v1'),
-    );
+    const context = 'pqforge/signed-log/v1';
+    final Uint8List signature;
+    final PqSignatureAlgorithm? sigAlg;
+    if (slhDsa != null) {
+      signature = _signRecipe(
+        signerSecretKey,
+        message,
+        context: PqBytes.utf8Bytes(context),
+        algorithm: algorithm,
+        slhDsa: slhDsa,
+      );
+      sigAlg = null;
+    } else {
+      sigAlg = algorithm ?? PqSignatureAlgorithm.mlDsa44;
+      signature = sign(
+        signerSecretKey,
+        message,
+        algorithm: sigAlg,
+        context: PqBytes.utf8Bytes(context),
+      );
+    }
     return PqSignedLogEntry(
       previousHash: previousHash,
       payload: payload,
       timestampMs: timestampMs,
       signatureAlgorithm: sigAlg,
+      slhDsa: slhDsa,
       signature: signature,
     );
   }
 
   bool verifySignedLogEntry(Uint8List signerPublicKey, PqSignedLogEntry entry) {
+    const context = 'pqforge/signed-log/v1';
+    if (entry.slhDsa != null) {
+      return _verifyRecipe(
+        signerPublicKey,
+        entry.message(),
+        entry.signature,
+        context: PqBytes.utf8Bytes(context),
+        slhDsa: entry.slhDsa,
+      );
+    }
     return verify(
       signerPublicKey,
       entry.message(),
       entry.signature,
       algorithm: entry.signatureAlgorithm,
-      context: PqBytes.utf8Bytes('pqforge/signed-log/v1'),
+      context: PqBytes.utf8Bytes(context),
     );
   }
 

@@ -15,17 +15,32 @@ class PqIdentityBinding {
     required Uint8List identityPublicKey,
     required this.notBeforeMs,
     required this.expiresAtMs,
-    required this.signatureAlgorithm,
+    this.signatureAlgorithm,
+    this.slhDsa,
     required Uint8List authoritySignature,
   }) : identityPublicKey = PqBytes.copy(identityPublicKey),
-       authoritySignature = PqBytes.copy(authoritySignature);
+       authoritySignature = PqBytes.copy(authoritySignature) {
+    if ((signatureAlgorithm == null) == (slhDsa == null)) {
+      throw const PqForgeException(
+        'Pass exactly one of signatureAlgorithm (ML-DSA) or slhDsa (SLH-DSA)',
+      );
+    }
+    requireLength(
+      'authoritySignature',
+      this.authoritySignature,
+      signatureAlgorithm?.signatureBytes ?? slhDsa!.signatureBytes,
+    );
+  }
 
   final String subjectId;
   final Uint8List identityPublicKey;
   final int notBeforeMs;
   final int expiresAtMs;
-  final PqSignatureAlgorithm signatureAlgorithm;
+  final PqSignatureAlgorithm? signatureAlgorithm;
+  final PqSlhDsaAlgorithm? slhDsa;
   final Uint8List authoritySignature;
+
+  String get algorithmId => signatureAlgorithm?.id ?? slhDsa!.id;
 
   Uint8List message() => PqRecipeMessages.identityBinding(
     subjectId: subjectId,
@@ -40,24 +55,33 @@ class PqSignedLogEntry {
     required Uint8List previousHash,
     required Uint8List payload,
     required this.timestampMs,
-    required this.signatureAlgorithm,
+    this.signatureAlgorithm,
+    this.slhDsa,
     required Uint8List signature,
   }) : previousHash = PqBytes.copy(previousHash),
        payload = PqBytes.copy(payload),
        signature = PqBytes.copy(signature) {
+    if ((signatureAlgorithm == null) == (slhDsa == null)) {
+      throw const PqForgeException(
+        'Pass exactly one of signatureAlgorithm (ML-DSA) or slhDsa (SLH-DSA)',
+      );
+    }
     requireLength('previousHash', this.previousHash, 32);
     requireLength(
       'signature',
       this.signature,
-      signatureAlgorithm.signatureBytes,
+      signatureAlgorithm?.signatureBytes ?? slhDsa!.signatureBytes,
     );
   }
 
   final Uint8List previousHash;
   final Uint8List payload;
   final int timestampMs;
-  final PqSignatureAlgorithm signatureAlgorithm;
+  final PqSignatureAlgorithm? signatureAlgorithm;
+  final PqSlhDsaAlgorithm? slhDsa;
   final Uint8List signature;
+
+  String get algorithmId => signatureAlgorithm?.id ?? slhDsa!.id;
 
   Uint8List message() => PqRecipeMessages.logEntry(
     previousHash: previousHash,
@@ -115,7 +139,8 @@ class PqSignedToken {
     required this.issuedAtMs,
     required this.expiresAtMs,
     required Map<String, Object?> claims,
-    required this.signatureAlgorithm,
+    this.signatureAlgorithm,
+    this.slhDsa,
     required Uint8List signature,
   }) : claims = Map.unmodifiable(claims),
        signature = PqBytes.copy(signature) {
@@ -126,10 +151,15 @@ class PqSignedToken {
         'must be greater than issuedAtMs',
       );
     }
+    if ((signatureAlgorithm == null) == (slhDsa == null)) {
+      throw const PqForgeException(
+        'Pass exactly one of signatureAlgorithm (ML-DSA) or slhDsa (SLH-DSA)',
+      );
+    }
     requireLength(
       'signature',
       this.signature,
-      signatureAlgorithm.signatureBytes,
+      signatureAlgorithm?.signatureBytes ?? slhDsa!.signatureBytes,
     );
   }
 
@@ -138,8 +168,11 @@ class PqSignedToken {
   final int issuedAtMs;
   final int expiresAtMs;
   final Map<String, Object?> claims;
-  final PqSignatureAlgorithm signatureAlgorithm;
+  final PqSignatureAlgorithm? signatureAlgorithm;
+  final PqSlhDsaAlgorithm? slhDsa;
   final Uint8List signature;
+
+  String get algorithmId => signatureAlgorithm?.id ?? slhDsa!.id;
 
   Uint8List message() => PqRecipeMessages.token(
     issuer: issuer,
@@ -156,7 +189,7 @@ class PqSignedToken {
     'issuedAtMs': issuedAtMs,
     'expiresAtMs': expiresAtMs,
     'claims': claims,
-    'signatureAlgorithm': signatureAlgorithm.id,
+    'signatureAlgorithm': algorithmId,
     'signature': base64Encode(signature),
   };
 
@@ -165,15 +198,18 @@ class PqSignedToken {
     if (version != 1) {
       throw PqForgeException('Unsupported signed token version: $version');
     }
+    final algorithmId = json['signatureAlgorithm'] as String;
+    final slhDsa = PqSlhDsaAlgorithm.tryById(algorithmId);
     return PqSignedToken(
       issuer: json['issuer'] as String,
       subject: json['subject'] as String,
       issuedAtMs: json['issuedAtMs'] as int,
       expiresAtMs: json['expiresAtMs'] as int,
       claims: Map<String, Object?>.from(json['claims'] as Map? ?? const {}),
-      signatureAlgorithm: PqSignatureAlgorithm.byId(
-        json['signatureAlgorithm'] as String,
-      ),
+      signatureAlgorithm: slhDsa == null
+          ? PqSignatureAlgorithm.byId(algorithmId)
+          : null,
+      slhDsa: slhDsa,
       signature: base64Decode(json['signature'] as String),
     );
   }

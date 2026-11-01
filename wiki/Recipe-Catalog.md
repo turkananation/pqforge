@@ -13,12 +13,13 @@ Use these mappings when deciding which `pqforge` surface fits an application.
 | Text note or secret | `encrypt-text`, `decrypt-text`, `sealText`, `signText` |
 | Media archive | `encrypt-media`, `decrypt-media`, `sealMedia`, `signMedia` |
 | Contract or report | `sign --kind document`, `signDocument` (ML-DSA or SLH-DSA) |
-| Webhook system | `signWebhook`, `verifyWebhook` (ML-DSA or SLH-DSA) |
-| Capability token issuer | `issueToken`, `verifyToken` |
+| Webhook system | `sign --kind webhook`, `signWebhook` (ML-DSA or SLH-DSA) |
+| Capability token issuer | `issueToken`, `verifyToken` (ML-DSA or SLH-DSA) |
 | Email payload protection | `sealEmail`, `openEmail` |
-| Government or medical records | `encryptRecord`, `appendSignedLogEntry` |
+| Government or medical records | `encryptRecord` (ML-KEM), `appendSignedLogEntry` (ML-DSA or SLH-DSA) |
+| Clinician or operator enrollment | `createIdentityBinding` (ML-DSA or SLH-DSA) |
 | Software release signing | `sign --kind artifact`, `signArtifact` (ML-DSA or SLH-DSA) |
-| Release/firmware dual signing | `hybrid-sign`/`hybrid-verify`, `PqForgeHybridSigner` |
+| Release/firmware dual signing | `hybrid-sign`/`hybrid-verify`, `PqForgeHybridSigner` (ML-DSA only) |
 | Standalone classical signing | `ecdsa-sign`/`ecdsa-verify`, `PqEcdsaP256` |
 | Server session bootstrap | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` |
 
