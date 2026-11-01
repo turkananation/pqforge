@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.10
+
+RFC 9180 HPKE as a public API. No `.pqf` / `.pqfs` wire-format change.
+0.4.9 stays the X.509 release. 0.4.8 stays the ChaCha20 keystream release.
+
+- **`PqHpke`** — base, PSK, auth, and authPSK. KEMs: DHKEM(X25519,
+  HKDF-SHA256), DHKEM(P-256, HKDF-SHA256), DHKEM(P-384, HKDF-SHA384).
+  Key-schedule KDFs: HKDF-SHA256, HKDF-SHA384, and HKDF-SHA512. The KEM
+  hash stays the one named by the KEM id. AEADs: AES-128-GCM, AES-256-GCM,
+  ChaCha20-Poly1305, and export-only. A sender context seals. A recipient
+  context opens. A failed open does not advance the sequence. `export`
+  does not use the sequence. X448 and P-521 are not implemented.
+- Known answers are the RFC 9180 vectors for X25519 and P-256, every mode,
+  HKDF-SHA256 and HKDF-SHA512, and every AEAD including export-only. P-384
+  is covered by a round trip in every mode; that KEM is not in the vector
+  file this release pins.
+- BoringSSL 0.20261020.0 `EVP_HPKE` interop, both directions, base and
+  auth, X25519 and P-256, HKDF-SHA256 and HKDF-SHA384, AES-128-GCM,
+  AES-256-GCM, and ChaCha20-Poly1305, including `Export`. That public API
+  has no PSK setup, no P-384 KEM, and no HKDF-SHA512, so those stay
+  inside the known-answer tests. This is not an OpenSSL HPKE claim.
+- `dispose` on an `HpkeContext` is best-effort zeroization. It is not a
+  claim that the key has left process memory.
+
 ## 0.4.9
 
 X.509 certificates and the classical signatures those certificates use.

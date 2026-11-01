@@ -11,6 +11,8 @@ Allowed claims:
   custody, signatures, recipes, and CLI workflows.
 - X.509 certificates and PKCS#10 requests that `openssl req` can read. That
   is not a WebPKI CA and not a trust store.
+- RFC 9180 HPKE over the KEMs, KDFs, and AEADs the package implements.
+  Not a FIPS module, not TLS, and not an OpenSSL HPKE claim.
 - Best-effort zeroization in Dart.
 
 Forbidden claims:

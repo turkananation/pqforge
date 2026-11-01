@@ -75,6 +75,18 @@ No. pqforge composes cryptographic building blocks. Public-key trust, identity v
 
 Yes, it is pure Dart with no dart:ffi, so it runs everywhere Dart runs, including the web. The OpenSSL interop harness used in CI to prove byte-compatibility with the system libcrypto is a separate publish_to: none dev package and is never shipped.
 
+## What HPKE does pqforge implement?
+
+RFC 9180 Hybrid Public Key Encryption as PqHpke. Modes are base, PSK, auth, and authPSK. KEMs are DHKEM(X25519, HKDF-SHA256), DHKEM(P-256, HKDF-SHA256), and DHKEM(P-384, HKDF-SHA384). Key-schedule KDFs are HKDF-SHA256, HKDF-SHA384, and HKDF-SHA512. AEADs are AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. A sender seals, a recipient opens, and export does not use the sequence number. X448 and P-521 are not implemented. BoringSSL 0.20261020.0 is checked for base and auth, both directions, on X25519 and P-256, with HKDF-SHA256 and HKDF-SHA384 and the three AEADs. That API has no PSK. This is not an OpenSSL HPKE claim, not TLS, and not a FIPS module. .pqf and .pqfs are unchanged.
+
+## What is the ChaCha20 keystream for?
+
+PqSymmetricPrimitives.chacha20 is RFC 8439 ChaCha20. It takes a 32-byte key, a 12-byte nonce, a caller-supplied 32-bit block counter, and returns 1 to 4096 keystream bytes. QUIC header protection uses the first 5 bytes. It is the same Dart engine as chacha20Poly1305Encrypt, so it runs on dart2js. It is not an AEAD: the AEAD forces counter 1 and appends a Poly1305 tag.
+
+## Does pqforge read and mint X.509 certificates?
+
+Yes. PqX509 parses, mints, checks one signature, and checks a path against caller-supplied anchors. now is an argument. It writes the PKCS#10 request openssl req verifies. cert req, cert issue, cert sign, cert inspect, and cert verify are the CLI. Signature algorithms on that path include ECDSA P-256 and P-384, Ed25519, RSA PKCS#1 and RSASSA-PSS, and ML-DSA. It is not a trust store and it does not fetch AIA, OCSP, or CT.
+
 ## Does pqforge support RC4?
 
 No. RC4 is not post-quantum, not authenticated encryption, not in pqcrypto, and not safe for new systems. pqforge offers AES-256-GCM and ChaCha20-Poly1305 instead.

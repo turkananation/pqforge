@@ -7,6 +7,7 @@ on:
       - develop
     paths:
       - "tool/visibility/**"
+      - "tool/fix_pages_base.py"
       - "site/**"
       - "llms.txt"
       - "llms-full.txt"
@@ -34,7 +35,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy generated visibility site
+    name: Build Jaspr docs and deploy
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -51,13 +52,33 @@ jobs:
       - name: Verify generated visibility files
         run: dart run tool/visibility/generate_visibility.dart --check
 
+      - name: Stage discovery files into the Jaspr web root
+        run: |
+          mkdir -p site/web
+          cp llms.txt site/web/llms.txt
+          cp site/favicon.svg site/web/favicon.svg
+
+      - name: Install site dependencies
+        working-directory: site
+        run: dart pub get
+
+      - name: Activate Jaspr
+        run: dart pub global activate jaspr_cli
+
+      - name: Build site
+        working-directory: site
+        run: dart pub global run jaspr_cli:jaspr build --verbose --sitemap-domain https://turkananation.github.io/pqforge
+
+      - name: Rewrite absolute anchors for /pqforge/ base
+        run: python3 tool/fix_pages_base.py site/build/jaspr
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: site/build/jaspr
 
       - name: Deploy to GitHub Pages
         id: deployment

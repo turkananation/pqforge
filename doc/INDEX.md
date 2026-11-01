@@ -18,7 +18,8 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | Package overview and selling points | [../README.md](../README.md) |
 | Coding-agent workflow | [../AGENTS.md](../AGENTS.md) |
 | Full CLI usage | [CLI.md](CLI.md) |
-| API reference | [API.md](API.md) |
+| Certificates, PKCS#10, and the cert CLI | [API.md](API.md) |
+| RFC 9180 HPKE | [HPKE.md](HPKE.md) |
 | App and project catalog | [cookbook/PROJECT_CATALOG.md](cookbook/PROJECT_CATALOG.md) |
 | Recipe cookbook | [cookbook/README.md](cookbook/README.md) |
 | Hybrid coverage audit (vs `pqcrypto`) | [HYBRID_AUDIT.md](HYBRID_AUDIT.md) |

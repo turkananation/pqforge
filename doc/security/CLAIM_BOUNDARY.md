@@ -9,8 +9,10 @@ Allowed wording:
   streaming signatures, and `hybrid-sign` remain ML-DSA-only.
 - Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key
   custody, signatures, recipes, hybrid helpers, X.509 certificates, PKCS#10
-  requests, and CLI workflows. A certificate that `openssl req` can read is
-  not a WebPKI CA and not a trust store.
+  requests, RFC 9180 HPKE, and CLI workflows. A certificate that `openssl req`
+  can read is not a WebPKI CA and not a trust store. HPKE here is the RFC 9180
+  composition over the KEMs, KDFs, and AEADs the package implements. It is not
+  a FIPS module, not TLS, and not a claim that OpenSSL speaks HPKE.
 - Best-effort cleanup in Dart.
 
 Forbidden wording:

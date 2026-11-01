@@ -16,6 +16,9 @@
 ///   [PqForgeHybridKeyAgreement] (X25519 + ML-KEM), [PqForgeHybridSigner]
 ///   (ML-DSA + Ed25519), and hybrid KEM-DEM envelopes ([PqForgeAsync]
 ///   `encryptAsync`/`decryptAsync` with [PqHybridKemDem]);
+/// * certificates — [PqX509] parse, mint, and path check;
+/// * HPKE — [PqHpke], RFC 9180 base, PSK, auth, and authPSK over X25519,
+///   P-256, and P-384;
 /// * AEAD wire packets — [PqForgeSecureSession] over AES-256-GCM or
 ///   ChaCha20-Poly1305, on either the pure-Dart PointyCastle or the native
 ///   `package:cryptography` backend ([PqForgeEngineProvider]).
@@ -51,6 +54,8 @@ export 'src/codecs/pq_envelope.dart';
 export 'src/codecs/pq_streaming_envelope.dart';
 
 export 'src/certificates/x509.dart';
+
+export 'src/hpke/pq_hpke.dart';
 
 export 'src/hybrid/pq_hybrid_combiner.dart';
 export 'src/hybrid/pq_classical_hybrid.dart';

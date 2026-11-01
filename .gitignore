@@ -15,3 +15,7 @@ doc/api/
 
 # Pinned OpenSSL and BoringSSL builds. CI caches this path.
 tool/interop/.build/
+
+# Jaspr build output. The source lives in site/; Pages builds it.
+site/build/
+site/.dart_tool/
