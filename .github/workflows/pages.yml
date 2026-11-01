@@ -72,13 +72,45 @@ jobs:
       - name: Rewrite absolute anchors for /pqforge/ base
         run: python3 tool/fix_pages_base.py site/build/jaspr
 
+      - name: Assemble the published site
+        run: |
+          set -eu
+          dest=site/public
+          src=site/build/jaspr
+          rm -rf "$dest"
+          mkdir -p "$dest/assets" "$dest/release-notes"
+          # The earlier snapshot: recipe catalog, CLI, use cases, FAQ, docs.
+          cp site/index.html site/styles.css site/favicon.svg site/404.html \
+            site/llms.txt site/llms-full.txt site/identity.json \
+            site/developer-ai.txt site/faq-ai.txt site/ai.txt \
+            site/robots.txt site/robots-ai.txt site/sitemap.xml \
+            "$dest/"
+          cp -a site/assets/. "$dest/assets/"
+          # Jaspr guides beside that homepage. Its index is the release-notes
+          # page, not a replacement for the recipe homepage.
+          cp "$src/index.html" "$dest/release-notes/index.html"
+          for entry in "$src"/*; do
+            name=$(basename "$entry")
+            case "$name" in
+              index.html|sitemap.xml|llms.txt|favicon.svg|packages) continue ;;
+            esac
+            cp -a "$entry" "$dest/$name"
+          done
+          test -f "$dest/index.html"
+          grep -q 'id="recipes"' "$dest/index.html"
+          grep -q 'id="cli"' "$dest/index.html"
+          test -f "$dest/hpke/index.html"
+          test -f "$dest/certificates/index.html"
+          test -f "$dest/signatures/index.html"
+          test -f "$dest/release-notes/index.html"
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site/build/jaspr
+          path: site/public
 
       - name: Deploy to GitHub Pages
         id: deployment

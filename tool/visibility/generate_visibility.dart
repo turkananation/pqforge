@@ -551,6 +551,7 @@ String _siteIndex(JsonMap manifest) {
         <a href="#cli">CLI</a>
         <a href="#use-cases">Use cases</a>
         <a href="#docs">Docs</a>
+        <a href="#guides">Guides</a>
       </nav>
       <div class="topbar-links">
         <a class="ext" href="${_html(project['pub_dev'] as String)}" rel="noopener">${_icon('pub')}<span>pub.dev</span></a>
@@ -611,7 +612,8 @@ String _siteIndex(JsonMap manifest) {
 dart run pqforge keygen --profile maximum --key-id vault --out-dir keys --passphrase-env PQFORGE_PASSPHRASE
 dart run pqforge encrypt-folder --recipient-public keys/vault.kem.public.json --in-dir ./records --out-dir ./records.pqf
 dart run pqforge decrypt-folder --recipient-secret keys/vault.kem.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --in-dir ./records.pqf --out-dir ./records.open
-dart run pqforge sign --kind media --signer-secret keys/vault.sign.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --in cover.png --mime-type image/png --out cover.sig.json</code></pre>
+dart run pqforge sign --kind media --signer-secret keys/vault.sign.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --in cover.png --mime-type image/png --out cover.sig.json
+dart run pqforge compose-sign --ml-dsa-secret keys/vault.sign.secret.wrapped.json --classical-secret keys/vault.ecdsa-p256.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --in cover.png --out cover.composite.json</code></pre>
     </section>
 
     <section id="use-cases" class="section">
@@ -641,6 +643,23 @@ dart run pqforge sign --kind media --signer-secret keys/vault.sign.secret.wrappe
       </div>
       <div class="doc-grid">
         ${docs.map((doc) => _docCard(project, doc)).join('\n')}
+      </div>
+    </section>
+
+    <section id="guides" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">On this site</p>
+        <h2>The recipe homepage stays. The guides sit next to it.</h2>
+      </div>
+      <div class="doc-grid">
+        <a href="release-notes"><strong>What landed</strong><span>0.4.10 HPKE, 0.4.9 certificates, 0.4.8 ChaCha20, and the signature legs. This does not replace the recipe catalog above.</span></a>
+        <a href="getting-started"><strong>Getting started</strong><span>Install pqforge and seal one HPKE message.</span></a>
+        <a href="hpke"><strong>HPKE</strong><span>RFC 9180 modes, suites, seal, auth, and export.</span></a>
+        <a href="certificates"><strong>Certificates</strong><span>X.509 and PKCS#10. Not a trust store.</span></a>
+        <a href="symmetric"><strong>Symmetric</strong><span>AES-GCM, ChaCha20-Poly1305, and the ChaCha20 keystream.</span></a>
+        <a href="classical"><strong>Classical</strong><span>X25519, X448, NIST ECDH, Ed25519, ECDSA, and RSA. P-521 ECDH is still the HPKE share.</span></a>
+        <a href="signatures"><strong>Signatures</strong><span>Opt-in dual and triple legs. hybrid-sign stays one ML-DSA leg plus one classical leg.</span></a>
+        <a href="claim-boundary"><strong>Claim boundary</strong><span>What this package is allowed to say about itself.</span></a>
       </div>
     </section>
 
@@ -1099,6 +1118,14 @@ String _sitemap(JsonMap manifest) {
   <url><loc>${project['canonical_url']}llms.txt</loc></url>
   <url><loc>${project['canonical_url']}llms-full.txt</loc></url>
   <url><loc>${project['canonical_url']}identity.json</loc></url>
+  <url><loc>${project['canonical_url']}release-notes</loc></url>
+  <url><loc>${project['canonical_url']}getting-started</loc></url>
+  <url><loc>${project['canonical_url']}hpke</loc></url>
+  <url><loc>${project['canonical_url']}certificates</loc></url>
+  <url><loc>${project['canonical_url']}symmetric</loc></url>
+  <url><loc>${project['canonical_url']}classical</loc></url>
+  <url><loc>${project['canonical_url']}signatures</loc></url>
+  <url><loc>${project['canonical_url']}claim-boundary</loc></url>
 </urlset>
 ''';
 }
