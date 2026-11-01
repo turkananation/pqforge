@@ -9,12 +9,16 @@ the workflows under `.codex/skills/` and `.claude/skills/`.
 `pqforge` is a **pure-Dart, web-safe post-quantum application toolkit**. It is the
 *composition layer* built on [`pqcrypto`](https://pub.dev/packages/pqcrypto)
 (FIPS 203 ML-KEM, FIPS 204 ML-DSA, FIPS 205 SLH-DSA): KEM-DEM envelopes, AES-256-GCM /
-ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH,
-bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named
-recipes, and a CLI. `pqforge` depends on `pqcrypto` and **never reimplements the
-lattice primitives**. FIPS 205 SLH-DSA is composed into `keygen`, key custody,
+ChaCha20-Poly1305 AEAD, X25519/X448/Ed25519/ECDSA-P256 hybrids plus opt-in
+ECDSA-P384 and ECDSA-P521, P-256/P-384 ECDH for TLS hybrid groups and P-521
+ECDH for HPKE, RFC 9180 HPKE, bounded-memory streaming, multi-recipient
+envelopes, Argon2id key custody, named recipes, `compose-sign`, and a CLI.
+`pqforge` depends on `pqcrypto` and **never reimplements the lattice
+primitives**. FIPS 205 SLH-DSA is composed into `keygen`, key custody,
 and detached `sign`/`verify` (`PqSlhDsaAlgorithm`, `PqSlhDsaPrimitives`). Envelope
-headers, streaming signatures, and `hybrid-sign` remain ML-DSA-only. See
+headers, streaming signatures, and `hybrid-sign` remain ML-DSA-only.
+`compose-sign` can take one SLH-DSA leg when that key is passed.
+`PqEcdsaP521` is not the P-521 HPKE share and not a TLS group. See
 [doc/HYBRID_AUDIT.md](doc/HYBRID_AUDIT.md) and the
 [pqforge vs pqcrypto](https://github.com/turkananation/pqforge/wiki/pqforge-vs-pqcrypto)
 wiki page.
@@ -43,14 +47,14 @@ wiki page.
 | `lib/src/algorithms/` | ML-KEM/ML-DSA wrappers, SLH-DSA algorithm ids, FIPS mode, swappable lattice provider |
 | `lib/src/cipher/` | AEAD engines (PointyCastle + `cryptography`), cipher suites, secure session |
 | `lib/src/codecs/` | `.pqf` envelope and `.pqfs` streaming envelope codecs |
-| `lib/src/hybrid/` | Combiner, `cryptography` extensions, ECDSA-P256, NIST ECDH, hybrid signer/agreement |
+| `lib/src/hybrid/` | Combiner, `cryptography` extensions, ECDSA P-256/P-384/P-521, NIST ECDH, X448, hybrid signer, composite signer |
 | `lib/src/keys/` | Key bundles, custody, wrapping |
 | `lib/src/recipes/` | Domain-separated recipe message framing |
 | `lib/src/services/` | Facade services: one-shot, async, stream, pack, multi-recipient |
 | `bin/`, `bin/src/` | CLI entrypoint and command groups |
 | `doc/` | Canonical project docs (see [doc/INDEX.md](doc/INDEX.md)) |
 | `wiki/` | GitHub Wiki source, synced by `.github/workflows/sync-wiki.yml` |
-| `site/` | **Generated** GitHub Pages site (do not hand-edit) |
+| `site/` | Homepage `index.html` is generated. Guide pages in `site/content/` and `site/lib/` are hand-maintained |
 | `tool/visibility/` | Visibility generator + manifest (single source for AI-discovery files) |
 | `tool/agent/` | Deterministic link, publication, and verification workflows |
 | `tool/openssl_interop/` | Dev-only OpenSSL AEAD interop harness (`publish_to: none`) |
@@ -66,9 +70,11 @@ Two kinds of docs exist, and they are edited differently:
 - **Generated — never hand-edit:** `llms.txt`, `llms-full.txt`, `identity.json`,
   `faq-ai.txt`, `developer-ai.txt`, `ai.txt`, `robots.txt`, `robots-ai.txt`,
   `.github/copilot-instructions.md`, `.github/instructions/**`,
-  `.cursor/rules/**`, `.windsurfrules`, and the entire `site/` tree (except the
-  committed binary `site/assets/`). These are produced from
-  **`tool/visibility/visibility_manifest.json`** by
+  `.cursor/rules/**`, `.windsurfrules`, `site/index.html`, `site/styles.css`,
+  `site/sitemap.xml`, and the `site/*.txt` / `site/*.json` discovery copies.
+  Hand-maintained site source is `site/content/` and `site/lib/`. Do not
+  replace those pages when regenerating the homepage. Generated files come
+  from **`tool/visibility/visibility_manifest.json`** by
   `tool/visibility/generate_visibility.dart`. To change them, edit the manifest
   (or the generator), then regenerate:
 

@@ -56,10 +56,12 @@ the `dart:io` entrypoint `package:pqforge/pqforge_io.dart`.
   algorithms and nothing else.
 - **`pqforge`** depends on `pqcrypto` and never reimplements the lattice
   primitives. It adds everything you need to *ship a feature*: KEM-DEM envelopes,
-  AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids,
-  P-256/P-384 ECDH, RFC 9180 HPKE (X25519, X448, P-256, P-384, P-521), streaming, multi-recipient envelopes, key custody, recipes,
-  and a CLI. SLH-DSA is composed into `keygen`, custody, and detached
-  `sign`/`verify`; envelopes and `hybrid-sign` stay ML-DSA-only.
+  AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/X448/Ed25519/ECDSA-P256 hybrids
+  plus opt-in ECDSA-P384 and ECDSA-P521,
+  P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, RFC 9180 HPKE (X25519, X448, P-256, P-384, P-521), streaming, multi-recipient envelopes, key custody, recipes,
+  `compose-sign`, and a CLI. SLH-DSA is composed into `keygen`, custody, and detached
+  `sign`/`verify`; envelopes and `hybrid-sign` stay ML-DSA-only. `PqEcdsaP521`
+  is not the P-521 HPKE share and not a TLS group.
 
 `pqforge`'s post-quantum security claim is inherited from `pqcrypto`. Full
 breakdown: [pqforge vs pqcrypto](https://github.com/turkananation/pqforge/wiki/pqforge-vs-pqcrypto)

@@ -1,9 +1,10 @@
 # CLI Guide
 
-The `pqforge` CLI has 19 commands for reusable keys, wrapped secret keys, file /
+The `pqforge` CLI has 21 commands for reusable keys, wrapped secret keys, file /
 folder / text / media encryption, gigabyte streaming, whole-folder packing,
-multi-recipient and hybrid encryption, recipe-specific and hybrid signatures,
-X.509 certificates (`cert`, the `openssl req` flow), and artifact inspection. The full reference is in
+multi-recipient and hybrid encryption, recipe-specific, hybrid, and composed
+signatures, X.509 certificates (`cert`, the `openssl req` flow), and artifact
+inspection. `version` and `uninstall` are extra. The full reference is in
 [doc/CLI.md](https://github.com/turkananation/pqforge/blob/main/doc/CLI.md).
 
 `pqforge <command> --help` prints worked examples for any command.
@@ -33,9 +34,11 @@ dart run pqforge keygen --profile maximum --key-id vault --out-dir keys --passph
 By default `keygen` emits the **full hybrid keyset** — ML-KEM + ML-DSA plus
 profile-matched SLH-DSA and X25519, Ed25519, and ECDSA-P256 — so hybrid
 encryption, hybrid signing, and hash-based signatures work out of the box.
-`--classical <algo>` narrows the classical set, `--no-classical` keeps the
-post-quantum bundle only, `--classical-only` emits classical keys alone,
-`--slh-dsa` / `--no-slh-dsa` / `--slh-dsa-only` control hash-based keys.
+`--classical ecdsa-p384` and `--classical ecdsa-p521` are opt-ins. They are
+not in that default set. `--classical <algo>` narrows the classical set,
+`--no-classical` keeps the post-quantum bundle only, `--classical-only` emits
+classical keys alone, `--slh-dsa` / `--no-slh-dsa` / `--slh-dsa-only` control
+hash-based keys.
 
 Public keys: `vault.kem.public.json`, `vault.sign.public.json`,
 `vault.slh-dsa-shake-256f.public.json` (maximum profile),
@@ -63,7 +66,8 @@ self-describing container and auto-detected on read.
 
 `encrypt`, `decrypt`, `encrypt-text`, `decrypt-text` (with `--out`),
 `encrypt-media`, `decrypt-media`, `encrypt-folder`, `decrypt-folder`, `pack`,
-`unpack`, `sign`, `verify`, `hybrid-sign`, `hybrid-verify`, `ecdsa-sign`, and
+`unpack`, `sign`, `verify`, `hybrid-sign`, `hybrid-verify`, `compose-sign`,
+`compose-verify`, `ecdsa-sign`, and
 `ecdsa-verify` print a live progress line. Folder jobs forward byte progress
 from background isolates; pack/unpack add per-file SUCCESS/FAILED with
 in-entry bytes. `--digest` reports hashing progress. `keygen` reports wrapping
@@ -116,14 +120,20 @@ dart run pqforge sign --signer-secret keys/vault.sign.secret.wrapped.json --pass
 dart run pqforge sign --signer-secret keys/vault.slh-dsa-shake-128f.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --kind webhook --event-type invoice.paid --in payload.json --out payload.slh.sig.json
 dart run pqforge verify --signer-public keys/vault.sign.public.json --in cover.png --signature cover.sig.json
 
-# Hybrid ML-DSA + Ed25519/ECDSA-P256 (--digest for gigabyte inputs)
+# Hybrid ML-DSA + one classical leg: Ed25519, ECDSA-P256, or opt-in
+# ECDSA-P384 / ECDSA-P521 (--digest for gigabyte inputs)
 dart run pqforge hybrid-sign --signer-secret keys/vault.sign.secret.wrapped.json --classical-secret keys/vault.ecdsa-p256.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --in release.tar.gz --out release.hybrid.json
 dart run pqforge hybrid-verify --signer-public keys/vault.sign.public.json --classical-public keys/vault.ecdsa-p256.public.json --in release.tar.gz --signature release.hybrid.json
 
-# Standalone ECDSA-P256 (RFC 6979, low-S)
+# Dual or triple. Each flag is one leg. Nothing is implied.
+dart run pqforge compose-sign --ml-dsa-secret keys/vault.sign.secret.wrapped.json --classical-secret keys/vault.ecdsa-p256.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --in release.tar.gz --out release.composite.json
+dart run pqforge compose-verify --ml-dsa-public keys/vault.sign.public.json --classical-public keys/vault.ecdsa-p256.public.json --in release.tar.gz --signature release.composite.json
+
+# Standalone ECDSA. The command follows the key: P-256, or opt-in P-384 / P-521
+# (RFC 6979, low-S). P-521 here is a signature, not the HPKE share.
 dart run pqforge ecdsa-sign --secret keys/vault.ecdsa-p256.secret.wrapped.json --passphrase-env PQFORGE_PASSPHRASE --in firmware.bin --out firmware.ecdsa.json
 dart run pqforge ecdsa-verify --public keys/vault.ecdsa-p256.public.json --in firmware.bin --signature firmware.ecdsa.json
 ```
 
-`verify`, `hybrid-verify`, and `ecdsa-verify` exit `0` on a valid signature and
+`verify`, `hybrid-verify`, `compose-verify`, and `ecdsa-verify` exit `0` on a valid signature and
 `1` on a failed one, so they slot into shell `&&` chains and CI gates.
