@@ -16,6 +16,11 @@ Allowed wording:
   `EVP_HPKE` evidence is base and auth on X25519 and P-256 only. OpenSSL
   `OSSL_HPKE` evidence is all four modes on X448 and P-521 only. It is not a
   FIPS module and not TLS.
+- Opt-in signature composition in the same release. `compose-sign` takes 2 or
+  3 legs the caller names (ML-DSA, SLH-DSA, Ed25519, ECDSA-P256, ECDSA-P384,
+  ECDSA-P521). `hybrid-sign` stays one ML-DSA leg plus one classical leg.
+  `PqEcdsaP521` is a signature. It is not `p521SharedSecret` and not a TLS
+  group. The P-521 HPKE share is unchanged.
 - Best-effort cleanup in Dart.
 
 Forbidden wording:
@@ -29,6 +34,9 @@ Forbidden wording:
 - ML-KEM alone is secure transport.
 - AES signs documents.
 - RC4 is supported.
+- ECDSA-P521 is a TLS group, or is the HPKE P-521 KEM.
+- `compose-sign` or ECDSA-P384/P-521 is constant-time or a FIPS module.
+- SLH-DSA is an envelope signature or a `hybrid-sign` leg.
 
 `pqforge` can inherit algorithm-evidence wording from `pqcrypto`, but it must not
 upgrade that into module-validation wording. Public-key trust, identity vetting,

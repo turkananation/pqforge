@@ -79,7 +79,7 @@
     "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
     "NIST P-256 and P-384 ECDH (uncompressed SEC1, x-coordinate secret) for TLS hybrid groups",
     "RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384), SHA-384/SHA-512 digest facades, and dart2js-safe sync ChaCha20-Poly1305 with a caller-supplied nonce (`supportsChaCha20Poly1305`)",
-    "ML-DSA plus Ed25519 or ECDSA-P256/P-384/P-521 hybrid signatures. compose-sign opts in 2 or 3 legs among ML-DSA, SLH-DSA, Ed25519, and those ECDSA curves. Standalone ECDSA is RFC 6979, low-S. ECDSA-P384 and ECDSA-P521 are keygen opt-ins, not the default classical set",
+    "ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S). hybrid-sign also accepts opt-in ECDSA-P384 and ECDSA-P521. compose-sign opts in 2 or 3 legs among ML-DSA, SLH-DSA, Ed25519, and those ECDSA curves. ECDSA-P384 and ECDSA-P521 are keygen opt-ins, not the default classical set. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group",
     "Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory",
     "pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)",
     "Argon2id plus AES-256-GCM wrapped key custody with pluggable stores; PBKDF2 wrapping under FIPS mode",
@@ -97,7 +97,8 @@
     "RC4 or unauthenticated encryption",
     "BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512",
     "An OpenSSL HPKE claim for X25519, P-256, or P-384",
-    "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency"
+    "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency",
+    "ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs"
   ],
   "evidenceBoundary": {
     "allowed_claims": [

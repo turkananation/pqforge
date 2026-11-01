@@ -19,9 +19,9 @@ Use these mappings when deciding which `pqforge` surface fits an application.
 | Government or medical records | `encryptRecord` (ML-KEM), `appendSignedLogEntry` (ML-DSA or SLH-DSA) |
 | Clinician or operator enrollment | `createIdentityBinding` (ML-DSA or SLH-DSA) |
 | Software release signing | `sign --kind artifact`, `signArtifact` (ML-DSA or SLH-DSA) |
-| Release/firmware dual signing | `hybrid-sign`/`hybrid-verify` (ML-DSA + one classical leg: Ed25519, P-256, P-384, or P-521) |
-| Dual or triple, legs you choose | `compose-sign`/`compose-verify` (2 or 3 of ML-DSA, SLH-DSA, Ed25519, ECDSA P-256/P-384/P-521) |
-| Standalone classical signing | `ecdsa-sign`/`ecdsa-verify`, `PqEcdsaP256` |
+| Release/firmware dual signing | `hybrid-sign`/`hybrid-verify`, `PqForgeHybridSigner` (ML-DSA + one classical leg: Ed25519, P-256, and opt-in P-384 or P-521) |
+| Dual or triple, legs you choose | `compose-sign`/`compose-verify` (2 or 3 of ML-DSA, SLH-DSA, Ed25519, ECDSA P-256/P-384/P-521). This does not replace `hybrid-sign` |
+| Standalone classical signing | `ecdsa-sign`/`ecdsa-verify`, `PqEcdsaP256`, `PqEcdsaP384`, `PqEcdsaP521` |
 | Server session bootstrap | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` |
 
 Every recipe binds a domain label and purpose-specific metadata into a canonical

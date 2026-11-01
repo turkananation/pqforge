@@ -127,18 +127,18 @@ the bytes with it":
 | Gigabyte files and media, bounded memory | `encrypt`/`encrypt-media` (auto `.pqfs` ≥ 8 MiB), `PqForgeStreamCipher` | 🛡️ ML-KEM → 🔒 AES-256-GCM, framed |
 | Many tiny files in one archive | `pack`, `unpack` | one 🛡️ ML-KEM + one 🛡️ ML-DSA for the whole tree |
 | Folder archives and evidence bundles | `encrypt-folder`, `decrypt-folder`, `encryptFolderEntry` | 🛡️ ML-KEM → 🔒 AES-256-GCM per entry |
-| Notes, prompts, and short secrets | `encrypt-text`, `decrypt-text`, `sealText`, `signText` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · sign 🛡️ ML-DSA or SLH-DSA |
-| Images, audio, video, PDFs, and media records | `encrypt-media`, `decrypt-media`, `sealMedia`, `signMedia` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · sign 🛡️ ML-DSA or SLH-DSA |
-| Contracts, approvals, certificates, and reports | `sign --kind document`, `signDocument` | 🛡️ ML-DSA or SLH-DSA |
-| Payment callbacks and server events | `sign --kind webhook`, `signWebhook` | 🛡️ ML-DSA or SLH-DSA; the app owns the replay window |
+| Notes, prompts, and short secrets | `encrypt-text`, `decrypt-text`, `sealText`, `signText` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · sign 🛡️ ML-DSA (FIPS 204) or SLH-DSA (FIPS 205) |
+| Images, audio, video, PDFs, and media records | `encrypt-media`, `decrypt-media`, `sealMedia`, `signMedia` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · sign 🛡️ ML-DSA (FIPS 204) or SLH-DSA (FIPS 205) |
+| Contracts, approvals, certificates, and reports | `sign --kind document`, `signDocument` | 🛡️ ML-DSA (FIPS 204) or SLH-DSA (FIPS 205) |
+| Payment callbacks and server events | `sign --kind webhook`, `signWebhook` | 🛡️ ML-DSA or SLH-DSA, with timestamp/nonce binding. The app owns the replay window |
 | API capability grants and admin actions | `issueToken`, `verifyToken` | 🛡️ ML-DSA or SLH-DSA over canonical claims |
 | Secure notification bodies | `sealEmail`, `openEmail` | 🛡️ ML-KEM → 🔒 AES-256-GCM |
-| Medical, government, and registry records | `encryptRecord`, `appendSignedLogEntry` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · log 🛡️ ML-DSA or SLH-DSA |
-| Release bundles and firmware | `sign --kind artifact`, `hybrid-sign --digest` | artifact 🛡️ ML-DSA or SLH-DSA · hybrid 🛡️ ML-DSA [+ 🤝 Ed25519 \| 🔒 ECDSA-P256] |
+| Medical, government, and registry records | `encryptRecord`, `appendSignedLogEntry` | seal 🛡️ ML-KEM → 🔒 AES-256-GCM · log 🛡️ ML-DSA or SLH-DSA hash chain |
+| Release bundles and firmware | `sign --kind artifact`, `hybrid-sign --digest`, `compose-sign` | artifact 🛡️ ML-DSA or SLH-DSA (pre-hash) · hybrid 🛡️ ML-DSA [+ 🤝 Ed25519 \| 🔒 ECDSA P-256/P-384/P-521] · compose is 2 or 3 opted-in legs |
 | Serverpod/API hybrid sessions | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` | 🤝 X25519 + 🛡️ ML-KEM → 🔒 AEAD |
 | TLS 1.3 hybrid groups (`pqtransport`) | `PqNistEcdh`, `hkdfExtract`/`Expand`, `chacha20Poly1305Encrypt`, `concatenateSharedSecrets`, `checkEncapsulationKey` | P-256/P-384 ECDH + 🛡️ ML-KEM |
-| Hybrid signatures (PQC + classical) | `PqForgeHybridSigner` | 🛡️ ML-DSA + (🤝 Ed25519 \| 🔒 ECDSA-P256). Not SLH-DSA |
-| Hash-based signatures (archival / firmware) | `sign` with an SLH-DSA key, `generateSlhDsaKeyPair`, `slhDsa:` on detached recipes | 🛡️ SLH-DSA (FIPS 205). Not envelopes or `hybrid-sign` |
+| Hybrid signatures (PQC + classical) | `PqForgeHybridSigner` | 🛡️ ML-DSA + (🤝 Ed25519 \| 🔒 ECDSA-P256, and opt-in P-384 or P-521). Not SLH-DSA |
+| Hash-based signatures (archival / firmware) | `sign` with an SLH-DSA key, `generateSlhDsaKeyPair`, `slhDsa:` on detached recipes, optional `compose-sign` leg | 🛡️ SLH-DSA (FIPS 205). Not envelopes or `hybrid-sign` |
 
 The full app catalog is in [doc/cookbook/PROJECT_CATALOG.md](doc/cookbook/PROJECT_CATALOG.md).
 

@@ -10,12 +10,14 @@ replacement for it.
 | --- | --- |
 | `PqClassical` X25519 | Key agreement. The secret is the 32-byte seed. Used by hybrid KEM-DEM and by HPKE. |
 | `PqX448` | RFC 7748 X448. 56-byte keys. Used by DHKEM(X448, HKDF-SHA512). Not a constant-time ladder. |
-| `PqNistEcdh` | P-256, P-384, and P-521 ECDH. Uncompressed SEC1 points. The shared secret is the x-coordinate. P-256 and P-384 are the TLS hybrid-group shares. P-521 is the HPKE share, not a TLS group and not a signature. |
+| `PqNistEcdh` | P-256, P-384, and P-521 ECDH. Uncompressed SEC1 points. The shared secret is the x-coordinate. P-256 and P-384 are the TLS hybrid-group shares. P-521 ECDH is the HPKE share, not a TLS group, and not a signature. |
 | `PqEcdsaP256`, `PqEcdsaP384` | Signatures. P-384 sign is not `p384SharedSecret`. |
+| `PqEcdsaP521` | Signature only. SHA-512, low-S on sign. Not `p521SharedSecret`, not HPKE, and not a TLS group. Opt in with `keygen --classical ecdsa-p521`. |
 | `PqEd25519` | RFC 8032 sign and verify, synchronous. |
 | `PqRsa` | PKCS#1 v1.5 and RSASSA-PSS. |
 | `PqForgeHybridKeyAgreement` | X25519 concatenated with ML-KEM, then a KDF. Confidentiality holds while either problem stands. |
-| `PqForgeHybridSigner` | ML-DSA plus Ed25519 or ECDSA P-256 over the same message. |
+| `PqForgeHybridSigner` | ML-DSA plus one classical signature over the same message. The classical leg is Ed25519 or ECDSA-P256, and it may now also be ECDSA-P384 or ECDSA-P521. |
+| `PqForgeSignatureComposer` | Opt-in dual (2) or triple (3). See [Signatures](signatures). |
 
 HPKE's P-256, P-384, and P-521 KEMs call `PqNistEcdh`. DHKEM(X448) calls
 `PqX448`. They do not call the ECDSA signers. An uncompressed public key
