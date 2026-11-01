@@ -351,7 +351,10 @@ recipe helpers (`signDocument`, `signText`, `signMedia`, `signWebhook`,
 `signArtifact`, `issueToken`, `appendSignedLogEntry`, `createIdentityBinding`)
 accept them via `slhDsa:`. Pass exactly one of the ML-DSA algorithm and
 `slhDsa`. Envelope headers, `.pqfs` signatures, and `PqForgeHybridSigner`
-stay ML-DSA-only. See [HYBRID_AUDIT.md](HYBRID_AUDIT.md).
+stay ML-DSA-only. `compose-sign` is the 2-leg or 3-leg container
+(`PqForgeSignatureComposer`): ML-DSA, SLH-DSA, Ed25519, and ECDSA
+P-256/P-384/P-521, each only when you pass that key. See
+[HYBRID_AUDIT.md](HYBRID_AUDIT.md).
 
 ---
 

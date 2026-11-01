@@ -44,6 +44,18 @@ enum PqClassicalSignatureAlgorithm {
     publicKeyBytes: 65,
     secretKeyBytes: 32,
     signatureBytes: 64,
+  ),
+  ecdsaP384(
+    id: 'ecdsa-p384',
+    publicKeyBytes: 97,
+    secretKeyBytes: 48,
+    signatureBytes: 96,
+  ),
+  ecdsaP521(
+    id: 'ecdsa-p521',
+    publicKeyBytes: 133,
+    secretKeyBytes: 66,
+    signatureBytes: 132,
   );
 
   const PqClassicalSignatureAlgorithm({

@@ -418,6 +418,93 @@ void main() {
     ]);
   });
 
+  test('compose-sign triples ML-DSA with P-256 and P-521', () async {
+    await runCli([
+      'keygen',
+      '--profile',
+      'compact',
+      '--key-id',
+      'mix',
+      '--out-dir',
+      outDir.path,
+      '--no-slh-dsa',
+      '--classical',
+      'ecdsa-p256',
+      '--classical',
+      'ecdsa-p521',
+    ]);
+    final input = File('${outDir.path}/payload.bin')
+      ..writeAsBytesSync([9, 8, 7, 6]);
+    final signature = '${outDir.path}/payload.composite.json';
+    await runCli([
+      'compose-sign',
+      '--ml-dsa-secret',
+      '${outDir.path}/mix.sign.secret.json',
+      '--classical-secret',
+      '${outDir.path}/mix.ecdsa-p256.secret.json',
+      '--classical-secret',
+      '${outDir.path}/mix.ecdsa-p521.secret.json',
+      '--in',
+      input.path,
+      '--out',
+      signature,
+      '--policy',
+      'require-all',
+    ]);
+    final json = jsonDecode(await File(signature).readAsString()) as Map;
+    expect(json['kind'], 'composite');
+    expect(json['policy'], 'require-all');
+    expect((json['legs'] as List), hasLength(3));
+    await runCli([
+      'compose-verify',
+      '--ml-dsa-public',
+      '${outDir.path}/mix.sign.public.json',
+      '--classical-public',
+      '${outDir.path}/mix.ecdsa-p256.public.json',
+      '--classical-public',
+      '${outDir.path}/mix.ecdsa-p521.public.json',
+      '--in',
+      input.path,
+      '--signature',
+      signature,
+    ]);
+  });
+
+  test('ecdsa-sign accepts an opted-in P-521 key', () async {
+    await runCli([
+      'keygen',
+      '--key-id',
+      'wide',
+      '--out-dir',
+      outDir.path,
+      '--classical-only',
+      '--classical',
+      'ecdsa-p521',
+    ]);
+    final input = File('${outDir.path}/note.txt')..writeAsStringSync('wide');
+    final signature = '${outDir.path}/note.ecdsa.json';
+    await runCli([
+      'ecdsa-sign',
+      '--secret',
+      '${outDir.path}/wide.ecdsa-p521.secret.json',
+      '--in',
+      input.path,
+      '--out',
+      signature,
+    ]);
+    final json = jsonDecode(await File(signature).readAsString()) as Map;
+    expect(json['scheme'], 'ecdsa-p521');
+    await runCli([
+      'ecdsa-verify',
+      '--public',
+      '${outDir.path}/wide.ecdsa-p521.public.json',
+      '--in',
+      input.path,
+      '--signature',
+      signature,
+    ]);
+  });
+
   test('envelope signer-secret rejects an SLH-DSA key', () {
     final key = PqExportedKey(
       kind: PqKeyKind.signatureSecret,
