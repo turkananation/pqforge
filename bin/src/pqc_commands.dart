@@ -2301,7 +2301,7 @@ final class SignCommand extends Command<void> {
       )
       ..addOption(
         'kind',
-        allowed: ['document', 'text', 'media', 'artifact'],
+        allowed: ['document', 'text', 'media', 'artifact', 'webhook'],
         defaultsTo: 'document',
         valueHelp: 'kind',
         help: 'Recipe-specific signature kind.',
@@ -2336,6 +2336,17 @@ final class SignCommand extends Command<void> {
         defaultsTo: '1',
         valueHelp: 'n',
         help: 'Artifact version for kind=artifact.',
+      )
+      ..addOption(
+        'event-type',
+        valueHelp: 'type',
+        help: 'Webhook event type. Required for kind=webhook.',
+      )
+      ..addOption(
+        'timestamp-ms',
+        valueHelp: 'ms',
+        help:
+            'Webhook timestamp in milliseconds. Defaults to the current time when signing.',
       );
     addPassphraseOptions(argParser);
     addQuietOption(argParser);
@@ -2354,8 +2365,8 @@ final class SignCommand extends Command<void> {
     '  --passphrase-env PQFORGE_PASSPHRASE --kind document \\',
     '  --in contract.pdf --document-id contract-2026-001 --out contract.sig.json',
     'pqforge sign --signer-secret keys/vault.slh-dsa-shake-128f.secret.wrapped.json \\',
-    '  --passphrase-env PQFORGE_PASSPHRASE --kind document \\',
-    '  --in archive.pdf --out archive.slh.sig.json',
+    '  --passphrase-env PQFORGE_PASSPHRASE --kind webhook \\',
+    '  --event-type invoice.paid --in payload.json --out payload.slh.sig.json',
   ]);
 
   @override
@@ -2443,6 +2454,29 @@ final class SignCommand extends Command<void> {
                 'artifactHash': base64Encode(artifact.artifactHash),
               },
             );
+          case 'webhook':
+            final eventType = results['event-type'] as String?;
+            if (eventType == null || eventType.isEmpty) {
+              usageException('--event-type is required for kind=webhook.');
+            }
+            final timestampRaw = results['timestamp-ms'] as String?;
+            final timestampMs = timestampRaw == null
+                ? DateTime.now().millisecondsSinceEpoch
+                : int.parse(timestampRaw);
+            final signature = forge.signWebhook(
+              signerSecretKey: signer.bytes,
+              eventType: eventType,
+              timestampMs: timestampMs,
+              payload: bytes,
+              algorithm: mlDsa,
+              slhDsa: slhDsa,
+            );
+            json = signatureJson(
+              kind: kind,
+              algorithmId: algorithmId,
+              signature: signature,
+              extra: {'eventType': eventType, 'timestampMs': timestampMs},
+            );
           default:
             final documentId = results['document-id'] as String? ?? fileName;
             final signature = forge.signDocument(
@@ -2520,6 +2554,16 @@ final class VerifyCommand extends Command<void> {
         'version',
         valueHelp: 'n',
         help: 'Override the signature JSON artifact version.',
+      )
+      ..addOption(
+        'event-type',
+        valueHelp: 'type',
+        help: 'Override the signature JSON webhook event type.',
+      )
+      ..addOption(
+        'timestamp-ms',
+        valueHelp: 'ms',
+        help: 'Override the signature JSON webhook timestamp.',
       );
     addQuietOption(argParser);
   }
@@ -2602,6 +2646,19 @@ final class VerifyCommand extends Command<void> {
             slhDsa: slhDsa,
             signature: signature,
           ),
+        ),
+        'webhook' => forge.verifyWebhook(
+          signerPublicKey: signer.bytes,
+          eventType:
+              results['event-type'] as String? ??
+              sigJson['eventType'] as String,
+          timestampMs:
+              int.tryParse(results['timestamp-ms'] as String? ?? '') ??
+              sigJson['timestampMs'] as int,
+          payload: bytes,
+          signature: signature,
+          algorithm: mlDsa,
+          slhDsa: slhDsa,
         ),
         _ => forge.verifyDocument(
           signer.bytes,

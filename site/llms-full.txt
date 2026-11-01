@@ -147,7 +147,7 @@ Forbidden claims:
 - Surface: CLI: sign, verify
 - Apps: contracts, reports, certificates, approvals, policy documents
 - APIs: signDocument, verifyDocument
-- Caveat: Application owns legal policy and signer identity vetting.
+- Caveat: Detached sign may be ML-DSA or SLH-DSA. Application owns legal policy and signer identity vetting.
 
 ### Hybrid And Classical Signatures
 
@@ -158,17 +158,17 @@ Forbidden claims:
 
 ### Webhook Integrity
 
-- Surface: library
+- Surface: CLI: sign --kind webhook, verify
 - Apps: payment callbacks, audit delivery, server-to-server events
 - APIs: signWebhook, verifyWebhook
-- Caveat: Application owns replay windows and key publication.
+- Caveat: Signer may be ML-DSA or SLH-DSA. Application owns replay windows and key publication.
 
 ### Signed Tokens
 
 - Surface: library
 - Apps: API capabilities, admin actions, short-lived grants
 - APIs: issueToken, verifyToken
-- Caveat: Application owns revocation and authorization policy.
+- Caveat: Signer may be ML-DSA or SLH-DSA. Application owns revocation and authorization policy.
 
 ### Private Email Payloads
 
@@ -182,7 +182,7 @@ Forbidden claims:
 - Surface: library
 - Apps: public-sector records, patient records, registry payloads
 - APIs: encryptRecord, appendSignedLogEntry
-- Caveat: Application owns access control, retention, and audit policy.
+- Caveat: Record encryption is ML-KEM. The signed log may be ML-DSA or SLH-DSA. Application owns access control, retention, and audit policy.
 
 ### Software Artifacts
 

@@ -166,7 +166,7 @@
       "surface": "CLI: sign, verify",
       "apps": "contracts, reports, certificates, approvals, policy documents",
       "apis": "signDocument, verifyDocument",
-      "caveat": "Application owns legal policy and signer identity vetting."
+      "caveat": "Detached sign may be ML-DSA or SLH-DSA. Application owns legal policy and signer identity vetting."
     },
     {
       "name": "Hybrid And Classical Signatures",
@@ -177,17 +177,17 @@
     },
     {
       "name": "Webhook Integrity",
-      "surface": "library",
+      "surface": "CLI: sign --kind webhook, verify",
       "apps": "payment callbacks, audit delivery, server-to-server events",
       "apis": "signWebhook, verifyWebhook",
-      "caveat": "Application owns replay windows and key publication."
+      "caveat": "Signer may be ML-DSA or SLH-DSA. Application owns replay windows and key publication."
     },
     {
       "name": "Signed Tokens",
       "surface": "library",
       "apps": "API capabilities, admin actions, short-lived grants",
       "apis": "issueToken, verifyToken",
-      "caveat": "Application owns revocation and authorization policy."
+      "caveat": "Signer may be ML-DSA or SLH-DSA. Application owns revocation and authorization policy."
     },
     {
       "name": "Private Email Payloads",
@@ -201,7 +201,7 @@
       "surface": "library",
       "apps": "public-sector records, patient records, registry payloads",
       "apis": "encryptRecord, appendSignedLogEntry",
-      "caveat": "Application owns access control, retention, and audit policy."
+      "caveat": "Record encryption is ML-KEM. The signed log may be ML-DSA or SLH-DSA. Application owns access control, retention, and audit policy."
     },
     {
       "name": "Software Artifacts",
@@ -307,7 +307,7 @@
     },
     {
       "question": "Does pqforge compose SLH-DSA?",
-      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
+      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify (document, text, media, artifact, webhook) and on issueToken, appendSignedLogEntry, and createIdentityBinding via slhDsa:. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
     },
     {
       "question": "Is pqforge post-quantum / quantum-safe?",

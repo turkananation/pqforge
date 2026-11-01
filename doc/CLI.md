@@ -312,6 +312,7 @@ Supported `--kind` values:
 | `text` | text id, UTF-8 encoding, payload hash, payload length |
 | `media` | media id, MIME type, payload hash, payload length |
 | `artifact` | artifact id, version, artifact hash |
+| `webhook` | event type, timestamp, payload hash |
 
 Media signing example:
 
@@ -427,6 +428,15 @@ dart run pqforge sign \
   --kind document \
   --in firmware.bin \
   --out firmware.slh.sig.json
+
+dart run pqforge sign \
+  --signer-secret keys/archive.slh-dsa-shake-128f.secret.wrapped.json \
+  --passphrase-env PQFORGE_PASSPHRASE \
+  --kind webhook \
+  --event-type invoice.paid \
+  --timestamp-ms 1700000000000 \
+  --in payload.json \
+  --out payload.slh.sig.json
 ```
 
 `s` (small signature) sets are slow by design; `pqcrypto` requires an explicit

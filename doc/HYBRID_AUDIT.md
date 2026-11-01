@@ -105,9 +105,13 @@ What remains ML-DSA-only:
 
 - `PqSignatureAlgorithm` (still `mlDsa44` / `mlDsa65` / `mlDsa87`).
 - Envelope and `.pqfs` header signatures.
-- `hybrid-sign` / `PqForgeHybridSigner`.
-- Typed containers that serialize `PqSignatureAlgorithm`: `issueToken`,
-  signed logs, identity bindings.
+- `hybrid-sign` / `PqForgeHybridSigner` / `dualSign`.
+
+`issueToken`, signed logs, and identity bindings accepted only ML-DSA through
+0.4.9 because those containers stored a `PqSignatureAlgorithm`. 0.4.10 stores
+exactly one of that or `slhDsa`, same rule as `PqArtifactSignature`. ML-DSA
+tokens, logs, and bindings keep `preHash: false`. SLH-DSA uses the recipe
+pre-hash path.
 
 Slow `s` parameter sets require `allowSlowSigning` at the primitive layer,
 matching `pqcrypto`. Do not document SLH-DSA as an envelope or hybrid-signer
@@ -117,12 +121,12 @@ algorithm.
 
 | pqcrypto block | pqforge surface |
 | --- | --- |
-| BB1 detached signatures | `sign`, `verify`, `signDocument`, `signText`, `signMedia`, `signWebhook` (ML-DSA or SLH-DSA via `slhDsa:`). `issueToken` stays ML-DSA (typed `PqSignatureAlgorithm`). |
+| BB1 detached signatures | `sign`, `verify`, `signDocument`, `signText`, `signMedia`, `signWebhook`, `issueToken`, `appendSignedLogEntry`, `createIdentityBinding` (ML-DSA or SLH-DSA via `slhDsa:`). |
 | BB2 encrypt to public key | `encrypt`, `decrypt`, `sealToKemPublicKey`, `PqEnvelope` |
 | BB3 hybrid authenticated handshake | `PqForgeHybridKeyAgreement`, `PqForgeCombiner`, `PqNistEcdh` |
-| BB4 identity enrollment | `createIdentityBinding`, `verifyIdentityBinding` (ML-DSA) |
+| BB4 identity enrollment | `createIdentityBinding`, `verifyIdentityBinding` (ML-DSA or SLH-DSA via `slhDsa:`) |
 | BB5 deterministic keys | `generateSignatureKeyPairFromSeed`, key export/wrapping. SLH-DSA keygen is unseeded (pqcrypto has no public seeded API). |
-| BB6 signed log | `appendSignedLogEntry`, `verifySignedLogEntry` (ML-DSA) |
+| BB6 signed log | `appendSignedLogEntry`, `verifySignedLogEntry` (ML-DSA or SLH-DSA via `slhDsa:`) |
 | BB7 signed artifacts | `signArtifact`, `verifyArtifact` (ML-DSA or SLH-DSA via `slhDsa:`) |
 | BB8 encrypted data at rest | `encryptFileBytes`, `encryptRecord`, `sealEmail`, `sealText`, `sealMedia`, `encryptFolderEntry`, CLI file/folder/text/media encryption |
 | BB9 hybrid/dual signatures | `PqForgeHybridSigner`, `dualSign`, `dualVerify` |

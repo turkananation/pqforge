@@ -49,7 +49,7 @@ Use for contracts, forms, reports, approvals, certificates, policy documents,
 and public notices.
 
 - Use: `sign --kind document`, `verify`, `signDocument`, `verifyDocument`.
-- Signer key may be ML-DSA or SLH-DSA (`keygen` emits both).
+- Signer key may be ML-DSA or SLH-DSA (`keygen` emits both; pass `slhDsa:`).
 - Document id, hash, and length are signed.
 - You supply legal policy, signer identity vetting, document canonicalization,
   and user experience.
@@ -59,7 +59,7 @@ and public notices.
 Use for payment callbacks, server-to-server notifications, audit delivery, and
 integration events.
 
-- Use: `signWebhook`, `verifyWebhook` (ML-DSA or SLH-DSA via `slhDsa:`).
+- Use: `sign --kind webhook`, `signWebhook`, `verifyWebhook` (ML-DSA or SLH-DSA via `slhDsa:`).
 - Event type, timestamp, and payload hash are signed.
 - You supply replay protection, timestamp windows, and verification-key
   distribution.
@@ -69,8 +69,8 @@ integration events.
 Use for API capability tokens, short-lived grants, admin commands, and service
 handoffs.
 
-- Use: `issueToken`, `verifyToken`.
-- Claims are canonicalized before signing.
+- Use: `issueToken`, `verifyToken` (ML-DSA or SLH-DSA via `slhDsa:`).
+- Claims are canonicalized before signing. Token JSON version stays 1.
 - You supply authorization policy, revocation, and key rotation.
 
 ## Private Email Payloads
@@ -88,6 +88,8 @@ Use for registries, health records, incident records, case files, and long-lived
 public-sector archives.
 
 - Use: `encryptRecord`, `appendSignedLogEntry`, `verifySignedLogEntry`.
+- The record seal is ML-KEM. The log may be ML-DSA or SLH-DSA (`slhDsa:`).
+- Identity enrollment is `createIdentityBinding` with the same choice.
 - Prefer maximum profile for long confidentiality lifetimes.
 - You supply access control, retention policy, audit policy, and legal process.
 

@@ -268,6 +268,67 @@ void main() {
       );
     });
 
+    test('token, log, and identity recipes sign and verify with SLH-DSA', () {
+      const algorithm = PqSlhDsaAlgorithm.shake128f;
+      final keys = forge.generateSlhDsaKeyPair(algorithm: algorithm);
+      final token = forge.issueToken(
+        signerSecretKey: keys.secretKey,
+        issuer: 'issuer-a',
+        subject: 'user-1',
+        issuedAtMs: 1700000000000,
+        expiresAtMs: 1700000300000,
+        claims: {'role': 'reader'},
+        slhDsa: algorithm,
+      );
+      final restored = PqSignedToken.fromJson(token.toJson());
+      expect(restored.slhDsa, algorithm);
+      expect(restored.signatureAlgorithm, isNull);
+      expect(restored.algorithmId, algorithm.id);
+      expect(restored.toJson()['signatureAlgorithm'], algorithm.id);
+      expect(
+        forge.verifyToken(keys.publicKey, restored, nowMs: 1700000001000),
+        isTrue,
+      );
+      expect(
+        forge.verifyToken(keys.publicKey, restored, nowMs: 1700000300000),
+        isFalse,
+      );
+
+      final entry = forge.appendSignedLogEntry(
+        signerSecretKey: keys.secretKey,
+        previousHash: Uint8List(32),
+        payload: Uint8List.fromList(utf8.encode('audit event')),
+        timestampMs: 123,
+        slhDsa: algorithm,
+      );
+      expect(entry.slhDsa, algorithm);
+      expect(entry.signatureAlgorithm, isNull);
+      expect(entry.entryHash(), hasLength(32));
+      expect(forge.verifySignedLogEntry(keys.publicKey, entry), isTrue);
+      final tampered = PqSignedLogEntry(
+        previousHash: Uint8List(32),
+        payload: Uint8List.fromList(utf8.encode('changed event')),
+        timestampMs: 123,
+        slhDsa: algorithm,
+        signature: entry.signature,
+      );
+      expect(forge.verifySignedLogEntry(keys.publicKey, tampered), isFalse);
+
+      final identity = forge.generateSignatureKeyPair();
+      final binding = forge.createIdentityBinding(
+        authoritySecretKey: keys.secretKey,
+        subjectId: 'user-1',
+        identityPublicKey: identity.publicKey,
+        notBeforeMs: 1,
+        expiresAtMs: 999,
+        slhDsa: algorithm,
+      );
+      expect(binding.slhDsa, algorithm);
+      expect(binding.algorithmId, algorithm.id);
+      expect(forge.verifyIdentityBinding(keys.publicKey, binding), isTrue);
+      expect(forge.verifyIdentityBinding(identity.publicKey, binding), isFalse);
+    });
+
     test('refuses mixing ML-DSA and SLH-DSA on one recipe call', () {
       expect(
         () => forge.signDocument(
