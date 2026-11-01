@@ -3,7 +3,7 @@
   "@type": "SoftwareSourceCode",
   "name": "pqforge",
   "alternateName": "pqforge: Post-Quantum Application Recipes for Dart",
-  "description": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.",
+  "description": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/Ed25519/ECDSA-P256/ECDSA-P384/RSA hybrids and signatures, P-256/P-384 ECDH, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.",
   "url": "https://turkananation.github.io/pqforge/",
   "codeRepository": "https://github.com/turkananation/pqforge",
   "programmingLanguage": "Dart",
@@ -14,7 +14,7 @@
     "CLI"
   ],
   "license": "MIT",
-  "softwareVersion": "0.4.9",
+  "softwareVersion": "0.4.10",
   "applicationCategory": "Cryptography composition library",
   "keywords": [
     "Dart post-quantum encryption",
@@ -27,7 +27,10 @@
     "Serverpod PQC",
     "hybrid key agreement",
     "Argon2id key wrapping",
-    "ChaCha20-Poly1305 Dart",
+    "RFC 9180 HPKE",
+    "ChaCha20 keystream QUIC",
+    "X.509 Dart",
+    "ECDSA P-384",
     "post-quantum streaming encryption",
     "multi-recipient encryption",
     "FIPS 203 ML-KEM",
@@ -67,6 +70,10 @@
     "ML-DSA-44/65/87 detached and pre-hash signatures through pqcrypto (FIPS 204-aligned)",
     "SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign",
     "AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine",
+    "RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD",
+    "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384",
+    "X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT",
+    "ECDSA P-384 (PqEcdsaP384, low-S), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519)",
     "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
     "Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change",
     "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
@@ -87,14 +94,17 @@
     "A hard memory-erasure guarantee",
     "Public-key trust, identity vetting, or legal e-signature policy",
     "Replay stores, authorization policy, TLS, or secure infrastructure operations",
-    "RC4 or unauthenticated encryption"
+    "RC4 or unauthenticated encryption",
+    "BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512",
+    "An OpenSSL HPKE claim for X25519, P-256, or P-384",
+    "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency"
   ],
   "evidenceBoundary": {
     "allowed_claims": [
       "FIPS 203-aligned ML-KEM through pqcrypto.",
       "FIPS 204-aligned ML-DSA through pqcrypto.",
       "FIPS 205-aligned SLH-DSA through pqcrypto. pqforge composes it into keygen, custody, and detached sign/verify. Envelopes and hybrid-sign remain ML-DSA-only.",
-      "Application-layer composition helpers for KEM-DEM, AEAD sessions, hybrid key agreement, streaming, multi-recipient envelopes, wrapped key custody, signatures, recipes, and CLI workflows.",
+      "Application-layer composition helpers for KEM-DEM, AEAD sessions, hybrid key agreement, streaming, multi-recipient envelopes, wrapped key custody, signatures, recipes, X.509, RFC 9180 HPKE, and CLI workflows.",
       "Best-effort zeroization in Dart."
     ],
     "forbidden_claims": [
@@ -218,5 +228,5 @@
     }
   ],
   "generatedBy": "Generated by dart run tool/visibility/generate_visibility.dart. Edit tool/visibility/visibility_manifest.json instead.",
-  "dateModified": "2026-10-31"
+  "dateModified": "2026-11-01"
 }

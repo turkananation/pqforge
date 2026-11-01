@@ -5,7 +5,12 @@ project visibility surfaces:
 
 - root AI discovery files: `llms.txt`, `llms-full.txt`, `identity.json`,
   `developer-ai.txt`, `faq-ai.txt`, `ai.txt`, `robots-ai.txt`, and `robots.txt`;
-- GitHub Pages static site under `site/`;
+- GitHub Pages static mirror under `site/` (`index.html`, `styles.css`,
+  `llms.txt`, and the other generated files);
+- the Jaspr documentation app, also under `site/` (`content/`, `lib/`,
+  `pubspec.yaml`). Pages builds that app and deploys `site/build/jaspr`.
+  The generated HTML mirror stays in the repository so `--check` can see it.
+  Do not hand-edit either the mirror or the Jaspr output.
 - GitHub Copilot instructions;
 - Cursor and Windsurf project rules.
 

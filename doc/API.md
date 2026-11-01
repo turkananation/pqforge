@@ -14,6 +14,7 @@ That one entrypoint provides the whole stack:
 | Hybrid KEM combining | `PqForgeCombiner` (raw bytes) and the `SecretKey.deriveHybridSecretKey` extension |
 | Built-in classical hybrid | `PqForgeHybridKeyAgreement` (X25519 + ML-KEM), `PqForgeHybridSigner` (ML-DSA + Ed25519) |
 | Certificates | `PqX509` parse, mint, and path check. `PqEcdsaP384`, `PqRsa`, and synchronous `PqEd25519` sit beside `PqEcdsaP256`. P-384 ECDSA is not `p384SharedSecret`. |
+| HPKE | `PqHpke` — RFC 9180 base, PSK, auth, and authPSK. See [HPKE.md](HPKE.md). |
 | AEAD wire packets | `PqForgeSecureSession` over AES-256-GCM / ChaCha20-Poly1305, pure-Dart or native backend |
 
 `package:cryptography` is a standard dependency (it powers the hybrid, native-AEAD,
@@ -232,7 +233,24 @@ without the hybrid wrapper.
 
 ---
 
-## 3. AEAD secure sessions and wire packets
+## 3. HPKE
+
+`PqHpke` is RFC 9180. Modes are `HpkeMode.base`, `psk`, `auth`, and
+`authPsk`. The default suite is X25519, HKDF-SHA256, AES-128-GCM
+(`HpkeSuite.x25519Aes128Gcm`). Full use cases, the exporter, and the
+BoringSSL boundary are in [HPKE.md](HPKE.md).
+
+```dart
+final recipient = await PqHpke.generateKeyPair(HpkeKem.x25519HkdfSha256);
+final sealed = await PqHpke.seal(
+  suite: HpkeSuite.x25519Aes128Gcm,
+  mode: HpkeMode.base,
+  recipientPublicKey: recipient.publicKey,
+  plaintext: Uint8List.fromList(utf8.encode('record')),
+);
+```
+
+## 4. AEAD secure sessions and wire packets
 
 `PqForgeSecureSession` encrypts payloads into self-describing AEAD wire packets.
 A configuration is a **cipher suite × engine provider**; all four combinations
@@ -291,7 +309,7 @@ PqForgeCryptographyAeadEngine(PqForgeCipherSuite suite);  // native (package:cry
 
 ---
 
-## 4. The `PqForge` facade
+## 5. The `PqForge` facade
 
 ```dart
 const PqForge({PqForgeProfile profile = PqForgeProfile.balanced});
@@ -318,7 +336,7 @@ Methods, grouped:
 
 ---
 
-## 5. Supporting types
+## 6. Supporting types
 
 - **Algorithms & profiles:** `PqKemAlgorithm` (`mlKem512`, `mlKem768`, `mlKem1024`) · `PqSignatureAlgorithm` (`mlDsa44`, `mlDsa65`, `mlDsa87`) · `PqSlhDsaAlgorithm` (all 12 FIPS 205 sets) · `PqSlhDsaPreHash` · `PqForgeProfile` (`compact`, `balanced`, `maximum`; each carries a matching SHAKE-f `slhDsa`) · `PqForgeException`. `SlhDsa` / `SlhDsaParams` / `SlhDsaPreHash` live in `package:pqcrypto/pqcrypto.dart` — they are not re-exported.
 - **Primitives:** `PqBytes` (`randomBytes`, `concat`, `sha256`, `sha384`, `sha512`, `hmacSha256`, `hmacSha384`, `hmacSha512`, `constantTimeEquals`, …) · `PqSymmetricPrimitives` · `PqKemPrimitives` · `PqSignaturePrimitives` · `PqSlhDsaPrimitives` · `PqNistEcdh` · `PqForgeBytes` (compatibility alias)
@@ -375,4 +393,5 @@ The CLI is `pqforge cert`. See [CLI.md](CLI.md).
 - [`example/hybrid_combiner_example.dart`](../example/hybrid_combiner_example.dart) — `PqForgeCombiner` (Options A & B)
 - [`example/secure_session_example.dart`](../example/secure_session_example.dart) — `PqForgeSecureSession` across both backends
 - [`example/hybrid_key_agreement_example.dart`](../example/hybrid_key_agreement_example.dart) — X25519 + ML-KEM, ML-DSA + Ed25519
+- [`example/hpke_example.dart`](../example/hpke_example.dart) — RFC 9180 base seal, auth seal, and export-only
 - [`example/catalog_recipes_example.dart`](../example/catalog_recipes_example.dart) — webhook, sealed email, and signed token recipes

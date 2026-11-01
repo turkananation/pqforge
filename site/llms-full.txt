@@ -6,11 +6,11 @@ Repository: https://github.com/turkananation/pqforge
 Package: https://pub.dev/packages/pqforge
 API docs: https://pub.dev/documentation/pqforge/latest/
 Lab: Yardenah PQ (https://yardenah.com)
-Version: 0.4.9
+Version: 0.4.10
 
 ## Identity
 
-pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, AES-256-GCM and ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.
+pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/Ed25519/ECDSA-P256/ECDSA-P384/RSA hybrids and signatures, P-256/P-384 ECDH, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. The core is pure Dart and web-safe — no dart:ffi.
 
 ## Relationship To pqcrypto
 
@@ -19,7 +19,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - pqcrypto package: https://pub.dev/packages/pqcrypto
 - pqcrypto repository: https://github.com/turkananation/pqcrypto
 - pqcrypto is the primitives layer: pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM, FIPS 204 ML-DSA, and FIPS 205 SLH-DSA (all 12 parameter sets), plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.
-- pqforge is the composition layer: pqforge is the composition package: KEM-DEM envelopes, AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids, P-256/P-384 ECDH, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts), and a CLI. It composes pqcrypto SLH-DSA into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only.
+- pqforge is the composition layer: pqforge is the composition package: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM/ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/Ed25519/ECDSA-P256/ECDSA-P384/RSA, P-256/P-384 ECDH, X.509 and PKCS#10, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts), and a CLI. It composes pqcrypto SLH-DSA into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only.
 
 - Use pqcrypto when you need the raw ML-KEM/ML-DSA/SLH-DSA algorithms and nothing else.
 - Use pqforge when you need to ship a feature: encrypt a file, sign a release, run a hybrid session, wrap a key, or expose a CLI.
@@ -33,6 +33,10 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - ML-DSA-44/65/87 detached and pre-hash signatures through pqcrypto (FIPS 204-aligned)
 - SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign
 - AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine
+- RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD
+- RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384
+- X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT
+- ECDSA P-384 (PqEcdsaP384, low-S), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519)
 - Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB
 - Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change
 - X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands
@@ -55,6 +59,9 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - Public-key trust, identity vetting, or legal e-signature policy
 - Replay stores, authorization policy, TLS, or secure infrastructure operations
 - RC4 or unauthenticated encryption
+- BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512
+- An OpenSSL HPKE claim for X25519, P-256, or P-384
+- A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
 
 ## Evidence Boundary
 
@@ -64,7 +71,7 @@ Allowed claims:
 - FIPS 203-aligned ML-KEM through pqcrypto.
 - FIPS 204-aligned ML-DSA through pqcrypto.
 - FIPS 205-aligned SLH-DSA through pqcrypto. pqforge composes it into keygen, custody, and detached sign/verify. Envelopes and hybrid-sign remain ML-DSA-only.
-- Application-layer composition helpers for KEM-DEM, AEAD sessions, hybrid key agreement, streaming, multi-recipient envelopes, wrapped key custody, signatures, recipes, and CLI workflows.
+- Application-layer composition helpers for KEM-DEM, AEAD sessions, hybrid key agreement, streaming, multi-recipient envelopes, wrapped key custody, signatures, recipes, X.509, RFC 9180 HPKE, and CLI workflows.
 - Best-effort zeroization in Dart.
 
 Forbidden claims:
@@ -204,6 +211,7 @@ Forbidden claims:
 - [Envelope Formats](https://github.com/turkananation/pqforge/blob/main/doc/architecture/ENVELOPE_FORMATS.md): The .pqf one-shot and .pqfs streaming container layouts and AAD binding.
 - [Threat Model](https://github.com/turkananation/pqforge/blob/main/doc/security/THREAT_MODEL.md): Assets, adversaries, what the package defends, and what the application must own.
 - [Key Custody](https://github.com/turkananation/pqforge/blob/main/doc/architecture/KEY_CUSTODY.md): Wrapped key storage and pluggable custody model.
+- [HPKE](https://github.com/turkananation/pqforge/blob/main/doc/HPKE.md): RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary.
 - [Claim Boundary](https://github.com/turkananation/pqforge/blob/main/doc/security/CLAIM_BOUNDARY.md): Allowed and forbidden claims for package consumers and agents.
 
 ## Validation
@@ -215,4 +223,5 @@ Forbidden claims:
 - `dart run example/pqforge_example.dart`
 - `dart run example/catalog_recipes_example.dart`
 - `dart run example/hybrid_key_agreement_example.dart`
+- `dart run example/hpke_example.dart`
 - `dart pub publish --dry-run`

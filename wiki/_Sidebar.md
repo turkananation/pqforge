@@ -6,6 +6,7 @@
 - [Streaming And Large Files](Streaming-And-Large-Files)
 - [Multi-Recipient And Hybrid](Multi-Recipient-And-Hybrid)
 - [Hybrid Sessions](Hybrid-Sessions)
+- [HPKE](HPKE)
 - [Key Custody](Key-Custody)
 - [Performance](Performance)
 - [pqforge vs pqcrypto](pqforge-vs-pqcrypto)

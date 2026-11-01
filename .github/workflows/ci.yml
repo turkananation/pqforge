@@ -59,6 +59,12 @@ jobs:
       - name: Install interop tool dependencies
         run: dart pub get --directory tool/openssl_interop
 
+      # The Jaspr site is a nested package. Without its own package config,
+      # `dart analyze` treats site/lib as part of pqforge and fails on
+      # unresolved jaspr imports.
+      - name: Install site dependencies
+        run: dart pub get --directory site
+
       - name: Verify generated CLI version
         run: dart run tool/version/generate_version.dart --check
 
@@ -72,6 +78,10 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
 
       - name: Analyze source
+        run: dart analyze
+
+      - name: Analyze site
+        working-directory: site
         run: dart analyze
 
       - name: Verify local documentation links
@@ -209,6 +219,12 @@ jobs:
       # certificates are parsed and checked here. Versions must match pins.env.
       - name: Verify X.509 against the pinned libraries
         run: REQUIRE_PINNED_TLS=1 dart run tool/interop/verify_x509.dart
+
+      - name: Verify HPKE against pinned BoringSSL
+        run: REQUIRE_PINNED_TLS=1 dart run tool/interop/hpke_flight.dart
+
+      - name: Verify HPKE X448 and P-521 against pinned OpenSSL
+        run: REQUIRE_PINNED_TLS=1 dart run tool/interop/openssl_hpke_flight.dart
 
       # AEAD byte-compatibility against the same OpenSSL, not the Ubuntu package.
       - name: Verify AEAD interop against pinned OpenSSL

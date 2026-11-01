@@ -20,6 +20,7 @@ for the boundary.
 - [Streaming And Large Files](Streaming-And-Large-Files) — gigabyte files, `pack`/`unpack`
 - [Multi-Recipient And Hybrid](Multi-Recipient-And-Hybrid) — one ciphertext for many; PQC + X25519
 - [Hybrid Sessions](Hybrid-Sessions) — X25519 + ML-KEM agreement, dual signatures
+- [HPKE](HPKE) — RFC 9180 seal, open, and export
 - [Key Custody](Key-Custody) — wrapped secret keys and stores
 - [Performance](Performance) — engines, ciphers, measured throughput
 - [pqforge vs pqcrypto](pqforge-vs-pqcrypto) — which package to use

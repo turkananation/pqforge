@@ -57,7 +57,7 @@ the `dart:io` entrypoint `package:pqforge/pqforge_io.dart`.
 - **`pqforge`** depends on `pqcrypto` and never reimplements the lattice
   primitives. It adds everything you need to *ship a feature*: KEM-DEM envelopes,
   AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/Ed25519/ECDSA-P256 hybrids,
-  P-256/P-384 ECDH, streaming, multi-recipient envelopes, key custody, recipes,
+  P-256/P-384 ECDH, RFC 9180 HPKE (X25519, X448, P-256, P-384, P-521), streaming, multi-recipient envelopes, key custody, recipes,
   and a CLI. SLH-DSA is composed into `keygen`, custody, and detached
   `sign`/`verify`; envelopes and `hybrid-sign` stay ML-DSA-only.
 

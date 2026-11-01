@@ -34,4 +34,5 @@ pqforge is an application composition package. Keep claims scoped to composition
 - `dart run example/pqforge_example.dart`
 - `dart run example/catalog_recipes_example.dart`
 - `dart run example/hybrid_key_agreement_example.dart`
+- `dart run example/hpke_example.dart`
 - `dart pub publish --dry-run`
