@@ -28,6 +28,13 @@ artifacts, tokens, signed logs, and identity bindings. Encryption envelopes,
 `.pqfs` header signatures, and `hybrid-sign` stay ML-DSA. An SLH-DSA signature
 is 8–50 KiB. The `s` sets are slow; the CLI opts in when the secret is an `s` set.
 
+`compose-sign` is the multi-algorithm signature. Pass 2 or 3 of
+`--ml-dsa-secret`, `--slh-secret`, and repeatable `--classical-secret`
+(Ed25519, ECDSA-P256, ECDSA-P384, ECDSA-P521). Nothing is added for you.
+`require-all` is the default. ECDSA-P384 and ECDSA-P521 are
+`keygen --classical` opt-ins, not the default key set. `hybrid-sign` remains
+ML-DSA plus one classical leg.
+
 ## Recipe Docs
 
 | Need | Document |

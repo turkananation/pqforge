@@ -40,6 +40,30 @@ class PqForgeHybridSigner {
           publicKey: pair.publicKey,
           secretKey: pair.secretKey,
         );
+      case PqClassicalSignatureAlgorithm.ecdsaP384:
+        if (seed != null) {
+          throw const PqForgeException(
+            'Seeded key generation is not supported for ECDSA-P384',
+          );
+        }
+        final pair = PqEcdsaP384.generateKeyPair();
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ecdsaP384,
+          publicKey: pair.publicKey,
+          secretKey: pair.secretKey,
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP521:
+        if (seed != null) {
+          throw const PqForgeException(
+            'Seeded key generation is not supported for ECDSA-P521',
+          );
+        }
+        final pair = PqEcdsaP521.generateKeyPair();
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ecdsaP521,
+          publicKey: pair.publicKey,
+          secretKey: pair.secretKey,
+        );
     }
   }
 
@@ -73,6 +97,18 @@ class PqForgeHybridSigner {
         return PqClassicalSignatureKeyPair(
           algorithm: PqClassicalSignatureAlgorithm.ecdsaP256,
           publicKey: derived,
+          secretKey: secretKey,
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP384:
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ecdsaP384,
+          publicKey: publicKey ?? PqEcdsaP384.publicKeyFromPrivate(secretKey),
+          secretKey: secretKey,
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP521:
+        return PqClassicalSignatureKeyPair(
+          algorithm: PqClassicalSignatureAlgorithm.ecdsaP521,
+          publicKey: publicKey ?? PqEcdsaP521.publicKeyFromPrivate(secretKey),
           secretKey: secretKey,
         );
     }
@@ -160,6 +196,20 @@ class PqForgeHybridSigner {
           secretKey: keyPair.secretKey,
           message: boundMessage,
         );
+      case PqClassicalSignatureAlgorithm.ecdsaP384:
+        return Future.value(
+          PqEcdsaP384.sign(
+            privateKey: keyPair.secretKey,
+            message: boundMessage,
+          ),
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP521:
+        return Future.value(
+          PqEcdsaP521.sign(
+            privateKey: keyPair.secretKey,
+            message: boundMessage,
+          ),
+        );
     }
   }
 
@@ -181,6 +231,22 @@ class PqForgeHybridSigner {
           publicKey: publicKey,
           message: boundMessage,
           signature: signatureBytes,
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP384:
+        return Future.value(
+          PqEcdsaP384.verify(
+            publicKey: publicKey,
+            message: boundMessage,
+            signature: signatureBytes,
+          ),
+        );
+      case PqClassicalSignatureAlgorithm.ecdsaP521:
+        return Future.value(
+          PqEcdsaP521.verify(
+            publicKey: publicKey,
+            message: boundMessage,
+            signature: signatureBytes,
+          ),
         );
     }
   }

@@ -45,6 +45,17 @@ RFC 9180 HPKE as a public API. No `.pqf` / `.pqfs` wire-format change.
   pre-hash path as `signDocument`. `sign --kind webhook` writes that
   recipe from the CLI (`--event-type`, `--timestamp-ms`). Envelope
   headers, `.pqfs` signatures, and `hybrid-sign` stay ML-DSA-only.
+- Signature algorithms are opt-in legs. `compose-sign` / `compose-verify`
+  take 2 legs (dual) or 3 (triple): any mix of one ML-DSA, one SLH-DSA,
+  and classical Ed25519 / ECDSA-P256 / ECDSA-P384 / ECDSA-P521.
+  `--policy require-all` is the default; `accept-any` lets one leg pass.
+  `keygen --classical ecdsa-p384` and `--classical ecdsa-p521` emit those
+  keys. They are not in the default classical set. `ecdsa-sign` follows
+  the key. `hybrid-sign` is still exactly ML-DSA plus one of those
+  classical algorithms, now including P-384 and P-521. P-384 and P-521
+  ECDSA are not provider methods, so a custom `PqClassicalProvider` does
+  not have to implement them. P-521 ECDSA is not a TLS group and not HPKE.
+  Not constant-time. No `.pqf` / `.pqfs` change.
 
 ## 0.4.9
 

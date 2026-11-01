@@ -12,6 +12,7 @@ import 'package:args/command_runner.dart';
 import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 
 import 'src/cert_commands.dart';
+import 'src/compose_commands.dart';
 import 'src/console.dart';
 import 'src/hybrid_commands.dart';
 import 'src/lifecycle_commands.dart';
@@ -39,6 +40,8 @@ const Map<String, List<String>> _groups = {
   'Hybrid & classical': [
     'hybrid-sign',
     'hybrid-verify',
+    'compose-sign',
+    'compose-verify',
     'ecdsa-sign',
     'ecdsa-verify',
   ],
@@ -121,6 +124,8 @@ final class PqForgeRunner extends CommandRunner<void> {
     addCommand(VerifyCommand());
     addCommand(HybridSignCommand());
     addCommand(HybridVerifyCommand());
+    addCommand(ComposeSignCommand());
+    addCommand(ComposeVerifyCommand());
     addCommand(EcdsaSignCommand());
     addCommand(EcdsaVerifyCommand());
     addCommand(CertCommand());

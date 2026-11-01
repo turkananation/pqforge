@@ -520,11 +520,12 @@ Uint8List? optionalContext(ArgResults results) {
   return context == null ? null : PqBytes.utf8Bytes(context);
 }
 
-/// Asserts an already kind-checked classical key is specifically ECDSA-P256.
+/// Asserts an already kind-checked classical key is ECDSA P-256, P-384, or P-521.
 void requireEcdsaKey(PqExportedKey key) {
-  if (key.algorithmId != PqClassicalSignatureAlgorithm.ecdsaP256.id) {
+  const allowed = {'ecdsa-p256', 'ecdsa-p384', 'ecdsa-p521'};
+  if (!allowed.contains(key.algorithmId)) {
     throw PqForgeException(
-      'Expected an ecdsa-p256 key, got ${key.algorithmId}.',
+      'Expected an ECDSA P-256, P-384, or P-521 key, got ${key.algorithmId}.',
     );
   }
 }

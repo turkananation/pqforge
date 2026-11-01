@@ -30,8 +30,8 @@ final class HybridSignCommand extends Command<void> {
         mandatory: true,
         valueHelp: 'file',
         help:
-            'Raw or wrapped Ed25519/ECDSA-P256 secret key JSON from '
-            'keygen --classical.',
+            'Raw or wrapped Ed25519 or ECDSA secret. ECDSA may be P-256, '
+            'P-384, or P-521. P-384 and P-521 come from keygen --classical.',
       )
       ..addOption(
         'in',
@@ -74,7 +74,9 @@ final class HybridSignCommand extends Command<void> {
 
   @override
   String get description =>
-      'Create an ML-DSA + Ed25519/ECDSA-P256 hybrid (dual) signature.';
+      'Create an ML-DSA + Ed25519/ECDSA hybrid (dual) signature. '
+      'ECDSA may be P-256, P-384, or P-521. For SLH-DSA or three legs, '
+      'use compose-sign.';
 
   @override
   String get usageFooter => usageExamples([
@@ -309,8 +311,8 @@ final class EcdsaSignCommand extends Command<void> {
         mandatory: true,
         valueHelp: 'file',
         help:
-            'Raw or wrapped ECDSA-P256 secret key JSON from '
-            'keygen --classical ecdsa-p256.',
+            'Raw or wrapped ECDSA secret (P-256, P-384, or P-521) from '
+            'keygen --classical.',
       )
       ..addOption(
         'in',
@@ -341,7 +343,7 @@ final class EcdsaSignCommand extends Command<void> {
 
   @override
   String get description =>
-      'Sign a file with standalone ECDSA-P256 (deterministic, low-S).';
+      'Sign a file with standalone ECDSA (P-256, P-384, or P-521, low-S).';
 
   @override
   String get usageFooter => usageExamples([
@@ -380,20 +382,17 @@ final class EcdsaSignCommand extends Command<void> {
                 ),
               )
             : await input.readAsBytes();
-        final signature = PqEcdsaP256.sign(
-          privateKey: secret.bytes,
-          message: message,
-        );
+        final signature = _ecdsaSign(secret.algorithmId, secret.bytes, message);
         await writeJson(output, {
           'version': 1,
-          'scheme': 'ecdsa-p256',
+          'scheme': secret.algorithmId,
           if (digestMode) 'digest': 'sha-256',
           'signature': base64Encode(signature),
         });
       },
     );
     if (!quiet) {
-      console.detail('algorithm', 'ECDSA-P256');
+      console.detail('algorithm', secret.algorithmId);
       console.created(output.path);
     }
   }
@@ -407,7 +406,7 @@ final class EcdsaVerifyCommand extends Command<void> {
         'public',
         mandatory: true,
         valueHelp: 'file',
-        help: 'ECDSA-P256 public key JSON from keygen --classical ecdsa-p256.',
+        help: 'ECDSA P-256, P-384, or P-521 public key JSON from keygen.',
       )
       ..addOption(
         'in',
@@ -428,7 +427,8 @@ final class EcdsaVerifyCommand extends Command<void> {
   String get name => 'ecdsa-verify';
 
   @override
-  String get description => 'Verify a standalone ECDSA-P256 signature.';
+  String get description =>
+      'Verify a standalone ECDSA P-256, P-384, or P-521 signature.';
 
   @override
   String get usageFooter => usageExamples([
@@ -445,6 +445,13 @@ final class EcdsaVerifyCommand extends Command<void> {
     requireEcdsaKey(public);
 
     final sigJson = await readJsonMap(File(results['signature'] as String));
+    final scheme = sigJson['scheme'] as String?;
+    if (scheme != null && scheme != public.algorithmId) {
+      throw PqForgeException(
+        'Signature scheme $scheme does not match public key '
+        '${public.algorithmId}.',
+      );
+    }
     final signature = base64Decode(sigJson['signature'] as String);
     final input = File(results['in'] as String);
     final fileName = input.uri.pathSegments.last;
@@ -465,11 +472,7 @@ final class EcdsaVerifyCommand extends Command<void> {
                   progress.updateBytes(processed: processed, totalBytes: total),
             )
           : await input.readAsBytes();
-      ok = PqEcdsaP256.verify(
-        publicKey: public.bytes,
-        message: message,
-        signature: signature,
-      );
+      ok = _ecdsaVerify(public.algorithmId, public.bytes, message, signature);
       if (ok) {
         progress.completeFile(fileName);
       } else {
@@ -483,7 +486,7 @@ final class EcdsaVerifyCommand extends Command<void> {
       progress.done();
     }
     if (ok && !quiet) {
-      console.detail('algorithm', 'ECDSA-P256');
+      console.detail('algorithm', public.algorithmId);
     }
   }
 }
@@ -492,3 +495,38 @@ PqDualSignaturePolicy _policyFrom(String value) => switch (value) {
   'accept-either' => PqDualSignaturePolicy.acceptEither,
   _ => PqDualSignaturePolicy.requireBoth,
 };
+
+Uint8List _ecdsaSign(String algorithmId, Uint8List secret, Uint8List message) {
+  return switch (algorithmId) {
+    'ecdsa-p256' => PqEcdsaP256.sign(privateKey: secret, message: message),
+    'ecdsa-p384' => PqEcdsaP384.sign(privateKey: secret, message: message),
+    'ecdsa-p521' => PqEcdsaP521.sign(privateKey: secret, message: message),
+    _ => throw PqForgeException('Unsupported ECDSA algorithm: $algorithmId'),
+  };
+}
+
+bool _ecdsaVerify(
+  String algorithmId,
+  Uint8List publicKey,
+  Uint8List message,
+  Uint8List signature,
+) {
+  return switch (algorithmId) {
+    'ecdsa-p256' => PqEcdsaP256.verify(
+      publicKey: publicKey,
+      message: message,
+      signature: signature,
+    ),
+    'ecdsa-p384' => PqEcdsaP384.verify(
+      publicKey: publicKey,
+      message: message,
+      signature: signature,
+    ),
+    'ecdsa-p521' => PqEcdsaP521.verify(
+      publicKey: publicKey,
+      message: message,
+      signature: signature,
+    ),
+    _ => throw PqForgeException('Unsupported ECDSA algorithm: $algorithmId'),
+  };
+}

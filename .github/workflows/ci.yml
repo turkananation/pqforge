@@ -104,6 +104,7 @@ jobs:
           dart run example/secure_session_example.dart
           dart run example/hybrid_key_agreement_example.dart
           dart run example/catalog_recipes_example.dart
+          dart run example/compose_signature_example.dart
 
       - name: Run wrapped-key CLI smoke
         shell: bash

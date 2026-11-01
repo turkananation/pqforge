@@ -16,7 +16,12 @@ import 'progress_reporter.dart';
 import 'support.dart';
 
 const _profiles = ['compact', 'balanced', 'maximum'];
-const _classicalAlgorithms = ['x25519', 'ed25519', 'ecdsa-p256'];
+const _defaultClassicalAlgorithms = ['x25519', 'ed25519', 'ecdsa-p256'];
+const _classicalAlgorithms = [
+  ..._defaultClassicalAlgorithms,
+  'ecdsa-p384',
+  'ecdsa-p521',
+];
 
 /// `keygen` — ML-KEM + ML-DSA bundles, profile-matched SLH-DSA keys, plus the
 /// classical keypairs that make every hybrid workflow work out of the box.
@@ -50,9 +55,9 @@ final class KeygenCommand extends Command<void> {
         allowed: _classicalAlgorithms,
         valueHelp: 'algo',
         help:
-            'Limit the classical keypairs to specific algorithms (default: '
-            'all of x25519, ed25519, ecdsa-p256). x25519 is the hybrid '
-            'encryption key; ed25519/ecdsa-p256 are hybrid signer keys.',
+            'Classical keys to emit. Repeat to opt in. Default, when omitted: '
+            'x25519, ed25519, and ecdsa-p256. Also allowed: ecdsa-p384, '
+            'ecdsa-p521. x25519 is the hybrid encryption key. The others sign.',
       )
       ..addFlag(
         'no-classical',
@@ -178,7 +183,7 @@ final class KeygenCommand extends Command<void> {
     final classical = noClassical || slhDsaOnly
         ? const <String>[]
         : (selectedClassical.isEmpty
-              ? _classicalAlgorithms
+              ? _defaultClassicalAlgorithms
               : selectedClassical);
     final emitPqc = !classicalOnly && !slhDsaOnly;
     final slhAlgorithms = _slhDsaAlgorithms(
@@ -283,8 +288,10 @@ final class KeygenCommand extends Command<void> {
           'classical',
           [
             if (classical.contains('x25519')) 'X25519 (hybrid encryption)',
-            if (classical.contains('ed25519')) 'Ed25519 (hybrid signing)',
-            if (classical.contains('ecdsa-p256')) 'ECDSA-P256 (hybrid signing)',
+            if (classical.contains('ed25519')) 'Ed25519 (signatures)',
+            if (classical.contains('ecdsa-p256')) 'ECDSA-P256 (signatures)',
+            if (classical.contains('ecdsa-p384')) 'ECDSA-P384 (signatures)',
+            if (classical.contains('ecdsa-p521')) 'ECDSA-P521 (signatures)',
           ].join(' · '),
         );
       }
