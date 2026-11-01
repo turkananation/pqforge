@@ -42,3 +42,8 @@ open the same ciphertext.
 The CLI is still `dart run pqforge`. `keygen`, `encrypt`, `sign`, and
 `cert` are unchanged by HPKE. HPKE is a library API, not a new envelope
 format.
+
+Signatures in this same release are a separate surface. `sign --kind webhook`,
+`compose-sign`, and `keygen --classical ecdsa-p384` / `ecdsa-p521` do not
+change the HPKE calls above. The page for those legs is [Signatures](signatures).
+P-521 as an HPKE KEM is unchanged.

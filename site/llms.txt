@@ -39,6 +39,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
   - BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512
   - An OpenSSL HPKE claim for X25519, P-256, or P-384
   - A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
+  - ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs
 
 ## Never Say
 
@@ -84,4 +85,5 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - [Threat Model](https://github.com/turkananation/pqforge/blob/main/doc/security/THREAT_MODEL.md): Assets, adversaries, what the package defends, and what the application must own.
 - [Key Custody](https://github.com/turkananation/pqforge/blob/main/doc/architecture/KEY_CUSTODY.md): Wrapped key storage and pluggable custody model.
 - [HPKE](https://github.com/turkananation/pqforge/blob/main/doc/HPKE.md): RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary.
+- [Signatures](https://github.com/turkananation/pqforge/blob/main/site/content/signatures.md): Opt-in dual and triple signature legs. Does not replace HPKE, certificates, ECDH, or envelope signatures.
 - [Claim Boundary](https://github.com/turkananation/pqforge/blob/main/doc/security/CLAIM_BOUNDARY.md): Allowed and forbidden claims for package consumers and agents.

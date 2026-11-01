@@ -41,6 +41,12 @@ final textSignature = forge.signText(
   slhDsa: forge.profile.slhDsa,
 );
 
+final mediaEnvelope = forge.sealMedia(
+  recipient.kemKeyPair.publicKey,
+  mediaBytes,
+  mediaId: 'cover.png',
+  mimeType: 'image/png',
+);
 final mediaOk = forge.verifyMedia(
   signerPublicKey: signer.publicKey,
   mediaId: 'cover.png',

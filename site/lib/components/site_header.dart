@@ -22,6 +22,7 @@ class SiteHeader extends StatelessComponent {
           a(href: 'hpke', [Component.text('HPKE')]),
           a(href: 'certificates', [Component.text('Certificates')]),
           a(href: 'symmetric', [Component.text('Symmetric')]),
+          a(href: 'signatures', [Component.text('Signatures')]),
           a(href: 'claim-boundary', [Component.text('Boundary')]),
           const ThemeToggle(),
           const GitHubButton(repo: 'turkananation/pqforge'),

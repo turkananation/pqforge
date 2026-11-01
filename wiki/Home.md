@@ -49,8 +49,8 @@ dart run pqforge decrypt-folder \
 ## What it provides
 
 - ML-KEM KEM-DEM envelopes (`.pqf` one-shot, `.pqfs` streaming).
-- ML-DSA signatures, plus hybrid ML-DSA + Ed25519/ECDSA-P256 and standalone ECDSA-P256.
-- SLH-DSA (FIPS 205, all 12 sets) composed into `keygen`, custody, and detached `sign`/`verify` (documents, text, media, webhooks, artifacts, tokens, logs, identity bindings). Not used for envelopes or `hybrid-sign`.
+- ML-DSA signatures, plus hybrid ML-DSA + Ed25519/ECDSA-P256 and standalone ECDSA-P256. `hybrid-sign` also accepts opt-in ECDSA-P384 and ECDSA-P521. `compose-sign` is a separate 2-leg or 3-leg command.
+- SLH-DSA (FIPS 205, all 12 sets) composed into `keygen`, custody, and detached `sign`/`verify` (documents, text, media, webhooks, artifacts, tokens, logs, identity bindings). Not used for envelopes or `hybrid-sign`. It can be one opted-in leg of `compose-sign`.
 - AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart or native engine.
 - X25519 + ML-KEM hybrid key agreement, P-256/P-384 ECDH (`PqNistEcdh`), and hybrid KEM-DEM.
 - Bounded-memory gigabyte streaming and whole-folder `pack`/`unpack`.

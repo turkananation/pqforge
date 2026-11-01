@@ -50,7 +50,7 @@
     "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
     "NIST P-256 and P-384 ECDH (uncompressed SEC1, x-coordinate secret) for TLS hybrid groups",
     "RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384), SHA-384/SHA-512 digest facades, and dart2js-safe sync ChaCha20-Poly1305 with a caller-supplied nonce (`supportsChaCha20Poly1305`)",
-    "ML-DSA plus Ed25519 or ECDSA-P256/P-384/P-521 hybrid signatures. compose-sign opts in 2 or 3 legs among ML-DSA, SLH-DSA, Ed25519, and those ECDSA curves. Standalone ECDSA is RFC 6979, low-S. ECDSA-P384 and ECDSA-P521 are keygen opt-ins, not the default classical set",
+    "ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S). hybrid-sign also accepts opt-in ECDSA-P384 and ECDSA-P521. compose-sign opts in 2 or 3 legs among ML-DSA, SLH-DSA, Ed25519, and those ECDSA curves. ECDSA-P384 and ECDSA-P521 are keygen opt-ins, not the default classical set. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group",
     "Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory",
     "pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)",
     "Argon2id plus AES-256-GCM wrapped key custody with pluggable stores; PBKDF2 wrapping under FIPS mode",
@@ -68,7 +68,8 @@
     "RC4 or unauthenticated encryption",
     "BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512",
     "An OpenSSL HPKE claim for X25519, P-256, or P-384",
-    "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency"
+    "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency",
+    "ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs"
   ],
   "evidence_boundary": {
     "allowed_claims": [
@@ -280,6 +281,11 @@
       "description": "RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary."
     },
     {
+      "title": "Signatures",
+      "url": "site/content/signatures.md",
+      "description": "Opt-in dual and triple signature legs. Does not replace HPKE, certificates, ECDH, or envelope signatures."
+    },
+    {
       "title": "Claim Boundary",
       "url": "doc/security/CLAIM_BOUNDARY.md",
       "description": "Allowed and forbidden claims for package consumers and agents."
@@ -307,7 +313,7 @@
     },
     {
       "question": "Does pqforge compose SLH-DSA?",
-      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify (document, text, media, artifact, webhook) and on issueToken, appendSignedLogEntry, and createIdentityBinding via slhDsa:. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow."
+      "answer": "Yes, for key generation, custody, and detached signatures. pqcrypto 0.4.4 ships all 12 FIPS 205 SLH-DSA parameter sets. pqforge exposes them as PqSlhDsaAlgorithm / PqSlhDsaPrimitives, emits a profile-matched SHAKE-f key from keygen (compact 128f, balanced 192f, maximum 256f), and accepts those keys on sign/verify (document, text, media, artifact, webhook) and on issueToken, appendSignedLogEntry, and createIdentityBinding via slhDsa:. Envelope headers, streaming signatures, and hybrid-sign remain ML-DSA-only because SLH-DSA signatures are 8-50 KiB and the s sets are slow. compose-sign can take one SLH-DSA leg when you pass that key. That does not put SLH-DSA on an envelope or on hybrid-sign."
     },
     {
       "question": "Is pqforge post-quantum / quantum-safe?",
@@ -351,7 +357,7 @@
     },
     {
       "question": "What does hybrid mean in pqforge?",
-      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with one Ed25519 or ECDSA (P-256, P-384, or P-521) signature over the same message. compose-sign is the opt-in dual or triple: choose 2 or 3 legs among ML-DSA, SLH-DSA, Ed25519, and those ECDSA curves. ECDSA-P384 and ECDSA-P521 are keygen --classical opt-ins, not the default set. P-521 ECDSA is not a TLS group and not HPKE. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256. PqEcdsaP384 is the P-384 signature, not that shared secret. PqX509 parses, mints, and checks an X.509 certificate, and it writes the PKCS#10 request openssl req verifies. cert req, cert issue, and cert sign are that CLI. It is not a trust store and not TLS."
+      "answer": "Two independent hard problems guard the same secret. Hybrid encryption combines the ML-KEM shared secret with an ephemeral X25519 exchange using the IETF concatenate-then-KDF construction, so confidentiality holds while either Module-LWE or Curve25519 stands. Hybrid signatures pair an ML-DSA signature with an Ed25519 or ECDSA-P256 signature over the same message. That hybrid command also accepts opt-in ECDSA-P384 and ECDSA-P521. compose-sign is separate: 2 or 3 legs you name, among ML-DSA, SLH-DSA, Ed25519, and those ECDSA curves. ECDSA-P384 and ECDSA-P521 are keygen --classical opt-ins, not the default set. PqEcdsaP521 is not a TLS group and not the HPKE share. Library-only NIST P-256/P-384 ECDH (uncompressed SEC1, x-coordinate secret) is exported for TLS hybrid groups; it is not the X25519 initiate/accept handshake and does not overload PqEcdsaP256. PqEcdsaP384 is the P-384 signature, not that shared secret. PqX509 parses, mints, and checks an X.509 certificate, and it writes the PKCS#10 request openssl req verifies. cert req, cert issue, and cert sign are that CLI. It is not a trust store and not TLS."
     },
     {
       "question": "Where does the CLI store keys?",

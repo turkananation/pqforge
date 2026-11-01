@@ -4,8 +4,10 @@ Use `signDocument` and `verifyDocument` for document-like payloads. The helper
 signs a canonical message containing a domain label, document ID, document hash,
 and document length. It does not sign the raw file bytes as the message.
 
-`keygen` emits a profile-matched SHAKE-f SLH-DSA key next to the ML-DSA bundle.
-Pass that secret to CLI `sign` / `verify`, or pass `slhDsa:` in the library.
+The same helpers accept an optional `slhDsa:` parameter for FIPS 205 hash-based
+signatures. `keygen` emits a profile-matched SHAKE-f SLH-DSA key next to the
+ML-DSA bundle. Pass that secret to CLI `sign` / `verify` (`--kind document`,
+`text`, `media`, `artifact`, or `webhook`), or pass `slhDsa:` in the library.
 Do not pass `algorithm` and `slhDsa` together.
 
 ```dart

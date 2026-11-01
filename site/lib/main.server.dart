@@ -37,6 +37,7 @@ void main() {
                   SidebarLink(text: 'Certificates', href: 'certificates'),
                   SidebarLink(text: 'Symmetric', href: 'symmetric'),
                   SidebarLink(text: 'Classical', href: 'classical'),
+                  SidebarLink(text: 'Signatures', href: 'signatures'),
                 ],
               ),
               SidebarGroup(

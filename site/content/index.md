@@ -28,6 +28,7 @@ runs on the Dart VM, Flutter, and the web. File streaming that needs
 | Release | You can call |
 | --- | --- |
 | 0.4.10 | `PqHpke` — base, PSK, auth, authPSK. X25519, X448, P-256, P-384, P-521. AES-GCM and ChaCha20-Poly1305. |
+| 0.4.10 | Signature legs. `slhDsa:` on detached recipes. `compose-sign` for a dual or a triple. Opt-in ECDSA-P384 and ECDSA-P521. See [Signatures](signatures). |
 | 0.4.9 | `PqX509`, `PqEcdsaP384`, `PqRsa`, `PqEd25519`, and `pqforge cert`. |
 | 0.4.8 | `PqSymmetricPrimitives.chacha20` — RFC 8439 keystream, including a QUIC header-protection mask. |
 
@@ -35,4 +36,10 @@ The rest of the package is unchanged in role: ML-KEM envelopes, ML-DSA and
 SLH-DSA detached signatures, hybrid sessions, multi-recipient envelopes,
 Argon2id key custody, and the CLI.
 
-[HPKE use cases](hpke) · [Certificates](certificates) · [Symmetric](symmetric) · [Claim boundary](claim-boundary)
+The same 0.4.10 release also widens signatures. That does not change the
+HPKE row above. [Signatures](signatures) has the new legs:
+`slhDsa:` on the detached recipes, `compose-sign` for a dual or a triple,
+and opt-in ECDSA-P384 / ECDSA-P521. P-521 ECDH on the [Classical](classical)
+page is still the HPKE share, not that signature.
+
+[HPKE use cases](hpke) · [Certificates](certificates) · [Symmetric](symmetric) · [Classical](classical) · [Signatures](signatures) · [Claim boundary](claim-boundary)
