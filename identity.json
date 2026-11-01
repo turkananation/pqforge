@@ -71,7 +71,7 @@
     "SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign",
     "AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine",
     "RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD",
-    "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, P-256, and P-384. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. Not X448, not P-521, not an OpenSSL HPKE claim",
+    "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384",
     "X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT",
     "ECDSA P-384 (PqEcdsaP384, low-S), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519)",
     "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
@@ -95,8 +95,8 @@
     "Public-key trust, identity vetting, or legal e-signature policy",
     "Replay stores, authorization policy, TLS, or secure infrastructure operations",
     "RC4 or unauthenticated encryption",
-    "HPKE X448 or P-521",
-    "An OpenSSL HPKE interop claim",
+    "BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512",
+    "An OpenSSL HPKE claim for X25519, P-256, or P-384",
     "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency"
   ],
   "evidenceBoundary": {

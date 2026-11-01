@@ -27,7 +27,7 @@ runs on the Dart VM, Flutter, and the web. File streaming that needs
 
 | Release | You can call |
 | --- | --- |
-| 0.4.10 | `PqHpke` — base, PSK, auth, authPSK. X25519, P-256, P-384. AES-GCM and ChaCha20-Poly1305. |
+| 0.4.10 | `PqHpke` — base, PSK, auth, authPSK. X25519, X448, P-256, P-384, P-521. AES-GCM and ChaCha20-Poly1305. |
 | 0.4.9 | `PqX509`, `PqEcdsaP384`, `PqRsa`, `PqEd25519`, and `pqforge cert`. |
 | 0.4.8 | `PqSymmetricPrimitives.chacha20` — RFC 8439 keystream, including a QUIC header-protection mask. |
 

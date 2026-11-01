@@ -1,4 +1,5 @@
-/// Byte-oriented ECDH over NIST P-256 and P-384 (secp256r1 / secp384r1).
+/// Byte-oriented ECDH over NIST P-256, P-384, and P-521
+/// (secp256r1 / secp384r1 / secp521r1).
 ///
 /// This is **key agreement**, not [PqEcdsaP256] signatures. Public keys are
 /// uncompressed SEC1 (`0x04 || X || Y`). The shared secret is the
@@ -41,8 +42,19 @@ abstract final class PqNistEcdh {
   /// P-384 shared secret (x-coordinate).
   static const int p384SharedSecretBytes = 48;
 
+  /// P-521 private scalar length. 521 bits, so 66 bytes.
+  static const int p521PrivateKeyBytes = 66;
+
+  /// P-521 uncompressed SEC1 public key (`0x04 || X || Y`), 66-byte coordinates.
+  static const int p521PublicKeyBytes = 133;
+
+  /// P-521 shared secret (x-coordinate, 66 bytes). HPKE then expands this
+  /// to a 64-byte `Nsecret`. The two lengths are not the same.
+  static const int p521SharedSecretBytes = 66;
+
   static final pc.ECDomainParameters _p256 = pc.ECCurve_secp256r1();
   static final pc.ECDomainParameters _p384 = pc.ECCurve_secp384r1();
+  static final pc.ECDomainParameters _p521 = pc.ECCurve_secp521r1();
 
   /// Generates a P-256 ECDH key pair.
   ///
@@ -106,6 +118,36 @@ abstract final class PqNistEcdh {
     privateKeyBytes: p384PrivateKeyBytes,
     publicKeyBytes: p384PublicKeyBytes,
     sharedSecretBytes: p384SharedSecretBytes,
+  );
+
+  /// Generates a P-521 ECDH key pair. [seed], when present, is a 66-byte
+  /// scalar in `[1, n)`.
+  static ({Uint8List publicKey, Uint8List secretKey}) p521GenerateKeyPair({
+    Uint8List? seed,
+  }) {
+    if (seed != null) {
+      final publicKey = p521PublicKeyFromPrivate(seed);
+      return (publicKey: publicKey, secretKey: Uint8List.fromList(seed));
+    }
+    return _generate(_p521, p521PrivateKeyBytes);
+  }
+
+  /// `d · G` for a 66-byte P-521 scalar.
+  static Uint8List p521PublicKeyFromPrivate(Uint8List secretKey) =>
+      _publicKeyFromPrivate(_p521, secretKey, p521PrivateKeyBytes);
+
+  /// P-521 ECDH: x-coordinate of `d · Q`, 66 bytes. [remotePublicKey] must
+  /// be 133-byte uncompressed SEC1.
+  static Uint8List p521SharedSecret({
+    required Uint8List secretKey,
+    required Uint8List remotePublicKey,
+  }) => _sharedSecret(
+    domain: _p521,
+    secretKey: secretKey,
+    remotePublicKey: remotePublicKey,
+    privateKeyBytes: p521PrivateKeyBytes,
+    publicKeyBytes: p521PublicKeyBytes,
+    sharedSecretBytes: p521SharedSecretBytes,
   );
 
   static ({Uint8List publicKey, Uint8List secretKey}) _generate(

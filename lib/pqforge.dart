@@ -18,7 +18,7 @@
 ///   `encryptAsync`/`decryptAsync` with [PqHybridKemDem]);
 /// * certificates — [PqX509] parse, mint, and path check;
 /// * HPKE — [PqHpke], RFC 9180 base, PSK, auth, and authPSK over X25519,
-///   P-256, and P-384;
+///   X448, P-256, P-384, and P-521;
 /// * AEAD wire packets — [PqForgeSecureSession] over AES-256-GCM or
 ///   ChaCha20-Poly1305, on either the pure-Dart PointyCastle or the native
 ///   `package:cryptography` backend ([PqForgeEngineProvider]).
@@ -65,6 +65,7 @@ export 'src/hybrid/pq_ecdsa_p256.dart';
 export 'src/hybrid/pq_ecdsa_p384.dart';
 export 'src/hybrid/pq_ed25519.dart';
 export 'src/hybrid/pq_nist_ecdh.dart';
+export 'src/hybrid/pq_x448.dart';
 export 'src/hybrid/pq_rsa.dart';
 export 'src/hybrid/pqforge_hybrid_signer.dart';
 export 'src/hybrid/pq_hybrid_signature.dart';

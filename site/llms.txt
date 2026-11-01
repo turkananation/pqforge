@@ -36,8 +36,8 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
   - Public-key trust, identity vetting, or legal e-signature policy
   - Replay stores, authorization policy, TLS, or secure infrastructure operations
   - RC4 or unauthenticated encryption
-  - HPKE X448 or P-521
-  - An OpenSSL HPKE interop claim
+  - BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512
+  - An OpenSSL HPKE claim for X25519, P-256, or P-384
   - A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
 
 ## Never Say

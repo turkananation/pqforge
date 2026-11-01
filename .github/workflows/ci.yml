@@ -213,6 +213,9 @@ jobs:
       - name: Verify HPKE against pinned BoringSSL
         run: REQUIRE_PINNED_TLS=1 dart run tool/interop/hpke_flight.dart
 
+      - name: Verify HPKE X448 and P-521 against pinned OpenSSL
+        run: REQUIRE_PINNED_TLS=1 dart run tool/interop/openssl_hpke_flight.dart
+
       # AEAD byte-compatibility against the same OpenSSL, not the Ubuntu package.
       - name: Verify AEAD interop against pinned OpenSSL
         working-directory: tool/openssl_interop

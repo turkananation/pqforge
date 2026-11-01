@@ -16,6 +16,16 @@ void main() {
     }
   });
 
+  test('RFC 9180 known answers for X448 and P-521', () async {
+    final extra = jsonDecode(
+      File('test/hpke_rfc9180_x448_p521.json').readAsStringSync(),
+    );
+    expect(extra, isA<List<dynamic>>());
+    for (final raw in extra as List<dynamic>) {
+      await _expectVector(raw as Map<String, dynamic>);
+    }
+  });
+
   test('P-384 round trips in every mode and AEAD', () async {
     const suite = HpkeSuite(
       kem: HpkeKem.p384HkdfSha384,
@@ -189,6 +199,64 @@ void main() {
         recipientPublicKey: recipient.publicKey,
       ),
       throwsArgumentError,
+    );
+  });
+
+  test('X448 and P-521 authPSK round trip', () async {
+    final psk = Uint8List.fromList(List<int>.generate(32, (i) => i + 1));
+    final pskId = Uint8List.fromList(utf8.encode('wide-kem'));
+    final info = Uint8List.fromList(utf8.encode('wide-info'));
+    final aad = Uint8List.fromList(utf8.encode('wide-aad'));
+    final plaintext = Uint8List.fromList(utf8.encode('wide record'));
+    for (final kem in [HpkeKem.x448HkdfSha512, HpkeKem.p521HkdfSha512]) {
+      final recipient = await PqHpke.generateKeyPair(kem);
+      final sender = await PqHpke.generateKeyPair(kem);
+      final sealed = await PqHpke.seal(
+        suite: HpkeSuite(
+          kem: kem,
+          kdf: HpkeKdf.hkdfSha512,
+          aead: HpkeAead.aes256Gcm,
+        ),
+        mode: HpkeMode.authPsk,
+        recipientPublicKey: recipient.publicKey,
+        plaintext: plaintext,
+        info: info,
+        aad: aad,
+        psk: psk,
+        pskId: pskId,
+        senderKey: sender,
+      );
+      final opened = await PqHpke.open(
+        suite: HpkeSuite(
+          kem: kem,
+          kdf: HpkeKdf.hkdfSha512,
+          aead: HpkeAead.aes256Gcm,
+        ),
+        mode: HpkeMode.authPsk,
+        enc: sealed.enc,
+        ciphertext: sealed.ciphertext,
+        recipientKey: recipient,
+        info: info,
+        aad: aad,
+        psk: psk,
+        pskId: pskId,
+        senderPublicKey: sender.publicKey,
+      );
+      expect(opened.plaintext, plaintext, reason: kem.name);
+      expect(sealed.enc.length, kem.nEnc, reason: kem.name);
+      sealed.context.dispose();
+      opened.context.dispose();
+    }
+  });
+
+  test('an all-zero X448 public key fails closed', () async {
+    expect(
+      () => PqHpke.setupSender(
+        suite: const HpkeSuite(kem: HpkeKem.x448HkdfSha512),
+        mode: HpkeMode.base,
+        recipientPublicKey: Uint8List(HpkeKem.x448HkdfSha512.nPk),
+      ),
+      throwsA(isA<PqForgeException>()),
     );
   });
 

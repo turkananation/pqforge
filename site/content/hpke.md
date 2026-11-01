@@ -4,18 +4,19 @@ description: RFC 9180 seal, authenticated encapsulation, and export.
 ---
 
 `PqHpke` implements [RFC 9180](https://www.rfc-editor.org/rfc/rfc9180).
-Four modes. Three KEMs this library can compute. Three KDFs. Three AEADs,
-plus export-only.
+Four modes. Five KEMs. Three KDFs. Three AEADs, plus export-only.
 
 | | |
 | --- | --- |
-| KEM | X25519, P-256, P-384 |
+| KEM | X25519, X448, P-256, P-384, P-521 |
 | KDF | HKDF-SHA256, HKDF-SHA384, HKDF-SHA512 |
 | AEAD | AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, export-only |
 | Mode | base, PSK, auth, authPSK |
 
-X448 and P-521 are not implemented. The KEM hash is fixed by the KEM id.
-The suite KDF is only the key schedule, and the two may differ.
+The KEM hash is fixed by the KEM id. The suite KDF is only the key
+schedule, and the two may differ. X448 keys are 56 bytes. P-521 private
+keys are 66 bytes. `Nsecret` for both is 64. `PqX448` is not a
+constant-time ladder.
 
 A sender context seals. A recipient context opens. `export` works on both
 and does not move the sequence. A failed open does not move it either.
@@ -37,7 +38,8 @@ final sealed = await PqHpke.seal(
 ```
 
 `HpkeSuite.x25519Aes256Gcm` and `HpkeSuite.x25519ChaCha20Poly1305` are the
-other X25519 one-liners. P-256 and P-384 take an explicit `HpkeSuite`.
+other X25519 one-liners. X448, P-256, P-384, and P-521 take an explicit
+`HpkeSuite`.
 
 ## Say who encapsulated
 
@@ -79,18 +81,22 @@ seal is the recipient's nth open.
 
 ## What was checked
 
-RFC 9180 known answers for X25519 and P-256, every mode, HKDF-SHA256 and
-HKDF-SHA512, and every AEAD. One base vector is checked through sequence
-256. P-384 is a round trip in every mode; that KEM is not in the vector
-file the tests pin.
+RFC 9180 known answers for X25519, X448, P-256, and P-521, every mode,
+HKDF-SHA256 and HKDF-SHA512, and every AEAD. One base vector on X25519,
+X448, and P-521 is checked through sequence 256. P-384 is a round trip in
+every mode; that KEM is not in the vector file the tests pin.
 
 BoringSSL 0.20261020.0 `EVP_HPKE`, both directions: base and auth, X25519
 and P-256, HKDF-SHA256 and HKDF-SHA384, AES-128-GCM, AES-256-GCM, and
 ChaCha20-Poly1305, including a 32-byte export. `DeriveKeyPair` matches
-`EVP_HPKE_KEY_derive` on those two KEMs.
+`EVP_HPKE_KEY_derive` on those two KEMs. That public API has no PSK, no
+X448, no P-384, no P-521, and no HKDF-SHA512.
 
-That public API has no PSK setup, no P-384 KEM, and no HKDF-SHA512. Those
-stay in the known-answer tests. OpenSSL is not the HPKE peer.
+OpenSSL 3.5.9 `OSSL_HPKE`, both directions: base, PSK, auth, and authPSK,
+X448 and P-521, HKDF-SHA256 and HKDF-SHA512, and the three AEADs, including
+a 32-byte export. `OSSL_HPKE_keygen` matches `DeriveKeyPair` on the public
+key. This is not an OpenSSL claim for X25519, P-256, or P-384. CI links
+the same peer to the OpenSSL 4.1.0 pin; the recorded run is 3.5.9.
 
 `setupSender`'s `ephemeralIkm` is the RFC ikm for every KEM. BoringSSL's
 X25519 testing seed is the ephemeral private key instead. Leave the ikm

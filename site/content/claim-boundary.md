@@ -23,12 +23,17 @@ Not allowed:
 - "AES signs documents." AES encrypts. ML-DSA, SLH-DSA, ECDSA, Ed25519, or
   RSA signs.
 - RC4.
-- HPKE as a FIPS module, as TLS, or as an OpenSSL interop claim.
+- HPKE as a FIPS module or as TLS.
+- An OpenSSL HPKE claim for X25519, P-256, or P-384.
+- A BoringSSL HPKE claim for X448, P-521, PSK, or HKDF-SHA512.
 - A certificate as a WebPKI CA or a trust store.
 
 BoringSSL 0.20261020.0 is a checked HPKE peer for base and auth, X25519 and
-P-256, HKDF-SHA256 and HKDF-SHA384, and the three AEADs. PSK, P-384 HPKE,
-HKDF-SHA512 HPKE, X448, and P-521 are outside that sentence.
+P-256, HKDF-SHA256 and HKDF-SHA384, and the three AEADs.
+
+OpenSSL 3.5.9 is a checked HPKE peer for all four modes, X448 and P-521,
+HKDF-SHA256 and HKDF-SHA512, and the three AEADs. P-384 HPKE stays a round
+trip. It is not in that OpenSSL sentence.
 
 The repository copy of this boundary is
 `doc/security/CLAIM_BOUNDARY.md`.

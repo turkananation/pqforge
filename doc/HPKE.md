@@ -8,13 +8,14 @@ import 'package:pqforge/pqforge.dart';
 ```
 
 It does not change `.pqf` or `.pqfs`. It is not TLS, not a trust store, and
-not a FIPS module. X448 and P-521 are not implemented.
+not a FIPS module. The five DHKEMs in RFC 9180 are implemented. X448 is
+not a constant-time ladder.
 
 ## Suites
 
 | Piece | Values |
 | --- | --- |
-| KEM | DHKEM(X25519, HKDF-SHA256) `0x0020`, DHKEM(P-256, HKDF-SHA256) `0x0010`, DHKEM(P-384, HKDF-SHA384) `0x0011` |
+| KEM | DHKEM(X25519, HKDF-SHA256) `0x0020`, DHKEM(X448, HKDF-SHA512) `0x0021`, DHKEM(P-256, HKDF-SHA256) `0x0010`, DHKEM(P-384, HKDF-SHA384) `0x0011`, DHKEM(P-521, HKDF-SHA512) `0x0012` |
 | KDF | HKDF-SHA256 `0x0001`, HKDF-SHA384 `0x0002`, HKDF-SHA512 `0x0003` |
 | AEAD | AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, export-only `0xFFFF` |
 | Mode | base `0x00`, PSK `0x01`, auth `0x02`, authPSK `0x03` |
@@ -58,7 +59,9 @@ final opened = await PqHpke.open(
 `info` fails closed. Send `enc` and `ciphertext`. Do not send the private key.
 
 `HpkeSuite.x25519Aes256Gcm` and `HpkeSuite.x25519ChaCha20Poly1305` are the
-other single-shot X25519 suites. P-256 and P-384 use `HpkeSuite(kem: ..., kdf: ..., aead: ...)`.
+other single-shot X25519 suites. X448, P-256, P-384, and P-521 use
+`HpkeSuite(kem: ..., kdf: ..., aead: ...)`. P-521 private keys are 66
+bytes. X448 keys are 56 bytes. `Nsecret` for both is 64.
 
 ## Prove which sender encapsulated
 
@@ -116,11 +119,12 @@ recipient's nth `open`.
 
 ## What was checked
 
-The RFC 9180 published vectors for X25519 and P-256, all four modes,
-HKDF-SHA256 and HKDF-SHA512, and every AEAD including export-only. One
-X25519 / HKDF-SHA256 / AES-128-GCM base vector is checked through sequence
-256. P-384 is a round trip in every mode and AEAD; that KEM is not in the
-vector file pinned by the tests.
+The RFC 9180 published vectors for X25519, X448, P-256, and P-521, all four
+modes, HKDF-SHA256 and HKDF-SHA512, and every AEAD including export-only.
+One base AES-128-GCM vector on X25519, on X448, and on P-521 is checked
+through sequence 256. P-384 is a round trip in every mode and AEAD; that
+KEM is not in the vector file pinned by the tests. RFC 7748 §6.2 is the
+X448 Diffie-Hellman vector behind `PqX448`.
 
 BoringSSL 0.20261020.0 `EVP_HPKE`, both directions:
 
@@ -131,8 +135,22 @@ BoringSSL 0.20261020.0 `EVP_HPKE`, both directions:
 - `Export` of 32 bytes
 
 `DeriveKeyPair` agrees with `EVP_HPKE_KEY_derive` for those two KEMs. The
-BoringSSL public API has no PSK setup, no DHKEM(P-384), and no HKDF-SHA512,
-so those are not part of the interop sentence. OpenSSL is not the HPKE peer.
+BoringSSL public API has no PSK setup, no X448, no DHKEM(P-384), no
+DHKEM(P-521), and no HKDF-SHA512, so those are not part of that sentence.
+
+OpenSSL 3.5.9 `OSSL_HPKE`, both directions:
+
+- base, PSK, auth, and authPSK
+- X448 and P-521
+- HKDF-SHA256 and HKDF-SHA512
+- AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305
+- `Export` of 32 bytes
+
+`OSSL_HPKE_keygen` agrees with `DeriveKeyPair` on the public key. A PSK id
+in that flight is ASCII, because `OSSL_HPKE_CTX_set1_psk` takes a C string.
+This is not an OpenSSL claim for X25519, P-256, or P-384. CI links the same
+peer to the OpenSSL pin. That pin is OpenSSL 4.1.0, whose `hpke.h` exports
+these calls. The run recorded here is OpenSSL 3.5.9.
 
 The X25519 testing seed BoringSSL accepts is the ephemeral private key.
 The P-256 testing seed is the `DeriveKeyPair` ikm. `PqHpke.setupSender`'s

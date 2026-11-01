@@ -67,6 +67,32 @@ Future<void> main() async {
   final left = setup.context.export(label, 32);
   final right = peer.export(label, 32);
   print('export matches: ${_same(left, right)} (${left.length} bytes)');
+
+  final wide = await PqHpke.generateKeyPair(HpkeKem.x448HkdfSha512);
+  final wideSealed = await PqHpke.seal(
+    suite: const HpkeSuite(
+      kem: HpkeKem.x448HkdfSha512,
+      kdf: HpkeKdf.hkdfSha512,
+      aead: HpkeAead.aes256Gcm,
+    ),
+    mode: HpkeMode.base,
+    recipientPublicKey: wide.publicKey,
+    info: info,
+    plaintext: plaintext,
+  );
+  final wideOpen = await PqHpke.open(
+    suite: const HpkeSuite(
+      kem: HpkeKem.x448HkdfSha512,
+      kdf: HpkeKdf.hkdfSha512,
+      aead: HpkeAead.aes256Gcm,
+    ),
+    mode: HpkeMode.base,
+    enc: wideSealed.enc,
+    ciphertext: wideSealed.ciphertext,
+    recipientKey: wide,
+    info: info,
+  );
+  print('x448 open: ${utf8.decode(wideOpen.plaintext)}');
   setup.context.dispose();
   peer.dispose();
   sealed.context.dispose();

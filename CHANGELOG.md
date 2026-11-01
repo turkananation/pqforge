@@ -6,21 +6,32 @@ RFC 9180 HPKE as a public API. No `.pqf` / `.pqfs` wire-format change.
 0.4.9 stays the X.509 release. 0.4.8 stays the ChaCha20 keystream release.
 
 - **`PqHpke`** — base, PSK, auth, and authPSK. KEMs: DHKEM(X25519,
-  HKDF-SHA256), DHKEM(P-256, HKDF-SHA256), DHKEM(P-384, HKDF-SHA384).
+  HKDF-SHA256), DHKEM(X448, HKDF-SHA512), DHKEM(P-256, HKDF-SHA256),
+  DHKEM(P-384, HKDF-SHA384), and DHKEM(P-521, HKDF-SHA512).
   Key-schedule KDFs: HKDF-SHA256, HKDF-SHA384, and HKDF-SHA512. The KEM
   hash stays the one named by the KEM id. AEADs: AES-128-GCM, AES-256-GCM,
   ChaCha20-Poly1305, and export-only. A sender context seals. A recipient
   context opens. A failed open does not advance the sequence. `export`
-  does not use the sequence. X448 and P-521 are not implemented.
-- Known answers are the RFC 9180 vectors for X25519 and P-256, every mode,
-  HKDF-SHA256 and HKDF-SHA512, and every AEAD including export-only. P-384
-  is covered by a round trip in every mode; that KEM is not in the vector
-  file this release pins.
+  does not use the sequence. P-521 `Nsk` is 66 bytes and `Nsecret` is 64.
+  X448 keys are 56 bytes and `Nsecret` is 64. `PqX448` is the RFC 7748
+  ladder those X448 calls use. It is not a constant-time implementation.
+- Known answers are the RFC 9180 vectors for X25519, X448, P-256, and
+  P-521, every mode, HKDF-SHA256 and HKDF-SHA512, and every AEAD including
+  export-only. One base vector on each of X25519, X448, and P-521 is
+  checked through sequence 256. P-384 is a round trip in every mode; that
+  KEM is not in the vector file this release pins. RFC 7748 §6.2 is the
+  X448 Diffie-Hellman vector.
 - BoringSSL 0.20261020.0 `EVP_HPKE` interop, both directions, base and
   auth, X25519 and P-256, HKDF-SHA256 and HKDF-SHA384, AES-128-GCM,
   AES-256-GCM, and ChaCha20-Poly1305, including `Export`. That public API
-  has no PSK setup, no P-384 KEM, and no HKDF-SHA512, so those stay
-  inside the known-answer tests. This is not an OpenSSL HPKE claim.
+  has no PSK setup, no X448, no P-384, no P-521, and no HKDF-SHA512.
+- OpenSSL 3.5.9 `OSSL_HPKE` interop, both directions, base, PSK, auth, and
+  authPSK, X448 and P-521, HKDF-SHA256 and HKDF-SHA512, and the three
+  AEADs, including `Export`. `OSSL_HPKE_keygen` agrees with `DeriveKeyPair`
+  on the public key. The peer is `tool/interop/openssl_hpke_peer.c`. CI
+  links it to the OpenSSL pin in `pins.env`. That pin's `hpke.h` (OpenSSL
+  4.1.0) exports the same calls. This is not an OpenSSL claim for X25519,
+  P-256, or P-384, and not a BoringSSL claim for X448 or P-521.
 - `dispose` on an `HpkeContext` is best-effort zeroization. It is not a
   claim that the key has left process memory.
 

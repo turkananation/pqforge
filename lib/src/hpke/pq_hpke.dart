@@ -2,17 +2,18 @@
 ///
 /// Suites this library can compute:
 ///
-/// * KEM: DHKEM(X25519, HKDF-SHA256) `0x0020`, DHKEM(P-256, HKDF-SHA256)
-///   `0x0010`, DHKEM(P-384, HKDF-SHA384) `0x0011`.
+/// * KEM: DHKEM(X25519, HKDF-SHA256) `0x0020`, DHKEM(X448, HKDF-SHA512)
+///   `0x0021`, DHKEM(P-256, HKDF-SHA256) `0x0010`, DHKEM(P-384,
+///   HKDF-SHA384) `0x0011`, DHKEM(P-521, HKDF-SHA512) `0x0012`.
 /// * KDF: HKDF-SHA256 `0x0001`, HKDF-SHA384 `0x0002`, HKDF-SHA512 `0x0003`.
 ///   The KEM's own hash is fixed by the KEM id. The suite KDF is the key
 ///   schedule, and the two may differ.
 /// * AEAD: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only.
 /// * Modes: base, PSK, auth, and authPSK.
 ///
-/// X448 and P-521 are not implemented. This is not a FIPS module and it does
-/// not change `.pqf` or `.pqfs`. A sender context seals; a recipient context
-/// opens. [HpkeContext.export] works on both and does not move the sequence.
+/// This is not a FIPS module and it does not change `.pqf` or `.pqfs`.
+/// A sender context seals; a recipient context opens.
+/// [HpkeContext.export] works on both and does not move the sequence.
 library;
 
 import 'dart:typed_data';
@@ -22,6 +23,7 @@ import '../cipher/pq_cipher_suite.dart';
 import '../exceptions/pqforge_exception.dart';
 import '../hybrid/pq_classical_provider.dart';
 import '../hybrid/pq_nist_ecdh.dart';
+import '../hybrid/pq_x448.dart';
 import '../primitives/pq_primitives.dart';
 import 'package:zeroize/zeroize.dart';
 
@@ -132,8 +134,16 @@ enum HpkeKem {
   /// DHKEM(P-384, HKDF-SHA384), `0x0011`. Uncompressed SEC1 public keys.
   p384HkdfSha384(0x0011, 48, 97, 97, 48, HpkeKdf.hkdfSha384),
 
+  /// DHKEM(P-521, HKDF-SHA512), `0x0012`. Uncompressed SEC1 public keys.
+  /// `Nsk` is 66. `Nsecret` is 64. The Diffie-Hellman x-coordinate is 66
+  /// bytes and is not itself the HPKE shared secret.
+  p521HkdfSha512(0x0012, 64, 133, 133, 66, HpkeKdf.hkdfSha512),
+
   /// DHKEM(X25519, HKDF-SHA256), `0x0020`.
-  x25519HkdfSha256(0x0020, 32, 32, 32, 32, HpkeKdf.hkdfSha256);
+  x25519HkdfSha256(0x0020, 32, 32, 32, 32, HpkeKdf.hkdfSha256),
+
+  /// DHKEM(X448, HKDF-SHA512), `0x0021`. 56-byte keys. `Nsecret` is 64.
+  x448HkdfSha512(0x0021, 64, 56, 56, 56, HpkeKdf.hkdfSha512);
 
   const HpkeKem(this.id, this.nSecret, this.nEnc, this.nPk, this.nSk, this.kdf);
 
@@ -205,8 +215,8 @@ enum HpkeRole {
 }
 
 /// A KEM key pair. [secretKey] is the RFC 9180 serialized private key:
-/// an X25519 seed, or a big-endian NIST scalar. The public key is
-/// uncompressed SEC1 for P-256 and P-384.
+/// an X25519 or X448 seed, or a big-endian NIST scalar. The public key is
+/// uncompressed SEC1 for P-256, P-384, and P-521.
 final class HpkeKeyPair {
   /// Copies [secretKey] and [publicKey]. Lengths must match [kem].
   HpkeKeyPair({
@@ -378,8 +388,10 @@ abstract final class PqHpke {
   /// Derives a key pair from [ikm] (RFC 9180 `DeriveKeyPair`).
   ///
   /// [ikm] should be at least `Nsk` bytes of entropy for a new key. Known
-  /// answers may be shorter. X25519 uses `LabeledExpand(..., "sk", "", Nsk)`.
-  /// P-256 and P-384 use the candidate loop against the curve order.
+  /// answers may be shorter. X25519 and X448 use
+  /// `LabeledExpand(..., "sk", "", Nsk)`. P-256, P-384, and P-521 use the
+  /// candidate loop against the curve order. P-521 masks the first byte
+  /// with `0x01` before the integer is read.
   static Future<HpkeKeyPair> deriveKeyPair({
     required HpkeKem kem,
     required Uint8List ikm,
@@ -388,7 +400,7 @@ abstract final class PqHpke {
     final dkp = _labeledExtract(kem.kdf, suiteId, Uint8List(0), 'dkp_prk', ikm);
     try {
       final secret = switch (kem) {
-        HpkeKem.x25519HkdfSha256 => _labeledExpand(
+        HpkeKem.x25519HkdfSha256 || HpkeKem.x448HkdfSha512 => _labeledExpand(
           kem.kdf,
           suiteId,
           dkp,
@@ -397,7 +409,8 @@ abstract final class PqHpke {
           kem.nSk,
         ),
         HpkeKem.p256HkdfSha256 ||
-        HpkeKem.p384HkdfSha384 => _deriveNistScalar(kem, suiteId, dkp),
+        HpkeKem.p384HkdfSha384 ||
+        HpkeKem.p521HkdfSha512 => _deriveNistScalar(kem, suiteId, dkp),
       };
       try {
         final publicKey = await _publicKey(kem, secret);
@@ -426,6 +439,28 @@ abstract final class PqHpke {
         }
       case HpkeKem.p256HkdfSha256:
         final pair = PqNistEcdh.p256GenerateKeyPair();
+        try {
+          return HpkeKeyPair(
+            kem: kem,
+            secretKey: pair.secretKey,
+            publicKey: pair.publicKey,
+          );
+        } finally {
+          secureZero(pair.secretKey);
+        }
+      case HpkeKem.x448HkdfSha512:
+        final pair = PqX448.generateKeyPair();
+        try {
+          return HpkeKeyPair(
+            kem: kem,
+            secretKey: pair.secretKey,
+            publicKey: pair.publicKey,
+          );
+        } finally {
+          secureZero(pair.secretKey);
+        }
+      case HpkeKem.p521HkdfSha512:
+        final pair = PqNistEcdh.p521GenerateKeyPair();
         try {
           return HpkeKeyPair(
             kem: kem,
@@ -778,6 +813,10 @@ Future<Uint8List> _publicKey(HpkeKem kem, Uint8List secretKey) async {
       return PqNistEcdh.p256PublicKeyFromPrivate(secretKey);
     case HpkeKem.p384HkdfSha384:
       return PqNistEcdh.p384PublicKeyFromPrivate(secretKey);
+    case HpkeKem.p521HkdfSha512:
+      return PqNistEcdh.p521PublicKeyFromPrivate(secretKey);
+    case HpkeKem.x448HkdfSha512:
+      return PqX448.publicKeyFromPrivate(secretKey);
   }
 }
 
@@ -807,6 +846,21 @@ Future<Uint8List> _dh(
         secretKey: secretKey,
         remotePublicKey: remotePublicKey,
       );
+    case HpkeKem.p521HkdfSha512:
+      return PqNistEcdh.p521SharedSecret(
+        secretKey: secretKey,
+        remotePublicKey: remotePublicKey,
+      );
+    case HpkeKem.x448HkdfSha512:
+      final shared = PqX448.sharedSecret(
+        secretKey: secretKey,
+        remotePublicKey: remotePublicKey,
+      );
+      if (_isAllZero(shared)) {
+        secureZero(shared);
+        throw const PqForgeException('X448 shared secret is all zeros');
+      }
+      return shared;
   }
 }
 
@@ -906,6 +960,10 @@ Uint8List _extractAndExpand(HpkeKem kem, Uint8List dh, Uint8List kemContext) {
 
 Uint8List _deriveNistScalar(HpkeKem kem, Uint8List suiteId, Uint8List dkpPrk) {
   final order = _nistDomain(kem).n;
+  // RFC 9180 §7.1.4. P-256 and P-384 are a multiple of 8 bits, so the
+  // mask is 0xFF. P-521 is 521 bits, so the top 7 bits of the first byte
+  // are cleared.
+  final bitmask = kem == HpkeKem.p521HkdfSha512 ? 0x01 : 0xff;
   for (var counter = 0; counter <= 255; counter++) {
     final candidate = _labeledExpand(
       kem.kdf,
@@ -915,7 +973,7 @@ Uint8List _deriveNistScalar(HpkeKem kem, Uint8List suiteId, Uint8List dkpPrk) {
       Uint8List.fromList([counter]),
       kem.nSk,
     );
-    // P-256 and P-384 use bitmask 0xFF, so the top byte is unchanged.
+    candidate[0] &= bitmask;
     final scalar = _os2ip(candidate);
     secureZero(candidate);
     if (scalar != BigInt.zero && scalar < order) {
@@ -928,11 +986,14 @@ Uint8List _deriveNistScalar(HpkeKem kem, Uint8List suiteId, Uint8List dkpPrk) {
 pc.ECDomainParameters _nistDomain(HpkeKem kem) => switch (kem) {
   HpkeKem.p256HkdfSha256 => _p256,
   HpkeKem.p384HkdfSha384 => _p384,
-  HpkeKem.x25519HkdfSha256 => throw StateError('X25519 is not a NIST KEM'),
+  HpkeKem.p521HkdfSha512 => _p521,
+  HpkeKem.x25519HkdfSha256 ||
+  HpkeKem.x448HkdfSha512 => throw StateError('${kem.name} is not a NIST KEM'),
 };
 
 final _p256 = pc.ECCurve_secp256r1();
 final _p384 = pc.ECCurve_secp384r1();
+final _p521 = pc.ECCurve_secp521r1();
 
 final Uint8List _hpkeVersion = Uint8List.fromList('HPKE-v1'.codeUnits);
 

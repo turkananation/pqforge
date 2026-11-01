@@ -42,7 +42,7 @@
     "SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign",
     "AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine",
     "RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD",
-    "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, P-256, and P-384. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. Not X448, not P-521, not an OpenSSL HPKE claim",
+    "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384",
     "X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT",
     "ECDSA P-384 (PqEcdsaP384, low-S), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519)",
     "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
@@ -66,8 +66,8 @@
     "Public-key trust, identity vetting, or legal e-signature policy",
     "Replay stores, authorization policy, TLS, or secure infrastructure operations",
     "RC4 or unauthenticated encryption",
-    "HPKE X448 or P-521",
-    "An OpenSSL HPKE interop claim",
+    "BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512",
+    "An OpenSSL HPKE claim for X25519, P-256, or P-384",
     "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency"
   ],
   "evidence_boundary": {
@@ -375,7 +375,7 @@
     },
     {
       "question": "What HPKE does pqforge implement?",
-      "answer": "RFC 9180 Hybrid Public Key Encryption as PqHpke. Modes are base, PSK, auth, and authPSK. KEMs are DHKEM(X25519, HKDF-SHA256), DHKEM(P-256, HKDF-SHA256), and DHKEM(P-384, HKDF-SHA384). Key-schedule KDFs are HKDF-SHA256, HKDF-SHA384, and HKDF-SHA512. AEADs are AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. A sender seals, a recipient opens, and export does not use the sequence number. X448 and P-521 are not implemented. BoringSSL 0.20261020.0 is checked for base and auth, both directions, on X25519 and P-256, with HKDF-SHA256 and HKDF-SHA384 and the three AEADs. That API has no PSK. This is not an OpenSSL HPKE claim, not TLS, and not a FIPS module. .pqf and .pqfs are unchanged."
+      "answer": "RFC 9180 Hybrid Public Key Encryption as PqHpke. Modes are base, PSK, auth, and authPSK. KEMs are DHKEM(X25519, HKDF-SHA256), DHKEM(X448, HKDF-SHA512), DHKEM(P-256, HKDF-SHA256), DHKEM(P-384, HKDF-SHA384), and DHKEM(P-521, HKDF-SHA512). Key-schedule KDFs are HKDF-SHA256, HKDF-SHA384, and HKDF-SHA512. AEADs are AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. A sender seals, a recipient opens, and export does not use the sequence number. X448 is RFC 7748 on Dart integers and is not a constant-time claim. BoringSSL 0.20261020.0 is checked for base and auth, both directions, on X25519 and P-256, with HKDF-SHA256 and HKDF-SHA384 and the three AEADs. That API has no PSK and no X448 or P-521. OpenSSL 3.5.9 OSSL_HPKE is checked for all four modes, both directions, on X448 and P-521, with HKDF-SHA256 and HKDF-SHA512 and the three AEADs. That is not an OpenSSL claim for X25519, P-256, or P-384. This is not TLS and not a FIPS module. .pqf and .pqfs are unchanged."
     },
     {
       "question": "What is the ChaCha20 keystream for?",

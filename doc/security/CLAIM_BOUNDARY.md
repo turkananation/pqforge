@@ -11,8 +11,11 @@ Allowed wording:
   custody, signatures, recipes, hybrid helpers, X.509 certificates, PKCS#10
   requests, RFC 9180 HPKE, and CLI workflows. A certificate that `openssl req`
   can read is not a WebPKI CA and not a trust store. HPKE here is the RFC 9180
-  composition over the KEMs, KDFs, and AEADs the package implements. It is not
-  a FIPS module, not TLS, and not a claim that OpenSSL speaks HPKE.
+  composition over X25519, X448, P-256, P-384, and P-521, with HKDF-SHA256,
+  HKDF-SHA384, HKDF-SHA512, and the AEADs the package implements. BoringSSL
+  `EVP_HPKE` evidence is base and auth on X25519 and P-256 only. OpenSSL
+  `OSSL_HPKE` evidence is all four modes on X448 and P-521 only. It is not a
+  FIPS module and not TLS.
 - Best-effort cleanup in Dart.
 
 Forbidden wording:
