@@ -652,7 +652,7 @@ dart run pqforge compose-sign --ml-dsa-secret keys/vault.sign.secret.wrapped.jso
         <h2>The recipe homepage stays. The guides sit next to it.</h2>
       </div>
       <div class="doc-grid">
-        <a href="release-notes"><strong>What landed</strong><span>0.4.12 brainpool and RFC 7919 finite-field agreement, 0.4.11 SHA-1 for a standard that still names it, 0.4.10 HPKE, 0.4.9 certificates, 0.4.8 ChaCha20, and the signature legs. This does not replace the recipe catalog above.</span></a>
+        <a href="release-notes"><strong>What landed</strong><span>0.4.13 RSA verification accepts a 1024-bit modulus, 0.4.12 brainpool and RFC 7919 finite-field agreement, 0.4.11 SHA-1 for a standard that still names it, 0.4.10 HPKE, 0.4.9 certificates, 0.4.8 ChaCha20, and the signature legs. This does not replace the recipe catalog above.</span></a>
         <a href="getting-started"><strong>Getting started</strong><span>Install pqforge and seal one HPKE message.</span></a>
         <a href="agreement"><strong>Agreement</strong><span>Brainpool, RFC 7919 FFDHE, NIST ECDH, X25519, X448, and the combiner. Not a TLS stack.</span></a>
         <a href="envelopes"><strong>Envelopes</strong><span>Profiles, .pqf, .pqfs, multi-recipient wrap, and hybrid KEM-DEM.</span></a>

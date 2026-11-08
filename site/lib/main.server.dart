@@ -60,7 +60,7 @@ void main() {
               a(href: 'https://yardenah.com', target: Target.blank, [
                 Component.text('A product of Yardenah PQ'),
               ]),
-              Component.text('. pqforge 0.4.12. Not a FIPS 140 module. '),
+              Component.text('. pqforge 0.4.13. Not a FIPS 140 module. '),
               a(
                 href: 'https://github.com/turkananation/pqforge',
                 target: Target.blank,
