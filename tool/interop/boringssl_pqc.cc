@@ -9,6 +9,7 @@
 // to stdout.
 
 #include <openssl/bytestring.h>
+#include <openssl/mem.h>
 #include <openssl/mlkem.h>
 #include <openssl/mldsa.h>
 #include <openssl/slhdsa.h>
@@ -304,14 +305,14 @@ static void slh_verify(const char *which, const std::vector<uint8_t> &public_key
   int ok = 0;
   if (strcmp(which, "sha2-128s") == 0) {
     if (public_key.size() != SLHDSA_SHA2_128S_PUBLIC_KEY_BYTES) fail("public key");
-    ok = SLHDSA_SHA2_128S_verify(public_key.data(), signature.data(),
-                                 signature.size(), message.data(), message.size(),
-                                 context.data(), context.size());
+    ok = SLHDSA_SHA2_128S_verify(
+        signature.data(), signature.size(), public_key.data(), message.data(),
+        message.size(), context.data(), context.size());
   } else if (strcmp(which, "shake-256f") == 0) {
     if (public_key.size() != SLHDSA_SHAKE_256F_PUBLIC_KEY_BYTES) fail("public key");
-    ok = SLHDSA_SHAKE_256F_verify(public_key.data(), signature.data(),
-                                  signature.size(), message.data(),
-                                  message.size(), context.data(), context.size());
+    ok = SLHDSA_SHAKE_256F_verify(
+        signature.data(), signature.size(), public_key.data(), message.data(),
+        message.size(), context.data(), context.size());
   } else {
     fail("unknown slh set");
   }

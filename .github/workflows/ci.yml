@@ -54,10 +54,13 @@ jobs:
       - name: Install dependencies
         run: dart pub get
 
-      # The OpenSSL interop harness is a nested package; resolving it keeps
-      # the repo-wide analyze below able to read that context too.
+      # Nested packages. Without their own package config, root analyze treats
+      # their libraries as part of pqforge and fails on the package imports.
       - name: Install interop tool dependencies
-        run: dart pub get --directory tool/openssl_interop
+        run: |
+          dart pub get --directory tool/openssl_interop
+          dart pub get --directory tool/pqc_interop_common
+          dart pub get --directory tool/openssl_pqc_interop
 
       # The Jaspr site is a nested package. Without its own package config,
       # `dart analyze` treats site/lib as part of pqforge and fails on

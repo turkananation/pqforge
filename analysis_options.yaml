@@ -13,6 +13,13 @@
 
 include: package:lints/recommended.yaml
 
+analyzer:
+  exclude:
+    # Nested packages with their own analyze step. Root analyze has no
+    # package config for them and reports every import as missing.
+    - tool/openssl_pqc_interop/**
+    - tool/pqc_interop_common/**
+
 # Uncomment the following section to specify additional rules.
 
 # linter:
