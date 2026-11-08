@@ -36,15 +36,26 @@ void main() {
       );
     });
 
-    test('matches OpenSSL on brainpoolP256r1 and brainpoolP512r1', () {
-      for (final curve in const ['brainpoolP256r1', 'brainpoolP512r1']) {
-        final ours = curve.endsWith('256r1') ? 'p256' : 'p512';
-        final width = ours == 'p256' ? 32 : 64;
-        final a = _opensslKey(curve);
-        final b = _opensslKey(curve);
+    test('matches OpenSSL on every brainpool TLS group', () {
+      const curves = {
+        'brainpoolP256r1': 32,
+        'brainpoolP384r1': 48,
+        'brainpoolP512r1': 64,
+      };
+      for (final entry in curves.entries) {
+        final a = _opensslEc(entry.key);
+        final b = _opensslEc(entry.key);
         final openssl = _opensslDerive(a.pem, b.pem);
-        final secret = _agree(ours, _pad(a.secret, width), b.publicKey);
-        expect(secret, orderedEquals(_pad(openssl, width)));
+        final secret = _brainpoolAgree(
+          entry.key,
+          _pad(a.secret, entry.value),
+          b.publicKey,
+        );
+        expect(
+          secret,
+          orderedEquals(_pad(openssl, entry.value)),
+          reason: entry.key,
+        );
       }
     });
   });
@@ -80,21 +91,64 @@ void main() {
       );
     });
 
-    test('matches OpenSSL on ffdhe2048 and ffdhe3072', () {
-      for (final name in const ['ffdhe2048', 'ffdhe3072']) {
-        final group = name == 'ffdhe2048'
-            ? PqFfdheGroup.ffdhe2048
-            : PqFfdheGroup.ffdhe3072;
-        final a = _opensslDh(name);
-        final b = _opensslDh(name);
+    test('matches OpenSSL on every RFC 7919 group', () {
+      for (final group in PqFfdheGroup.values) {
+        final name = group.name;
+        final a = _opensslNamed('DH', 'group:$name');
+        final b = _opensslNamed('DH', 'group:$name');
         final openssl = _opensslDerive(a.pem, b.pem);
         final secret = PqFfdhe.sharedSecret(
           group: group,
           secretKey: _pad(a.secret, group.bytes),
           remotePublicKey: _pad(b.publicKey, group.bytes),
         );
-        expect(secret, orderedEquals(_pad(openssl, group.bytes)));
+        expect(secret, orderedEquals(_pad(openssl, group.bytes)), reason: name);
       }
+    }, timeout: const Timeout(Duration(minutes: 3)));
+  });
+
+  group('groups already on main', () {
+    test('matches OpenSSL on P-256, P-384, and P-521', () {
+      const curves = {'prime256v1': 32, 'secp384r1': 48, 'secp521r1': 66};
+      for (final entry in curves.entries) {
+        final a = _opensslEc(entry.key);
+        final b = _opensslEc(entry.key);
+        final openssl = _opensslDerive(a.pem, b.pem);
+        final secret = _nistAgree(
+          entry.key,
+          _pad(a.secret, entry.value),
+          b.publicKey,
+        );
+        expect(
+          secret,
+          orderedEquals(_pad(openssl, entry.value)),
+          reason: entry.key,
+        );
+      }
+    });
+
+    test('matches OpenSSL on X25519 and X448', () async {
+      final x25519a = _opensslNamed('X25519');
+      final x25519b = _opensslNamed('X25519');
+      final x25519 = await PqClassical.provider.x25519SharedSecret(
+        secretKey: _pad(x25519a.secret, 32),
+        remotePublicKey: _pad(x25519b.publicKey, 32),
+      );
+      expect(
+        x25519,
+        orderedEquals(_pad(_opensslDerive(x25519a.pem, x25519b.pem), 32)),
+      );
+
+      final x448a = _opensslNamed('X448');
+      final x448b = _opensslNamed('X448');
+      final x448 = PqX448.sharedSecret(
+        secretKey: _pad(x448a.secret, 56),
+        remotePublicKey: _pad(x448b.publicKey, 56),
+      );
+      expect(
+        x448,
+        orderedEquals(_pad(_opensslDerive(x448a.pem, x448b.pem), 56)),
+      );
     });
   });
 }
@@ -128,46 +182,51 @@ int _secretBytes(String curve) => switch (curve) {
   _ => 64,
 };
 
-({Uint8List secret, Uint8List publicKey, String pem}) _opensslKey(
-  String curve,
-) {
-  final dir = Directory.systemTemp.createTempSync('bp');
-  final pem = '${dir.path}/key.pem';
-  final result = Process.runSync('openssl', [
-    'genpkey',
-    '-algorithm',
-    'EC',
-    '-pkeyopt',
-    'ec_paramgen_curve:$curve',
-    '-out',
-    pem,
-  ]);
-  if (result.exitCode != 0) {
-    throw StateError('${result.stderr}');
-  }
-  final text = Process.runSync('openssl', [
-    'pkey',
-    '-in',
-    pem,
-    '-text',
-    '-noout',
-  ]);
-  final fields = _fields(text.stdout as String);
-  return (secret: fields['priv']!, publicKey: fields['pub']!, pem: pem);
-}
+Uint8List _brainpoolAgree(String curve, Uint8List secret, Uint8List remote) =>
+    switch (curve) {
+      'brainpoolP256r1' => PqBrainpool.p256SharedSecret(
+        secretKey: secret,
+        remotePublicKey: remote,
+      ),
+      'brainpoolP384r1' => PqBrainpool.p384SharedSecret(
+        secretKey: secret,
+        remotePublicKey: remote,
+      ),
+      _ => PqBrainpool.p512SharedSecret(
+        secretKey: secret,
+        remotePublicKey: remote,
+      ),
+    };
 
-({Uint8List secret, Uint8List publicKey, String pem}) _opensslDh(String group) {
-  final dir = Directory.systemTemp.createTempSync('dh');
+Uint8List _nistAgree(String curve, Uint8List secret, Uint8List remote) =>
+    switch (curve) {
+      'prime256v1' => PqNistEcdh.p256SharedSecret(
+        secretKey: secret,
+        remotePublicKey: remote,
+      ),
+      'secp384r1' => PqNistEcdh.p384SharedSecret(
+        secretKey: secret,
+        remotePublicKey: remote,
+      ),
+      _ => PqNistEcdh.p521SharedSecret(
+        secretKey: secret,
+        remotePublicKey: remote,
+      ),
+    };
+
+({Uint8List secret, Uint8List publicKey, String pem}) _opensslEc(
+  String curve,
+) => _opensslNamed('EC', 'ec_paramgen_curve:$curve');
+
+({Uint8List secret, Uint8List publicKey, String pem}) _opensslNamed(
+  String algorithm, [
+  String? option,
+]) {
+  final dir = Directory.systemTemp.createTempSync('ossl');
   final pem = '${dir.path}/key.pem';
-  final result = Process.runSync('openssl', [
-    'genpkey',
-    '-algorithm',
-    'DH',
-    '-pkeyopt',
-    'group:$group',
-    '-out',
-    pem,
-  ]);
+  final args = ['genpkey', '-algorithm', algorithm, '-out', pem];
+  if (option != null) args.insertAll(3, ['-pkeyopt', option]);
+  final result = Process.runSync('openssl', args);
   if (result.exitCode != 0) {
     throw StateError('${result.stderr}');
   }
@@ -178,12 +237,16 @@ int _secretBytes(String curve) => switch (curve) {
     '-text',
     '-noout',
   ]);
+  if (text.exitCode != 0) {
+    throw StateError('${text.stderr}');
+  }
   final fields = _fields(text.stdout as String);
-  return (
-    secret: fields['private-key']!,
-    publicKey: fields['public-key']!,
-    pem: pem,
-  );
+  final secret = fields['priv'] ?? fields['private-key'];
+  final publicKey = fields['pub'] ?? fields['public-key'];
+  if (secret == null || publicKey == null) {
+    throw StateError('could not read $algorithm key: ${fields.keys}');
+  }
+  return (secret: secret, publicKey: publicKey, pem: pem);
 }
 
 Uint8List _opensslDerive(String ours, String peer) {
