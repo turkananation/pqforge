@@ -14,6 +14,12 @@
   secrets are left-padded to the prime. A public value outside the
   subgroup of order `(p - 1) / 2` is rejected. The random draw is wiped
   with `secureZero`. The exponent is a `BigInt` and is not wiped.
+- CI runs the pqcrypto OpenSSL suite against pinned OpenSSL 4.1.0:
+  ML-KEM-512/768/1024, ML-DSA-44/65/87, and all 12 SLH-DSA sets. The
+  named-group agreement also uses that binary. BoringSSL on this pin
+  does not export ML-KEM-512 or ten SLH-DSA sets. `boringssl_pqc`
+  covers ML-KEM-768, ML-KEM-1024, ML-DSA-44/65/87, and SLH-DSA
+  SHA2-128s and SHAKE-256f.
 
 ## 0.4.11
 
