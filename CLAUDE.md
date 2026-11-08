@@ -96,7 +96,8 @@ no-hallucination rules, the regenerate-and-link checklist), use the
 
 For implementation and release work, use
 [`pqforge-feature`](.claude/skills/pqforge-feature/SKILL.md) and
-[`pqforge-release`](.claude/skills/pqforge-release/SKILL.md).
+[`pqforge-release`](.claude/skills/pqforge-release/SKILL.md). Before any
+`git push`, use [`pqforge-push`](.codex/skills/pqforge-push/SKILL.md).
 
 ## Validation (run before claiming done)
 

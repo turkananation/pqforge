@@ -42,6 +42,8 @@ Use the smallest workflow that covers the task:
   generated discovery/site files.
 - `$pqforge-release`: versioning, release notes, package contents, tags, or
   pub.dev preparation.
+- `$pqforge-push`: every `git push`. Run it last. No push to `main` or
+  `develop`. No push until `dart run tool/agent/verify.dart full` exits 0.
 
 Repository skills live under `.codex/skills/`. Claude Code adapters live under
 `.claude/skills/`.

@@ -34,4 +34,5 @@ dart run tool/agent/verify.dart docs
 ```
 
 Run `dart run tool/agent/verify.dart full` when examples, public APIs, CLI
-behavior, or code-adjacent claims changed.
+behavior, or code-adjacent claims changed. Follow `$pqforge-push` before
+any `git push`. Docs-only is not an excuse to skip it.
