@@ -17,6 +17,7 @@ the hybrid constructions that sit on top.
 | `PqEcdsaP256`, `PqEcdsaP384` | Signatures. P-384 sign is not `p384SharedSecret`. |
 | `PqEcdsaP521` | Signature only. SHA-512, low-S on sign. Not `p521SharedSecret`, not HPKE, and not a TLS group. Opt in with `keygen --classical ecdsa-p521`. |
 | `PqEd25519` | RFC 8032 sign and verify, synchronous. |
+| `PqEd448` | RFC 8032 Ed448, synchronous. Empty context is DNSSEC algorithm 16. `preHash: true` is Ed448ph. Not an X.509 algorithm and not a TLS scheme. |
 | `PqRsa` | PKCS#1 v1.5 and RSASSA-PSS. |
 | `PqForgeHybridKeyAgreement` | X25519 concatenated with ML-KEM, then a KDF. Confidentiality holds while either problem stands. |
 | `PqForgeHybridSigner` | ML-DSA plus one classical signature over the same message. The classical leg is Ed25519 or ECDSA-P256, and it may now also be ECDSA-P384 or ECDSA-P521. |

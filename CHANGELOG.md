@@ -13,6 +13,12 @@ wire-format change. 0.4.12 stays the brainpool and FFDHE release.
 - **`PqRsaHash.sha1`** is PKCS#1 and PSS for a standard that still names
   SHA-1, such as DNSSEC algorithms 5 and 7. It is not a hash for new
   work.
+- **`PqEd448`** is RFC 8032 Ed448. 57-byte seed, 57-byte public key,
+  114-byte signature. Pure Ed448 uses the empty context, which is what
+  DNSSEC algorithm 16 signs. A context of at most 255 bytes is accepted.
+  `preHash: true` is Ed448ph (SHAKE256 to 64 bytes). The field is
+  twenty-eight 16-bit limbs. The expanded seed is wiped. Not X.509, and
+  not a TLS signature scheme.
 
 ## 0.4.12
 

@@ -3,7 +3,7 @@
   "@type": "SoftwareSourceCode",
   "name": "pqforge",
   "alternateName": "pqforge: Post-Quantum Application Recipes for Dart",
-  "description": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA hybrids and signatures, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign is an opt-in 2-leg or 3-leg signature. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group. The core is pure Dart and web-safe — no dart:ffi.",
+  "description": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA hybrids and signatures, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign is an opt-in 2-leg or 3-leg signature. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group. The core is pure Dart and web-safe — no dart:ffi.",
   "url": "https://turkananation.github.io/pqforge/",
   "codeRepository": "https://github.com/turkananation/pqforge",
   "programmingLanguage": "Dart",
@@ -73,7 +73,7 @@
     "RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD",
     "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384",
     "X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT",
-    "ECDSA P-384 (PqEcdsaP384, low-S), ECDSA P-521 (PqEcdsaP521, low-S; not the HPKE share and not a TLS group), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519)",
+    "ECDSA P-384 (PqEcdsaP384, low-S), ECDSA P-521 (PqEcdsaP521, low-S; not the HPKE share and not a TLS group), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519) and Ed448 (PqEd448, empty context; not an X.509 algorithm)",
     "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
     "Multi-recipient envelopes: one sealed payload, the DEM key wrapped per recipient, with no wire-format change",
     "X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands",
@@ -184,7 +184,7 @@
       "name": "Hybrid And Classical Signatures",
       "surface": "CLI: hybrid-sign, hybrid-verify, compose-sign, compose-verify, ecdsa-sign, ecdsa-verify, cert req, cert issue, cert sign",
       "apps": "release artifacts, firmware, long-lived approvals, dual-trust signing",
-      "apis": "PqForgeHybridSigner, PqForgeSignatureComposer, PqEcdsaP256, PqEcdsaP384, PqEcdsaP521, PqEd25519, PqRsa, PqX509, dualSign, dualVerify",
+      "apis": "PqForgeHybridSigner, PqForgeSignatureComposer, PqEcdsaP256, PqEcdsaP384, PqEcdsaP521, PqEd25519, PqEd448, PqRsa, PqX509, dualSign, dualVerify",
       "caveat": "hybrid-sign policy is require-both or accept-either. compose-sign policy is require-all (default) or accept-any. --digest signs the streamed SHA-256 for gigabyte inputs. ECDSA-P384 and ECDSA-P521 are keygen opt-ins. PqEcdsaP521 is not the HPKE share."
     },
     {

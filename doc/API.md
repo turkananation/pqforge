@@ -13,7 +13,7 @@ That one entrypoint provides the whole stack:
 | Core facade & primitives | `PqForge`, ML-KEM/ML-DSA, codecs, key custody, recipes — pure Dart over PointyCastle |
 | Hybrid KEM combining | `PqForgeCombiner` (raw bytes) and the `SecretKey.deriveHybridSecretKey` extension |
 | Built-in classical hybrid | `PqForgeHybridKeyAgreement` (X25519 + ML-KEM), `PqForgeHybridSigner` (ML-DSA + Ed25519) |
-| Certificates | `PqX509` parse, mint, and path check. `PqEcdsaP384`, `PqRsa`, and synchronous `PqEd25519` sit beside `PqEcdsaP256`. P-384 ECDSA is not `p384SharedSecret`. |
+| Certificates | `PqX509` parse, mint, and path check. `PqEcdsaP384`, `PqRsa`, synchronous `PqEd25519`, and synchronous `PqEd448` sit beside `PqEcdsaP256`. Ed448 is not an X.509 algorithm. P-384 ECDSA is not `p384SharedSecret`. |
 | HPKE | `PqHpke` — RFC 9180 base, PSK, auth, and authPSK. See [HPKE.md](HPKE.md). |
 | AEAD wire packets | `PqForgeSecureSession` over AES-256-GCM / ChaCha20-Poly1305, pure-Dart or native backend |
 
