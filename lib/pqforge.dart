@@ -66,6 +66,8 @@ export 'src/hybrid/pq_ecdsa_p384.dart';
 export 'src/hybrid/pq_ecdsa_p521.dart';
 export 'src/hybrid/pq_ed25519.dart';
 export 'src/hybrid/pq_nist_ecdh.dart';
+export 'src/hybrid/pq_brainpool.dart';
+export 'src/hybrid/pq_ffdhe.dart';
 export 'src/hybrid/pq_x448.dart';
 export 'src/hybrid/pq_rsa.dart';
 export 'src/hybrid/pqforge_hybrid_signer.dart';

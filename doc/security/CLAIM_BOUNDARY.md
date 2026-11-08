@@ -16,6 +16,12 @@ Allowed wording:
   `EVP_HPKE` evidence is base and auth on X25519 and P-256 only. OpenSSL
   `OSSL_HPKE` evidence is all four modes on X448 and P-521 only. It is not a
   FIPS module and not TLS.
+- Brainpool ECDH (`PqBrainpool`) for brainpoolP256r1, brainpoolP384r1, and
+  brainpoolP512r1, and RFC 7919 FFDHE (`PqFfdhe`) for the five named groups
+  OpenSSL negotiates. BoringSSL does not negotiate these. The byte layout
+  matches the TLS key share. `pqforge` does not speak TLS. Neither
+  implementation is constant-time. The FFDHE exponent lives in a `BigInt`
+  and is not wiped. The random buffer used to draw it is.
 - Opt-in signature composition in the same release. `compose-sign` takes 2 or
   3 legs the caller names (ML-DSA, SLH-DSA, Ed25519, ECDSA-P256, ECDSA-P384,
   ECDSA-P521). `hybrid-sign` stays one ML-DSA leg plus one classical leg.
