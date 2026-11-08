@@ -4,11 +4,14 @@ description: X25519, NIST ECDH, Ed25519, ECDSA, and RSA next to ML-KEM and ML-DS
 ---
 
 Classical algorithms in pqforge are a tier next to pqcrypto, not a
-replacement for it.
+replacement for it. Key agreement for brainpool, RFC 7919, NIST ECDH,
+X25519, and X448 is documented on [Agreement](agreement), including the
+byte widths and the rejection rules. This page is the signature tier and
+the hybrid constructions that sit on top.
 
 | API | Role |
 | --- | --- |
-| `PqClassical` X25519 | Key agreement. The secret is the 32-byte seed. Used by hybrid KEM-DEM and by HPKE. |
+| `PqClassical` X25519 | Key agreement. The secret is the 32-byte seed. Used by hybrid KEM-DEM and by HPKE. Widths and rejection rules are on [Agreement](agreement). |
 | `PqX448` | RFC 7748 X448. 56-byte keys. Used by DHKEM(X448, HKDF-SHA512). Not a constant-time ladder. |
 | `PqNistEcdh` | P-256, P-384, and P-521 ECDH. Uncompressed SEC1 points. The shared secret is the x-coordinate. P-256 and P-384 are the TLS hybrid-group shares. P-521 ECDH is the HPKE share, not a TLS group, and not a signature. |
 | `PqEcdsaP256`, `PqEcdsaP384` | Signatures. P-384 sign is not `p384SharedSecret`. |

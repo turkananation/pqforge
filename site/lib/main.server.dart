@@ -34,11 +34,17 @@ void main() {
                 links: [
                   SidebarLink(text: 'Getting started', href: 'getting-started'),
                   SidebarLink(text: 'What landed', href: 'release-notes'),
+                  SidebarLink(text: 'Agreement', href: 'agreement'),
+                  SidebarLink(text: 'Envelopes', href: 'envelopes'),
+                  SidebarLink(text: 'Keys', href: 'keys'),
                   SidebarLink(text: 'HPKE', href: 'hpke'),
                   SidebarLink(text: 'Certificates', href: 'certificates'),
                   SidebarLink(text: 'Symmetric', href: 'symmetric'),
+                  SidebarLink(text: 'Bytes', href: 'bytes'),
                   SidebarLink(text: 'Classical', href: 'classical'),
                   SidebarLink(text: 'Signatures', href: 'signatures'),
+                  SidebarLink(text: 'Recipes', href: 'recipes'),
+                  SidebarLink(text: 'CLI', href: 'cli'),
                 ],
               ),
               SidebarGroup(

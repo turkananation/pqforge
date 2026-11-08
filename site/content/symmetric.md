@@ -38,6 +38,33 @@ as the AEAD.
 
 HKDF-Extract and HKDF-Expand are exported for SHA-256 and SHA-384.
 HPKE's SHA-512 schedule uses the same HMAC-SHA512 the package already had.
+
+## Session packets
+
+`PqForgeSecureSession` seals one payload into a self-describing packet.
+The key is 32 bytes. The suite is `PqForgeCipherSuite.aes256Gcm` or
+`chaCha20Poly1305`. The engine is `PqForgeEngineProvider.pureDart`
+(PointyCastle) or `nativeCryptography` (`package:cryptography`). A packet
+from one engine opens on the other. The wire layout is 12 nonce bytes,
+then ciphertext, then the 16-byte tag.
+
+```dart
+final session = PqForgeSecureSession(
+  secretKey: key,
+  cipherSuite: PqForgeCipherSuite.aes256Gcm,
+);
+final packet = await session.encrypt(payload, associatedData: header);
+final clear = await session.decrypt(packet, associatedData: header);
+session.dispose();
+```
+
+`dispose` wipes the copy the session holds. It does not wipe copies you
+kept. `PqFipsMode` refuses the ChaCha suite on this class. AES-128 is not
+a session suite. It exists for HPKE and for QUIC Initial packets.
+
+A failed tag throws `PqForgeAuthTagException`. The nonce is random per
+packet. Do not reuse a key so long that a 96-bit random nonce is likely
+to collide. This is not a record layer and it does not rotate keys.
 Those calls are not a new envelope format.
 
 ## SHA-1

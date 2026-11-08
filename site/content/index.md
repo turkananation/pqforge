@@ -41,7 +41,23 @@ runs on the Dart VM, Flutter, and the web. File streaming that needs
 
 The rest of the package is unchanged in role: ML-KEM envelopes, ML-DSA and
 SLH-DSA detached signatures, hybrid sessions, multi-recipient envelopes,
-Argon2id key custody, and the CLI.
+Argon2id key custody, and the CLI. The pages below are the map. The
+[claim boundary](claim-boundary) is the list of sentences this package is
+allowed to say.
+
+| Page | What it covers |
+| --- | --- |
+| [Agreement](agreement) | `PqBrainpool`, `PqFfdhe`, NIST ECDH, X25519, X448, and the combiner. |
+| [Envelopes](envelopes) | Profiles, `.pqf`, `.pqfs`, multi-recipient, hybrid KEM-DEM. |
+| [Keys](keys) | Keygen, Argon2id, PBKDF2, custody stores. |
+| [HPKE](hpke) | RFC 9180. Four modes, five KEMs. |
+| [Certificates](certificates) | X.509 and PKCS#10. |
+| [Symmetric](symmetric) | AES-GCM, ChaCha20-Poly1305, the keystream, sessions. |
+| [Bytes](bytes) | SHA-1, SHA-2, HMAC, length prefixes. |
+| [Classical](classical) | Ed25519, ECDSA, RSA, and the hybrid signers. |
+| [Signatures](signatures) | Detached, hybrid-sign, compose-sign. |
+| [Recipes](recipes) | Bindings, logs, tokens, artifacts. |
+| [CLI](cli) | Every command. |
 
 The same 0.4.10 release also widens signatures. That does not change the
 HPKE row above. [Signatures](signatures) has the new legs:
@@ -49,4 +65,4 @@ HPKE row above. [Signatures](signatures) has the new legs:
 and opt-in ECDSA-P384 / ECDSA-P521. P-521 ECDH on the [Classical](classical)
 page is still the HPKE share, not that signature.
 
-[HPKE use cases](hpke) · [Certificates](certificates) · [Symmetric](symmetric) · [Classical](classical) · [Signatures](signatures) · [Claim boundary](claim-boundary)
+[Agreement](agreement) · [Envelopes](envelopes) · [Keys](keys) · [HPKE](hpke) · [CLI](cli) · [Claim boundary](claim-boundary)

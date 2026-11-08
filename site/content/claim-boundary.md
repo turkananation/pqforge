@@ -15,6 +15,8 @@ Allowed:
   `compose-sign` (2 or 3 legs), and ECDSA-P384 / ECDSA-P521. `hybrid-sign`
   stays one ML-DSA leg plus one classical leg.
 - Best-effort zeroization through `package:zeroize`.
+- Brainpool ECDH (RFC 5639, the three TLS groups) and RFC 7919 FFDHE as
+  agreement. The byte contract matches OpenSSL. Not a TLS stack.
 
 Not allowed:
 
@@ -35,6 +37,12 @@ Not allowed:
 - `compose-sign` as a FIPS module, or as a constant-time construction.
 - SLH-DSA inside an envelope or inside `hybrid-sign`. A composite leg is
   opt-in and stays outside those two.
+- `PqBrainpool` or `PqFfdhe` as a TLS handshake, as constant-time, or as
+  a NIST curve. There is no NIST P-512. brainpoolP512r1 is RFC 5639.
+- BoringSSL 0.20261020.0 as a check of ML-KEM-512 or of any SLH-DSA set
+  other than SHA2-128s and SHAKE-256f. Those two, plus ML-KEM-768,
+  ML-KEM-1024, and ML-DSA-44/65/87, are what that pin exports. The other
+  ten SLH-DSA sets are checked against OpenSSL 4.1.0.
 
 BoringSSL 0.20261020.0 is a checked HPKE peer for base and auth, X25519 and
 P-256, HKDF-SHA256 and HKDF-SHA384, and the three AEADs.
