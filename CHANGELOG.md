@@ -10,9 +10,13 @@ wire-format change. 0.4.12 stays the brainpool and FFDHE release.
   RSASHA256 keys. A 1024-bit modulus used to return false before the
   signature was read. `generateKeyPair` still refuses 1024, 512, and
   8192.
-- **`PqRsaHash.sha1`** is PKCS#1 and PSS for a standard that still names
-  SHA-1, such as DNSSEC algorithms 5 and 7. It is not a hash for new
-  work.
+- **`PqRsaHash.sha224`** is PKCS#1 v1.5 and RSASSA-PSS (RFC 8017). The
+  DigestInfo is OID `2.16.840.1.101.3.4.2.4`. The default PSS salt is 28
+  bytes, so a 1024-bit modulus can hold it. SHA-512 with that default
+  salt cannot: the block needs 130 bytes and the modulus has 128.
+- A private exponent reduced modulo λ(n), which is what OpenSSL writes,
+  still signs. The old check required the φ(n) representative and
+  rejected a valid key.
 - **`PqEd448`** is RFC 8032 Ed448. 57-byte seed, 57-byte public key,
   114-byte signature. Pure Ed448 uses the empty context, which is what
   DNSSEC algorithm 16 signs. A context of at most 255 bytes is accepted.

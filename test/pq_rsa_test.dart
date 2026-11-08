@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -286,6 +287,147 @@ void main() {
       }
     });
   }
+
+  test('OpenSSL PKCS#1 and PSS match every hash', () {
+    final version = Process.runSync('openssl', ['version']);
+    if (version.exitCode != 0) {
+      markTestSkipped('openssl is not on PATH');
+    }
+    final dir = Directory.systemTemp.createTempSync('pqforge-rsa-');
+    try {
+      final pem = _opensslKey(dir, 2048);
+      final key = _opensslPrivateKey(pem);
+      final message = Uint8List.fromList('openssl rsa'.codeUnits);
+      final msg = File('${dir.path}/msg')..writeAsBytesSync(message);
+      for (final hash in PqRsaHash.values) {
+        final pkcs1 = PqRsa.signPkcs1(
+          privateKey: key.privateKey,
+          message: message,
+          hash: hash,
+        );
+        final opensslPkcs1 = _opensslPkeyutl(
+          pem: pem,
+          message: msg.path,
+          digest: hash.name,
+          padding: 'pkcs1',
+          signatureOut: '${dir.path}/${hash.name}.pkcs1.sig',
+        );
+        expect(opensslPkcs1, orderedEquals(pkcs1), reason: hash.name);
+        expect(
+          PqRsa.verifyPkcs1(
+            modulus: key.modulus,
+            exponent: key.exponent,
+            message: message,
+            signature: opensslPkcs1,
+            hash: hash,
+          ),
+          isTrue,
+          reason: hash.name,
+        );
+        _opensslPkeyutl(
+          pem: pem,
+          message: msg.path,
+          digest: hash.name,
+          padding: 'pkcs1',
+          signatureIn: '${dir.path}/${hash.name}.pkcs1.ours',
+          ours: pkcs1,
+        );
+
+        final pss = PqRsa.signPss(
+          privateKey: key.privateKey,
+          message: message,
+          hash: hash,
+        );
+        _opensslPkeyutl(
+          pem: pem,
+          message: msg.path,
+          digest: hash.name,
+          padding: 'pss',
+          signatureIn: '${dir.path}/${hash.name}.pss.ours',
+          ours: pss,
+        );
+        final opensslPss = _opensslPkeyutl(
+          pem: pem,
+          message: msg.path,
+          digest: hash.name,
+          padding: 'pss',
+          signatureOut: '${dir.path}/${hash.name}.pss.sig',
+        );
+        expect(
+          PqRsa.verifyPss(
+            modulus: key.modulus,
+            exponent: key.exponent,
+            message: message,
+            signature: opensslPss,
+            hash: hash,
+          ),
+          isTrue,
+          reason: hash.name,
+        );
+      }
+
+      final smallPem = _opensslKey(dir, 1024);
+      final small = _opensslPrivateKey(smallPem);
+      final sha224 = PqRsa.signPss(
+        privateKey: small.privateKey,
+        message: message,
+        hash: PqRsaHash.sha224,
+      );
+      _opensslPkeyutl(
+        pem: smallPem,
+        message: msg.path,
+        digest: 'sha224',
+        padding: 'pss',
+        signatureIn: '${dir.path}/sha224-1024.ours',
+        ours: sha224,
+      );
+      final opensslSha224 = _opensslPkeyutl(
+        pem: smallPem,
+        message: msg.path,
+        digest: 'sha224',
+        padding: 'pss',
+        signatureOut: '${dir.path}/sha224-1024.sig',
+      );
+      expect(
+        PqRsa.verifyPss(
+          modulus: small.modulus,
+          exponent: small.exponent,
+          message: message,
+          signature: opensslSha224,
+          hash: PqRsaHash.sha224,
+        ),
+        isTrue,
+      );
+      final refused = Process.runSync('openssl', [
+        'pkeyutl',
+        '-sign',
+        '-inkey',
+        smallPem,
+        '-rawin',
+        '-in',
+        msg.path,
+        '-digest',
+        'sha512',
+        '-pkeyopt',
+        'rsa_padding_mode:pss',
+        '-pkeyopt',
+        'rsa_pss_saltlen:digest',
+        '-pkeyopt',
+        'rsa_mgf1_md:sha512',
+      ]);
+      expect(refused.exitCode, isNonZero);
+      expect(
+        () => PqRsa.signPss(
+          privateKey: small.privateKey,
+          message: message,
+          hash: PqRsaHash.sha512,
+        ),
+        throwsArgumentError,
+      );
+    } finally {
+      dir.deleteSync(recursive: true);
+    }
+  });
 }
 
 ({PqRsaPrivateKey privateKey, Uint8List modulus, Uint8List exponent})
@@ -336,4 +478,136 @@ Uint8List _fixed(BigInt value, int length) {
     remaining >>= 8;
   }
   return out;
+}
+
+String _opensslKey(Directory dir, int bits) {
+  final pem = '${dir.path}/rsa$bits.pem';
+  final result = Process.runSync('openssl', [
+    'genpkey',
+    '-algorithm',
+    'RSA',
+    '-pkeyopt',
+    'rsa_keygen_bits:$bits',
+    '-out',
+    pem,
+  ]);
+  expect(result.exitCode, 0, reason: '${result.stderr}');
+  return pem;
+}
+
+({PqRsaPrivateKey privateKey, Uint8List modulus, Uint8List exponent})
+_opensslPrivateKey(String pem) {
+  final text = Process.runSync('openssl', [
+    'pkey',
+    '-in',
+    pem,
+    '-text',
+    '-noout',
+  ]);
+  expect(text.exitCode, 0, reason: '${text.stderr}');
+  final fields = _opensslFields(text.stdout as String);
+  final modulus = fields['modulus']!;
+  final exponent = fields['publicExponent']!;
+  return (
+    modulus: modulus,
+    exponent: exponent,
+    privateKey: PqRsaPrivateKey(
+      modulus: modulus,
+      privateExponent: fields['privateExponent']!,
+      prime1: fields['prime1']!,
+      prime2: fields['prime2']!,
+      publicExponent: exponent,
+    ),
+  );
+}
+
+Uint8List _opensslPkeyutl({
+  required String pem,
+  required String message,
+  required String digest,
+  required String padding,
+  String? signatureOut,
+  String? signatureIn,
+  Uint8List? ours,
+}) {
+  final args = <String>[
+    'pkeyutl',
+    if (signatureOut != null) '-sign' else '-verify',
+    '-inkey',
+    pem,
+    '-rawin',
+    '-in',
+    message,
+    '-digest',
+    digest,
+    '-pkeyopt',
+    'rsa_padding_mode:$padding',
+    if (padding == 'pss') ...[
+      '-pkeyopt',
+      'rsa_pss_saltlen:digest',
+      '-pkeyopt',
+      'rsa_mgf1_md:$digest',
+    ],
+  ];
+  if (signatureOut != null) {
+    args.addAll(['-out', signatureOut]);
+  } else {
+    File(signatureIn!).writeAsBytesSync(ours!);
+    args.addAll(['-sigfile', signatureIn]);
+  }
+  final result = Process.runSync('openssl', args);
+  expect(result.exitCode, 0, reason: '$digest $padding ${result.stderr}');
+  if (signatureOut == null) return ours!;
+  return File(signatureOut).readAsBytesSync();
+}
+
+Map<String, Uint8List> _opensslFields(String text) {
+  final out = <String, Uint8List>{};
+  final hex = StringBuffer();
+  String? section;
+
+  void flush() {
+    if (section == null || hex.isEmpty) {
+      hex.clear();
+      return;
+    }
+    final raw = hex.toString();
+    hex.clear();
+    out[section] = _parseHex(raw);
+  }
+
+  for (final rawLine in text.split('\n')) {
+    final line = rawLine.trim();
+    final exponent = RegExp(
+      r'^publicExponent:.*\(0x([0-9a-fA-F]+)\)$',
+    ).firstMatch(line);
+    if (exponent != null) {
+      flush();
+      section = null;
+      var value = exponent.group(1)!;
+      if (value.length.isOdd) value = '0$value';
+      out['publicExponent'] = _parseHex(value);
+      continue;
+    }
+    final label = RegExp(r'^([A-Za-z0-9]+):$').firstMatch(line);
+    if (label != null) {
+      flush();
+      section = label.group(1);
+      continue;
+    }
+    if (section != null &&
+        RegExp(r'^[0-9a-f]{2}(?::[0-9a-f]{2})*:?$').hasMatch(line)) {
+      hex.write(line.replaceAll(':', ''));
+    }
+  }
+  flush();
+  return out;
+}
+
+Uint8List _parseHex(String hex) {
+  final bytes = Uint8List(hex.length ~/ 2);
+  for (var i = 0; i < bytes.length; i++) {
+    bytes[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+  }
+  return bytes;
 }
