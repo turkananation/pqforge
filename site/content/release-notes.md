@@ -8,7 +8,7 @@ them is a FIPS 140 module.
 
 | Release | You can call |
 | --- | --- |
-| 0.4.13 | `PqRsa` verifies a 1024-bit modulus, `PqRsaHash.sha1`, and `PqEd448`. Generation stays 2048 and up. Ed448 is not an X.509 algorithm. |
+| 0.4.13 | `PqRsa` verifies a 1024-bit modulus. `PqRsaHash.sha1` and `PqRsaHash.sha224`. `PqEd448`. Generation stays 2048 and up. Ed448 is not an X.509 algorithm. |
 | 0.4.12 | `PqBrainpool` and `PqFfdhe`. brainpoolP256r1, P384r1, P512r1, and ffdhe2048 through ffdhe8192. Agreement only. Not a TLS stack, and not constant-time. |
 | 0.4.11 | `PqBytes.sha1` and `sha1OfStream`. RFC 3174, 20 bytes. Collision resistance is broken. For a standard that still names SHA-1, such as DNSSEC NSEC3. Not a signature. |
 | 0.4.10 | `PqHpke`. Base, PSK, auth, and authPSK. X25519, X448, P-256, P-384, P-521. |

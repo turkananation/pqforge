@@ -1,4 +1,5 @@
-/// RSA PKCS#1 v1.5 and RSASSA-PSS over SHA-256, SHA-384, and SHA-512.
+/// RSA PKCS#1 v1.5 and RSASSA-PSS over SHA-1, SHA-224, SHA-256, SHA-384,
+/// and SHA-512.
 ///
 /// PointyCastle already implements the padding. The modulus and exponent stay
 /// byte strings at this boundary. Verification accepts a 1024, 2048, 3072, or
@@ -17,12 +18,14 @@ import 'package:pointycastle/export.dart' as pc;
 /// Digest used by [PqRsa]. The signer hashes the message.
 enum PqRsaHash {
   sha1,
+  sha224,
   sha256,
   sha384,
   sha512;
 
   int get digestBytes => switch (this) {
     PqRsaHash.sha1 => 20,
+    PqRsaHash.sha224 => 28,
     PqRsaHash.sha256 => 32,
     PqRsaHash.sha384 => 48,
     PqRsaHash.sha512 => 64,
@@ -55,6 +58,7 @@ class PqRsa {
 
   static const _digestId = <PqRsaHash, String>{
     PqRsaHash.sha1: '06052b0e03021a',
+    PqRsaHash.sha224: '0609608648016503040204',
     PqRsaHash.sha256: '0609608648016503040201',
     PqRsaHash.sha384: '0609608648016503040202',
     PqRsaHash.sha512: '0609608648016503040203',
@@ -214,12 +218,22 @@ class PqRsa {
     if (n == null || e == null) {
       throw ArgumentError('RSA private key is not a supported size');
     }
-    final built = pc.RSAPrivateKey(
-      n,
-      _unsigned(key.privateExponent),
-      _unsigned(key.prime1),
-      _unsigned(key.prime2),
-    );
+    final d = _unsigned(key.privateExponent);
+    final p = _unsigned(key.prime1);
+    final q = _unsigned(key.prime2);
+    if (p * q != n) {
+      throw ArgumentError('RSA modulus does not match the primes');
+    }
+    final p1 = p - BigInt.one;
+    final q1 = q - BigInt.one;
+    final lambda = (p1 * q1) ~/ p1.gcd(q1);
+    if ((e * d) % lambda != BigInt.one) {
+      throw ArgumentError('RSA public exponent does not match the private key');
+    }
+    // OpenSSL stores d modulo lambda(n). PointyCastle expects d modulo phi(n).
+    // Both reduce to the same value mod (p - 1) and mod (q - 1).
+    final signingExponent = e.modInverse(p1 * q1);
+    final built = pc.RSAPrivateKey(n, signingExponent, p, q);
     if (built.publicExponent != e) {
       throw ArgumentError('RSA public exponent does not match the private key');
     }
@@ -296,6 +310,7 @@ class PqRsa {
 
   static pc.Digest _digest(PqRsaHash hash) => switch (hash) {
     PqRsaHash.sha1 => pc.SHA1Digest(),
+    PqRsaHash.sha224 => pc.SHA224Digest(),
     PqRsaHash.sha256 => pc.SHA256Digest(),
     PqRsaHash.sha384 => pc.SHA384Digest(),
     PqRsaHash.sha512 => pc.SHA512Digest(),

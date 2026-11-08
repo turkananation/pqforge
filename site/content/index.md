@@ -11,9 +11,9 @@ HPKE.
 
 <Info>
   0.4.13 makes `PqRsa.verifyPkcs1` and `verifyPss` accept a 1024-bit
-  modulus, adds `PqRsaHash.sha1`, and adds `PqEd448` (RFC 8032, empty
-  context for DNSSEC algorithm 16). Generation stays 2048, 3072, or
-  4096. 0.4.12 adds `PqBrainpool` and `PqFfdhe`: the three brainpool TLS groups
+  modulus, adds `PqRsaHash.sha1` and `PqRsaHash.sha224`, and adds
+  `PqEd448` (RFC 8032, empty context for DNSSEC algorithm 16). Generation
+  stays 2048, 3072, or 4096. 0.4.12 adds `PqBrainpool` and `PqFfdhe`: the three brainpool TLS groups
   and the five RFC 7919 finite-field groups. Agreement only. Not a TLS
   stack, and not constant-time. 0.4.11 adds `PqBytes.sha1` (RFC 3174).
   Collision resistance is broken. It is there for a standard that still
@@ -35,7 +35,7 @@ runs on the Dart VM, Flutter, and the web. File streaming that needs
 
 | Release | You can call |
 | --- | --- |
-| 0.4.13 | `PqRsa` verifies 1024, 2048, 3072, and 4096 bit moduli. `PqRsaHash.sha1`. `PqEd448` for RFC 8032 and DNSSEC algorithm 16. |
+| 0.4.13 | `PqRsa` verifies 1024, 2048, 3072, and 4096 bit moduli. `PqRsaHash.sha1` and `PqRsaHash.sha224`. `PqEd448` for RFC 8032 and DNSSEC algorithm 16. |
 | 0.4.12 | `PqBrainpool` and `PqFfdhe`. brainpoolP256r1, P384r1, P512r1, and ffdhe2048 through ffdhe8192. |
 | 0.4.11 | `PqBytes.sha1` and `sha1OfStream`. RFC 3174, 20 bytes. Not for a new protocol. |
 | 0.4.10 | `PqHpke` — base, PSK, auth, authPSK. X25519, X448, P-256, P-384, P-521. AES-GCM and ChaCha20-Poly1305. |

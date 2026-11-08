@@ -29,7 +29,7 @@ PEM. It does not print the secret.
 | `PqEcdsaP256` | ECDSA P-256, RFC 6979, low-S on sign. Verify accepts the high-S encoding other libraries put in a certificate. |
 | `PqEcdsaP384` | ECDSA P-384 / SHA-384, raw `r \|\| s`, low-S. This is not `p384SharedSecret`. |
 | `PqEd25519` | Synchronous RFC 8032. The field uses 16-bit limbs so it fits a dart2js integer. |
-| `PqRsa` | PKCS#1 v1.5 and RSASSA-PSS, SHA-1/256/384/512. Verification accepts a 1024, 2048, 3072, or 4096 bit modulus. Generation stays 2048, 3072, or 4096. |
+| `PqRsa` | PKCS#1 v1.5 and RSASSA-PSS, SHA-1/224/256/384/512. Verification accepts a 1024, 2048, 3072, or 4096 bit modulus. Generation stays 2048, 3072, or 4096. SHA-224 is 28 bytes. PSS with the default salt fits a 1024-bit key. SHA-512 with that salt does not. |
 | ML-DSA | Through pqcrypto, the same as the rest of the package. |
 
 CI checks a chain for each of those against pinned OpenSSL 4.1.0 and
