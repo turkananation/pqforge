@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.12
+
+Brainpool and RFC 7919 finite-field agreement. No `.pqf` / `.pqfs`
+wire-format change. 0.4.11 stays the SHA-1 release.
 
 - **`PqBrainpool`** — ECDH for brainpoolP256r1, brainpoolP384r1, and
   brainpoolP512r1 (RFC 5639). These are the three brainpool groups

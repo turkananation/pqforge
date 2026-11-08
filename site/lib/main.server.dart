@@ -52,7 +52,7 @@ void main() {
           footer: footer(classes: 'site-footer', [
             p([
               Component.text(
-                'pqforge 0.4.11. Built with Dart and Jaspr. '
+                'pqforge 0.4.12. Built with Dart and Jaspr. '
                 'Not a FIPS 140 module. ',
               ),
               a(

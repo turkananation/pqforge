@@ -1,6 +1,6 @@
 name: pqforge_site
 description: The Jaspr documentation site for pqforge.
-version: 0.4.11
+version: 0.4.12
 publish_to: none
 
 environment:
