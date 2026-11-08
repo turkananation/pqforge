@@ -652,7 +652,7 @@ dart run pqforge compose-sign --ml-dsa-secret keys/vault.sign.secret.wrapped.jso
         <h2>The recipe homepage stays. The guides sit next to it.</h2>
       </div>
       <div class="doc-grid">
-        <a href="release-notes"><strong>What landed</strong><span>0.4.11 SHA-1 for a standard that still names it, 0.4.10 HPKE, 0.4.9 certificates, 0.4.8 ChaCha20, and the signature legs. This does not replace the recipe catalog above.</span></a>
+        <a href="release-notes"><strong>What landed</strong><span>0.4.12 brainpool and RFC 7919 finite-field agreement, 0.4.11 SHA-1 for a standard that still names it, 0.4.10 HPKE, 0.4.9 certificates, 0.4.8 ChaCha20, and the signature legs. This does not replace the recipe catalog above.</span></a>
         <a href="getting-started"><strong>Getting started</strong><span>Install pqforge and seal one HPKE message.</span></a>
         <a href="hpke"><strong>HPKE</strong><span>RFC 9180 modes, suites, seal, auth, and export.</span></a>
         <a href="certificates"><strong>Certificates</strong><span>X.509 and PKCS#10. Not a trust store.</span></a>
