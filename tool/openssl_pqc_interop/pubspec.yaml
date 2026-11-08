@@ -1,0 +1,21 @@
+name: openssl_pqcrypto_interop
+description: >-
+  Unpublished OpenSSL interoperability harness for the ML-KEM, ML-DSA, and
+  SLH-DSA implementations pqforge pins. Same suite as pqcrypto's
+  tool/openssl_interop. It is run against the pinned OpenSSL in
+  tool/interop, not against a second build.
+publish_to: none
+version: 0.4.0-dev
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  ffi: ^2.1.0
+  pqcrypto: ^0.4.4
+  pqcrypto_interop_common:
+    path: ../pqc_interop_common
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6
