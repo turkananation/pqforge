@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **`PqBrainpool`** — ECDH for brainpoolP256r1, brainpoolP384r1, and
+  brainpoolP512r1 (RFC 5639). These are the three brainpool groups
+  OpenSSL offers in TLS 1.3, code points 31, 32, and 33 (RFC 8734).
+  There is no NIST P-512. The smaller and twisted brainpool curves are
+  not TLS groups and are not implemented. Public keys are uncompressed
+  SEC1. The shared secret is the x-coordinate. Not constant-time, and
+  not a TLS stack.
+- **`PqFfdhe`** — RFC 7919 ffdhe2048, ffdhe3072, ffdhe4096, ffdhe6144,
+  and ffdhe8192. Code points 256 through 260. Public values and shared
+  secrets are left-padded to the prime. A public value outside the
+  subgroup of order `(p - 1) / 2` is rejected. The random draw is wiped
+  with `secureZero`. The exponent is a `BigInt` and is not wiped.
+
 ## 0.4.11
 
 SHA-1 as a digest. No `.pqf` / `.pqfs` wire-format change. 0.4.10 stays
