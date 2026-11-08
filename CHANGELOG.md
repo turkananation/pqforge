@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.11
+
+SHA-1 as a digest. No `.pqf` / `.pqfs` wire-format change. 0.4.10 stays
+the HPKE release.
+
+- **`PqBytes.sha1`** and **`sha1OfStream`** — RFC 3174, 20 bytes. Collision
+  resistance is broken. The function exists because some standards still
+  name SHA-1: DNSSEC NSEC3 (RFC 5155) and DS digest type 1 (RFC 4034).
+  It is not a signature and not a hash for a new protocol. SHA-256,
+  SHA-384, and SHA-512 remain the digests for new work. `PqForgeBytes.sha1`
+  is the same function.
+
 ## 0.4.10
 
 RFC 9180 HPKE as a public API. No `.pqf` / `.pqfs` wire-format change.

@@ -33,6 +33,7 @@ void main() {
                 title: 'Use it',
                 links: [
                   SidebarLink(text: 'Getting started', href: 'getting-started'),
+                  SidebarLink(text: 'What landed', href: 'release-notes'),
                   SidebarLink(text: 'HPKE', href: 'hpke'),
                   SidebarLink(text: 'Certificates', href: 'certificates'),
                   SidebarLink(text: 'Symmetric', href: 'symmetric'),
@@ -51,7 +52,7 @@ void main() {
           footer: footer(classes: 'site-footer', [
             p([
               Component.text(
-                'pqforge 0.4.10. Built with Dart and Jaspr. '
+                'pqforge 0.4.11. Built with Dart and Jaspr. '
                 'Not a FIPS 140 module. ',
               ),
               a(

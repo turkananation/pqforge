@@ -181,6 +181,14 @@ class PqBytes {
     return fields;
   }
 
+  /// SHA-1 one-shot digest (20 bytes). RFC 3174.
+  ///
+  /// Collision resistance is broken. This exists for a standard that still
+  /// names SHA-1, such as DNSSEC NSEC3 (RFC 5155) and DS digest type 1
+  /// (RFC 4034). It is not a signature and not a hash for a new protocol.
+  /// New work uses [sha256], [sha384], or [sha512].
+  static Uint8List sha1(Uint8List data) => pc.SHA1Digest().process(data);
+
   static Uint8List sha256(Uint8List data) => pc.SHA256Digest().process(data);
 
   /// SHA-384 one-shot digest (48 bytes).
@@ -188,6 +196,18 @@ class PqBytes {
 
   /// SHA-512 one-shot digest (64 bytes).
   static Uint8List sha512(Uint8List data) => pc.SHA512Digest().process(data);
+
+  /// SHA-1 over a byte stream in O(1) memory. Same boundary as [sha1].
+  static Future<Uint8List> sha1OfStream(Stream<List<int>> chunks) async {
+    final digest = pc.SHA1Digest();
+    await for (final chunk in chunks) {
+      final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+      digest.update(bytes, 0, bytes.length);
+    }
+    final out = Uint8List(digest.digestSize);
+    digest.doFinal(out, 0);
+    return out;
+  }
 
   /// SHA-256 over a byte stream in O(1) memory — one digest update per chunk,
   /// never the whole input. This is what lets the CLI pre-hash gigabyte-scale
@@ -270,6 +290,7 @@ class PqForgeBytes {
   static Uint8List lengthPrefixed(Iterable<Uint8List> fields) =>
       PqBytes.lengthPrefixed(fields);
   static Uint8List sha256(Uint8List data) => PqBytes.sha256(data);
+  static Uint8List sha1(Uint8List data) => PqBytes.sha1(data);
   static Uint8List sha384(Uint8List data) => PqBytes.sha384(data);
   static Uint8List sha512(Uint8List data) => PqBytes.sha512(data);
   static Uint8List hmacSha256({

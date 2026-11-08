@@ -39,3 +39,13 @@ as the AEAD.
 HKDF-Extract and HKDF-Expand are exported for SHA-256 and SHA-384.
 HPKE's SHA-512 schedule uses the same HMAC-SHA512 the package already had.
 Those calls are not a new envelope format.
+
+## SHA-1
+
+`PqBytes.sha1` and `sha1OfStream` are RFC 3174. The digest is 20 bytes.
+`PqForgeBytes.sha1` is the same function.
+
+Collision resistance is broken. The call exists because a few standards
+still name SHA-1, including DNSSEC NSEC3 (RFC 5155) and DS digest type 1
+(RFC 4034). It does not sign. A new protocol uses SHA-256, SHA-384, or
+SHA-512. There is no HMAC-SHA1.

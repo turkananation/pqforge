@@ -6,7 +6,7 @@ Repository: https://github.com/turkananation/pqforge
 Package: https://pub.dev/packages/pqforge
 API docs: https://pub.dev/documentation/pqforge/latest/
 Lab: Yardenah PQ (https://yardenah.com)
-Version: 0.4.10
+Version: 0.4.11
 
 ## Identity
 
@@ -42,6 +42,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - X25519 plus ML-KEM hybrid KEM-DEM so confidentiality holds while either Module-LWE or Curve25519 stands
 - NIST P-256 and P-384 ECDH (uncompressed SEC1, x-coordinate secret) for TLS hybrid groups. P-521 ECDH is the HPKE share, not a TLS group and not a signature
 - RFC 5869 HKDF-Extract/Expand (SHA-256 and SHA-384), SHA-384/SHA-512 digest facades, and dart2js-safe sync ChaCha20-Poly1305 with a caller-supplied nonce (`supportsChaCha20Poly1305`)
+- RFC 3174 SHA-1 (PqBytes.sha1 and sha1OfStream, 20 bytes). Collision resistance is broken. It exists for a standard that still names SHA-1, such as DNSSEC NSEC3 (RFC 5155) and DS digest type 1 (RFC 4034). Not a signature. Not a hash for a new protocol. SHA-256, SHA-384, and SHA-512 remain the digests for new work
 - ML-DSA plus Ed25519 or ECDSA-P256 hybrid signatures, and standalone ECDSA-P256 (RFC 6979, low-S). hybrid-sign also accepts opt-in ECDSA-P384 and ECDSA-P521. compose-sign opts in 2 or 3 legs among ML-DSA, SLH-DSA, Ed25519, and those ECDSA curves. ECDSA-P384 and ECDSA-P521 are keygen opt-ins, not the default classical set. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group
 - Digest-mode signing over a streamed SHA-256 for gigabyte artifacts in O(1) memory
 - pack/unpack a whole folder into one encrypted streaming archive (one KEM encapsulation and one signature for the tree)
@@ -63,6 +64,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - An OpenSSL HPKE claim for X25519, P-256, or P-384
 - A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
 - ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs
+- SHA-1 as a signature or as the hash for a new protocol. PqBytes.sha1 is only the RFC 3174 digest
 
 ## Evidence Boundary
 

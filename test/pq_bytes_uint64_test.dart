@@ -89,6 +89,32 @@ void main() {
     });
   });
 
+  group('PqBytes.sha1', () {
+    test('matches RFC 3174 known answers', () {
+      expect(
+        PqBytes.sha1(Uint8List(0)),
+        _hex('da39a3ee5e6b4b0d3255bfef95601890afd80709'),
+      );
+      expect(
+        PqBytes.sha1(Uint8List.fromList('abc'.codeUnits)),
+        _hex('a9993e364706816aba3e25717850c26c9cd0d89d'),
+      );
+      expect(PqForgeBytes.sha1(Uint8List(0)), PqBytes.sha1(Uint8List(0)));
+    });
+
+    test('sha1OfStream matches the one-shot digest', () async {
+      final data = Uint8List.fromList('abc'.codeUnits);
+      final stream = Stream<List<int>>.fromIterable([
+        for (final byte in data) [byte],
+      ]);
+      expect(await PqBytes.sha1OfStream(stream), PqBytes.sha1(data));
+      expect(
+        await PqBytes.sha1OfStream(const Stream<List<int>>.empty()),
+        PqBytes.sha1(Uint8List(0)),
+      );
+    });
+  });
+
   group('PqBytes.sha256OfStream', () {
     test('matches the one-shot digest across chunkings', () async {
       final data = Uint8List.fromList(
@@ -166,4 +192,12 @@ void main() {
       );
     });
   });
+}
+
+Uint8List _hex(String hex) {
+  final out = Uint8List(hex.length ~/ 2);
+  for (var i = 0; i < out.length; i++) {
+    out[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+  }
+  return out;
 }
