@@ -1,0 +1,4 @@
+interface:
+  display_name: "PQForge Push"
+  short_description: "Run the CI checks locally before one push"
+  default_prompt: "Use $pqforge-push. Do not push until verify.dart full exits 0."

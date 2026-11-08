@@ -67,5 +67,8 @@ Run:
 dart run tool/agent/verify.dart full
 ```
 
+Then follow `$pqforge-push` before any `git push`. Do not push from this
+skill. A failed check stays unpushed.
+
 Use `$pqforge-docs` for any documentation or visibility updates caused by the
 feature.

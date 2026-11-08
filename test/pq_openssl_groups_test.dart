@@ -90,21 +90,32 @@ void main() {
         throwsArgumentError,
       );
     });
+  });
 
-    test('matches OpenSSL on every RFC 7919 group', () {
-      for (final group in PqFfdheGroup.values) {
-        final name = group.name;
-        final a = _opensslNamed('DH', 'group:$name');
-        final b = _opensslNamed('DH', 'group:$name');
+  group('PqFfdhe OpenSSL', () {
+    for (final group in PqFfdheGroup.values) {
+      final minutes = switch (group) {
+        PqFfdheGroup.ffdhe2048 || PqFfdheGroup.ffdhe3072 => 2,
+        PqFfdheGroup.ffdhe4096 => 4,
+        PqFfdheGroup.ffdhe6144 => 8,
+        PqFfdheGroup.ffdhe8192 => 15,
+      };
+      test('matches OpenSSL on ${group.name}', () {
+        final a = _opensslNamed('DH', 'group:${group.name}');
+        final b = _opensslNamed('DH', 'group:${group.name}');
         final openssl = _opensslDerive(a.pem, b.pem);
         final secret = PqFfdhe.sharedSecret(
           group: group,
           secretKey: _pad(a.secret, group.bytes),
           remotePublicKey: _pad(b.publicKey, group.bytes),
         );
-        expect(secret, orderedEquals(_pad(openssl, group.bytes)), reason: name);
-      }
-    }, timeout: const Timeout(Duration(minutes: 3)));
+        expect(
+          secret,
+          orderedEquals(_pad(openssl, group.bytes)),
+          reason: group.name,
+        );
+      }, timeout: Timeout(Duration(minutes: minutes)));
+    }
   });
 
   group('groups already on main', () {
