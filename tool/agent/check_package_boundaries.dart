@@ -42,6 +42,7 @@ void main() {
   for (final file in _dartFiles(Directory('.'))) {
     final path = _normalize(file.path);
     if (path.startsWith('tool/openssl_interop/')) continue;
+    if (path.startsWith('tool/openssl_pqc_interop/')) continue;
     if (RegExp(
       r'''^\s*(?:import|export)\s*['"]dart:ffi['"]''',
       multiLine: true,

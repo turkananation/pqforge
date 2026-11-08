@@ -9,12 +9,28 @@ prefix=${PINNED_TLS_PREFIX:-$root/tool/interop/.build}
 # shellcheck disable=SC1090
 . "$pins"
 
+link_drivers() {
+  # libcrypto.a is C++. The drivers must be linked with the C++ runtime.
+  c++ -O2 -o "$prefix/boringssl/bin/boringssl_verify" \
+    "$root/tool/interop/boringssl_verify.c" \
+    -I"$prefix/boringssl/include" \
+    "$prefix/boringssl/lib/libcrypto.a" \
+    -pthread
+  c++ -O2 -o "$prefix/boringssl/bin/boringssl_pqc" \
+    "$root/tool/interop/boringssl_pqc.cc" \
+    -I"$prefix/boringssl/include" \
+    "$prefix/boringssl/lib/libcrypto.a" \
+    -pthread
+}
+
 stamp=$prefix/STAMP
 want="$OPENSSL_TAG $OPENSSL_SHA256 $BORINGSSL_TAG $BORINGSSL_COMMIT"
 if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ] \
   && [ -x "$prefix/openssl/bin/openssl" ] \
-  && [ -x "$prefix/boringssl/bin/boringssl_verify" ]; then
+  && [ -f "$prefix/boringssl/lib/libcrypto.a" ]; then
   echo "pinned TLS already built: $want"
+  mkdir -p "$prefix/boringssl/bin"
+  link_drivers
   exit 0
 fi
 
@@ -52,13 +68,7 @@ cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release \
 ninja -C build bssl
 cmake --install build
 mkdir -p "$prefix/boringssl/bin"
-# libcrypto.a is C++. The C driver must be linked with the C++ runtime or
-# sized operator delete is missing.
-c++ -O2 -o "$prefix/boringssl/bin/boringssl_verify" \
-  "$root/tool/interop/boringssl_verify.c" \
-  -I"$prefix/boringssl/include" \
-  "$prefix/boringssl/lib/libcrypto.a" \
-  -pthread
+link_drivers
 printf '%s\n' "$BORINGSSL_COMMIT" > "$prefix/boringssl/COMMIT"
 printf '%s\n' "$want" > "$stamp"
 echo "pinned TLS built: $want"

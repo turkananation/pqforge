@@ -234,3 +234,30 @@ jobs:
           LIBCRYPTO_PATH="$GITHUB_WORKSPACE/tool/interop/.build/openssl/lib/libcrypto.so"
           REQUIRE_OPENSSL=1
           dart run bin/verify_interop.dart
+
+      # The pqcrypto OpenSSL suite: ML-KEM, ML-DSA, and all 12 SLH-DSA sets.
+      - name: Analyze the shared PQC interop helpers
+        working-directory: tool/pqc_interop_common
+        run: |
+          dart pub get
+          dart analyze
+
+      - name: Verify ML-KEM, ML-DSA, and SLH-DSA against pinned OpenSSL
+        working-directory: tool/openssl_pqc_interop
+        run: |
+          dart pub get
+          dart analyze
+          LIBCRYPTO_PATH="$GITHUB_WORKSPACE/tool/interop/.build/openssl/lib/libcrypto.so" \
+            dart test --concurrency=1
+
+      # Group agreement uses the pinned openssl binary, not Ubuntu's.
+      - name: Verify named groups against pinned OpenSSL
+        run: |
+          export PATH="$GITHUB_WORKSPACE/tool/interop/.build/openssl/bin:$PATH"
+          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/tool/interop/.build/openssl/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          openssl version
+          dart test test/pq_openssl_groups_test.dart
+
+      # BoringSSL exports a smaller PQ set than OpenSSL. The driver covers it.
+      - name: Verify BoringSSL PQ parameter sets
+        run: REQUIRE_PINNED_TLS=1 dart test test/boringssl_pqc_test.dart
