@@ -43,6 +43,12 @@ Forbidden wording:
 - ECDSA-P521 is a TLS group, or is the HPKE P-521 KEM.
 - `compose-sign` or ECDSA-P384/P-521 is constant-time or a FIPS module.
 - SLH-DSA is an envelope signature or a `hybrid-sign` leg.
+- Brainpool or FFDHE is a TLS stack, constant-time, or a NIST curve.
+  There is no NIST P-512.
+- BoringSSL 0.20261020.0 checks ML-KEM-512 or any SLH-DSA set other than
+  SHA2-128s and SHAKE-256f. Those two, ML-KEM-768, ML-KEM-1024, and
+  ML-DSA-44/65/87 are the sets that pin exports. The rest of SLH-DSA is
+  an OpenSSL 4.1.0 check.
 
 `pqforge` can inherit algorithm-evidence wording from `pqcrypto`, but it must not
 upgrade that into module-validation wording. Public-key trust, identity vetting,

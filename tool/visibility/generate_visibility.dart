@@ -654,11 +654,17 @@ dart run pqforge compose-sign --ml-dsa-secret keys/vault.sign.secret.wrapped.jso
       <div class="doc-grid">
         <a href="release-notes"><strong>What landed</strong><span>0.4.12 brainpool and RFC 7919 finite-field agreement, 0.4.11 SHA-1 for a standard that still names it, 0.4.10 HPKE, 0.4.9 certificates, 0.4.8 ChaCha20, and the signature legs. This does not replace the recipe catalog above.</span></a>
         <a href="getting-started"><strong>Getting started</strong><span>Install pqforge and seal one HPKE message.</span></a>
+        <a href="agreement"><strong>Agreement</strong><span>Brainpool, RFC 7919 FFDHE, NIST ECDH, X25519, X448, and the combiner. Not a TLS stack.</span></a>
+        <a href="envelopes"><strong>Envelopes</strong><span>Profiles, .pqf, .pqfs, multi-recipient wrap, and hybrid KEM-DEM.</span></a>
+        <a href="keys"><strong>Keys</strong><span>Keygen, Argon2id, PBKDF2, and pluggable custody.</span></a>
         <a href="hpke"><strong>HPKE</strong><span>RFC 9180 modes, suites, seal, auth, and export.</span></a>
         <a href="certificates"><strong>Certificates</strong><span>X.509 and PKCS#10. Not a trust store.</span></a>
-        <a href="symmetric"><strong>Symmetric</strong><span>AES-GCM, ChaCha20-Poly1305, and the ChaCha20 keystream.</span></a>
+        <a href="symmetric"><strong>Symmetric</strong><span>AES-GCM, ChaCha20-Poly1305, the ChaCha20 keystream, and session packets.</span></a>
+        <a href="bytes"><strong>Bytes</strong><span>SHA-1, SHA-2, HMAC, and length prefixes.</span></a>
         <a href="classical"><strong>Classical</strong><span>X25519, X448, NIST ECDH, Ed25519, ECDSA, and RSA. P-521 ECDH is still the HPKE share.</span></a>
         <a href="signatures"><strong>Signatures</strong><span>Opt-in dual and triple legs. hybrid-sign stays one ML-DSA leg plus one classical leg.</span></a>
+        <a href="recipes"><strong>Recipes</strong><span>Identity bindings, signed logs, tokens, and artifacts.</span></a>
+        <a href="cli"><strong>CLI</strong><span>Every command, and which API it calls.</span></a>
         <a href="claim-boundary"><strong>Claim boundary</strong><span>What this package is allowed to say about itself.</span></a>
       </div>
     </section>
@@ -1120,11 +1126,17 @@ String _sitemap(JsonMap manifest) {
   <url><loc>${project['canonical_url']}identity.json</loc></url>
   <url><loc>${project['canonical_url']}release-notes</loc></url>
   <url><loc>${project['canonical_url']}getting-started</loc></url>
+  <url><loc>${project['canonical_url']}agreement</loc></url>
+  <url><loc>${project['canonical_url']}envelopes</loc></url>
+  <url><loc>${project['canonical_url']}keys</loc></url>
   <url><loc>${project['canonical_url']}hpke</loc></url>
   <url><loc>${project['canonical_url']}certificates</loc></url>
   <url><loc>${project['canonical_url']}symmetric</loc></url>
+  <url><loc>${project['canonical_url']}bytes</loc></url>
   <url><loc>${project['canonical_url']}classical</loc></url>
   <url><loc>${project['canonical_url']}signatures</loc></url>
+  <url><loc>${project['canonical_url']}recipes</loc></url>
+  <url><loc>${project['canonical_url']}cli</loc></url>
   <url><loc>${project['canonical_url']}claim-boundary</loc></url>
 </urlset>
 ''';

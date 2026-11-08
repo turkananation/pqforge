@@ -6,10 +6,16 @@
   <url><loc>https://turkananation.github.io/pqforge/identity.json</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/release-notes</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/getting-started</loc></url>
+  <url><loc>https://turkananation.github.io/pqforge/agreement</loc></url>
+  <url><loc>https://turkananation.github.io/pqforge/envelopes</loc></url>
+  <url><loc>https://turkananation.github.io/pqforge/keys</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/hpke</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/certificates</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/symmetric</loc></url>
+  <url><loc>https://turkananation.github.io/pqforge/bytes</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/classical</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/signatures</loc></url>
+  <url><loc>https://turkananation.github.io/pqforge/recipes</loc></url>
+  <url><loc>https://turkananation.github.io/pqforge/cli</loc></url>
   <url><loc>https://turkananation.github.io/pqforge/claim-boundary</loc></url>
 </urlset>
