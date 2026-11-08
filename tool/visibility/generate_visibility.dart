@@ -565,7 +565,7 @@ String _siteIndex(JsonMap manifest) {
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">From <a href="${_html(project['lab_url'] as String)}" rel="noopener">${_html(project['lab_name'] as String)}</a>, the lab behind pqforge</p>
+        <p class="eyebrow">A product of <a href="${_html(project['lab_url'] as String)}" rel="noopener">${_html(project['lab_name'] as String)}</a></p>
         <h1>Encrypt files, folders, text, media, webhooks, tokens, and server sessions.</h1>
         <p class="lede">${_html(project['summary'] as String)}</p>
         <div class="hero-actions">
@@ -694,7 +694,7 @@ dart run pqforge compose-sign --ml-dsa-secret keys/vault.sign.secret.wrapped.jso
     <a href="${_html(project['repository'] as String)}" rel="noopener">${_icon('github')}<span>GitHub</span></a>
     <a href="${_html(project['pub_dev'] as String)}" rel="noopener">${_icon('pub')}<span>pub.dev</span></a>
     <a href="${_html(project['wiki'] as String)}" rel="noopener">${_icon('book')}<span>Wiki</span></a>
-    <a href="${_html(project['lab_url'] as String)}" rel="noopener">${_icon('blocks')}<span>${_html(project['lab_name'] as String)}</span></a>
+    <a href="${_html(project['lab_url'] as String)}" rel="noopener">${_icon('blocks')}<span>A product of ${_html(project['lab_name'] as String)}</span></a>
     <a href="${_html(pqcrypto['pqcrypto_pub_dev'] as String)}" rel="noopener">${_icon('blocks')}<span>pqcrypto</span></a>
   </footer>
 </body>

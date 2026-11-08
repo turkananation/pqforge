@@ -57,8 +57,11 @@ void main() {
           ),
           footer: footer(classes: 'site-footer', [
             p([
+              a(href: 'https://yardenah.com', target: Target.blank, [
+                Component.text('A product of Yardenah PQ'),
+              ]),
               Component.text(
-                'pqforge 0.4.12. Built with Dart and Jaspr. '
+                '. pqforge 0.4.12. Built with Dart and Jaspr. '
                 'Not a FIPS 140 module. ',
               ),
               a(

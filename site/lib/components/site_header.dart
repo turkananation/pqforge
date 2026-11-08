@@ -19,6 +19,7 @@ class SiteHeader extends StatelessComponent {
           span([Component.text('pqforge')]),
         ]),
         nav(classes: 'pqf-nav', [
+          a(href: 'https://yardenah.com', [Component.text('Yardenah')]),
           a(href: 'hpke', [Component.text('HPKE')]),
           a(href: 'certificates', [Component.text('Certificates')]),
           a(href: 'symmetric', [Component.text('Symmetric')]),
