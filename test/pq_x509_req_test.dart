@@ -62,10 +62,17 @@ void main() {
         '-noout',
         '-verify',
         '-subject',
+        '-nameopt',
+        'oneline',
       ]);
       expect(verified, contains('verify OK'));
-      expect(verified, contains('C = KE'));
-      expect(verified, contains('CN = localhost'));
+      // OpenSSL 3.0 prints "C = KE". A newer runner default prints "C=KE".
+      // The distinguished name is the assertion, not the spaces.
+      final subject = verified.replaceAll(' ', '');
+      expect(subject, contains('C=KE'));
+      expect(subject, contains('ST=Nairobi'));
+      expect(subject, contains('O=pqforge'));
+      expect(subject, contains('CN=localhost'));
 
       final issued = Process.runSync(Platform.resolvedExecutable, [
         'run',
