@@ -4,7 +4,7 @@ description: Every pqforge command, and which API it calls.
 ---
 
 The executable is `dart run pqforge`, or `pqforge` after you activate the
-package. `version` prints `0.4.12` from `bin/src/version.g.dart`, which is
+package. `version` prints `0.4.13` from `bin/src/version.g.dart`, which is
 generated from the `version:` field in `pubspec.yaml`. Those two are not
 allowed to drift. CI checks the generator.
 

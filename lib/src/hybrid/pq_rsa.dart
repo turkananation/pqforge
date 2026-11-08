@@ -1,10 +1,10 @@
 /// RSA PKCS#1 v1.5 and RSASSA-PSS over SHA-256, SHA-384, and SHA-512.
 ///
 /// PointyCastle already implements the padding. The modulus and exponent stay
-/// byte strings at this boundary. A [BigInt] is built only after the modulus
-/// is 2048, 3072, or 4096 bits and the exponent is an odd integer in
-/// `3 .. 2^32-1`. Anything else makes verify return false, before that
-/// conversion.
+/// byte strings at this boundary. Verification accepts a 1024, 2048, 3072, or
+/// 4096 bit modulus (RFC 5702). Generation stays 2048, 3072, or 4096. The
+/// exponent must be an odd integer in `3 .. 2^32-1`. Anything else makes
+/// verify return false, before a `BigInt` is built.
 ///
 /// Verify hashes [message] itself. Do not pre-hash. Verify never throws.
 library;
@@ -16,11 +16,13 @@ import 'package:pointycastle/export.dart' as pc;
 
 /// Digest used by [PqRsa]. The signer hashes the message.
 enum PqRsaHash {
+  sha1,
   sha256,
   sha384,
   sha512;
 
   int get digestBytes => switch (this) {
+    PqRsaHash.sha1 => 20,
     PqRsaHash.sha256 => 32,
     PqRsaHash.sha384 => 48,
     PqRsaHash.sha512 => 64,
@@ -52,6 +54,7 @@ class PqRsa {
   const PqRsa._();
 
   static const _digestId = <PqRsaHash, String>{
+    PqRsaHash.sha1: '06052b0e03021a',
     PqRsaHash.sha256: '0609608648016503040201',
     PqRsaHash.sha384: '0609608648016503040202',
     PqRsaHash.sha512: '0609608648016503040203',
@@ -140,6 +143,15 @@ class PqRsa {
     if (salt < 0 || salt > 512) {
       throw ArgumentError.value(salt, 'saltLength', 'expected 0..512');
     }
+    final modulus = _modulus(privateKey.modulus);
+    if (modulus == null ||
+        modulus.bitLength ~/ 8 < hash.digestBytes + salt + 2) {
+      throw ArgumentError.value(
+        salt,
+        'saltLength',
+        'key is too small for this hash',
+      );
+    }
     final signer = pc.PSSSigner(pc.RSAEngine(), _digest(hash), _digest(hash))
       ..init(
         true,
@@ -168,7 +180,9 @@ class PqRsa {
     final salt = saltLength ?? hash.digestBytes;
     if (salt < 0 || salt > 512) return false;
     final key = _public(modulus, exponent);
-    if (key == null || signature.length != key.modulus!.bitLength ~/ 8) {
+    if (key == null ||
+        signature.length != key.modulus!.bitLength ~/ 8 ||
+        key.modulus!.bitLength ~/ 8 < hash.digestBytes + salt + 2) {
       return false;
     }
     try {
@@ -212,12 +226,14 @@ class PqRsa {
     return built;
   }
 
-  /// Null unless the unsigned integer is exactly 2048, 3072, or 4096 bits.
+  /// Null unless the unsigned integer is 1024, 2048, 3072, or 4096 bits.
   static BigInt? _modulus(Uint8List bytes) {
     final stripped = _strip(bytes);
     if (stripped.isEmpty) return null;
     final bits = (stripped.length - 1) * 8 + _bitLength(stripped[0]);
-    if (bits != 2048 && bits != 3072 && bits != 4096) return null;
+    if (bits != 1024 && bits != 2048 && bits != 3072 && bits != 4096) {
+      return null;
+    }
     return _unsigned(stripped);
   }
 
@@ -279,6 +295,7 @@ class PqRsa {
   }
 
   static pc.Digest _digest(PqRsaHash hash) => switch (hash) {
+    PqRsaHash.sha1 => pc.SHA1Digest(),
     PqRsaHash.sha256 => pc.SHA256Digest(),
     PqRsaHash.sha384 => pc.SHA384Digest(),
     PqRsaHash.sha512 => pc.SHA512Digest(),

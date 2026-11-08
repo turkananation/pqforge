@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.13
+
+RSA verification accepts a 1024-bit modulus. No `.pqf` / `.pqfs`
+wire-format change. 0.4.12 stays the brainpool and FFDHE release.
+
+- **`PqRsa.verifyPkcs1` and `verifyPss`** accept a 1024, 2048, 3072, or
+  4096 bit modulus. RFC 5702 requires a validator to check 1024-bit
+  RSASHA256 keys. A 1024-bit modulus used to return false before the
+  signature was read. `generateKeyPair` still refuses 1024, 512, and
+  8192.
+- **`PqRsaHash.sha1`** is PKCS#1 and PSS for a standard that still names
+  SHA-1, such as DNSSEC algorithms 5 and 7. It is not a hash for new
+  work.
+
 ## 0.4.12
 
 Brainpool and RFC 7919 finite-field agreement. No `.pqf` / `.pqfs`

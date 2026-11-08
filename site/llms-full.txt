@@ -6,7 +6,7 @@ Repository: https://github.com/turkananation/pqforge
 Package: https://pub.dev/packages/pqforge
 API docs: https://pub.dev/documentation/pqforge/latest/
 Lab: Yardenah PQ (https://yardenah.com)
-Version: 0.4.12
+Version: 0.4.13
 
 ## Identity
 
