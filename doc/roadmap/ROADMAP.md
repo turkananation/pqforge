@@ -31,3 +31,12 @@
 - Freeze envelope v1 compatibility.
 - Publish migration policy.
 - Maintain green CI, dry-run publish, and evidence-scoped docs.
+
+## Protocols
+
+X-Wing, the Double Ratchet, PQXDH, and the Sparse Post-Quantum Ratchet are
+specified in [../protocols/README.md](../protocols/README.md). None of those
+four is in the library. HPKE is. The custom hybrid
+(`PqForgeHybridKeyAgreement`) stays the default and is not one of those
+protocols.
+
