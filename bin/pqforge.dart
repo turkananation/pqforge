@@ -14,6 +14,7 @@ import 'package:pqforge/src/exceptions/pqforge_exception.dart';
 import 'src/cert_commands.dart';
 import 'src/compose_commands.dart';
 import 'src/console.dart';
+import 'src/hpke_commands.dart';
 import 'src/hybrid_commands.dart';
 import 'src/lifecycle_commands.dart';
 import 'src/pqc_commands.dart';
@@ -46,6 +47,7 @@ const Map<String, List<String>> _groups = {
     'ecdsa-verify',
   ],
   'Certificates': ['cert'],
+  'HPKE': ['hpke'],
   'Maintenance': ['version', 'uninstall'],
 };
 
@@ -129,6 +131,7 @@ final class PqForgeRunner extends CommandRunner<void> {
     addCommand(EcdsaSignCommand());
     addCommand(EcdsaVerifyCommand());
     addCommand(CertCommand());
+    addCommand(HpkeCommand());
     addCommand(VersionCommand());
     addCommand(UninstallCommand());
   }

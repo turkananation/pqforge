@@ -3,14 +3,14 @@
 These pages separate constructions that share ingredients and do not share
 outputs. A matching length is not a matching protocol.
 
-Nothing on the four roadmap pages is exported from `lib/pqforge.dart`. The
-names in their proposed API blocks are the shape of a later release. They
-are not calls that work in 0.4.13.
+X-Wing is exported. The three ratchet pages are not. Names in those
+proposed API blocks are the shape of a later release. They are not calls
+that work today.
 
-| Document | In 0.4.13 | When it can land |
+| Document | Shipped | When it can land |
 | --- | --- | --- |
-| [HPKE.md](HPKE.md) | Yes. `PqHpke` | Stays. A future X-Wing KEM id would be added beside the five DHKEMs |
-| [XWING.md](XWING.md) | No | 0.4.14, and only after the three draft-11 Appendix C vectors match |
+| [HPKE.md](HPKE.md) | Yes. `PqHpke` | Stays. X-Wing is `HpkeKem.xWing` beside the five DHKEMs |
+| [XWING.md](XWING.md) | Yes. `PqXWing` | Draft-11 Appendix C matches. Not a `.pqf` algorithm |
 | [DOUBLE_RATCHET.md](DOUBLE_RATCHET.md) | No | The release after X-Wing. A session, not a KEM |
 | [PQXDH.md](PQXDH.md) | No | After the Double Ratchet, and only once XEdDSA exists. Ed25519 is not XEdDSA |
 | [SPARSE_POST_QUANTUM_RATCHET.md](SPARSE_POST_QUANTUM_RATCHET.md) | No | Last. The ML-KEM Braid needs an incremental ML-KEM interface this package does not have |
@@ -24,10 +24,10 @@ construction is not shipped under that name.
 
 ## Order
 
-1. X-Wing, as its own KEM, with HPKE id `0x647A` only after the KEM vectors
-   pass.
+1. X-Wing, as its own KEM, with HPKE id `0x647A`. The three draft-11
+   Appendix C vectors match.
 2. Double Ratchet, which can be seeded by any 32-byte shared secret,
-   including a future X-Wing secret. That composition is not PQXDH.
+   including `PqXWing.decapsulate`. That composition is not PQXDH.
 3. PQXDH, which returns that 32-byte secret and a Double Ratchet already
    started. Its KEM parameter stays the KEM in the PQXDH spec. It is not
    X-Wing.

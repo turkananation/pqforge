@@ -8,8 +8,8 @@ revision 4, 2025-11-04.
 
 The Double Ratchet starts from a 32-byte shared secret that some other
 protocol already agreed. [PQXDH](PQXDH.md) is one way to agree that
-secret. A future X-Wing decapsulation is another. Using X-Wing to seed a
-ratchet is not PQXDH. The ratchet does not itself authenticate the peer.
+secret. `PqXWing.decapsulate` is another. Using that 32-byte result to
+seed a ratchet is not PQXDH. The ratchet does not itself authenticate the peer.
 
 ## The two ratchets
 
@@ -79,7 +79,7 @@ These symbols are not exported.
 
 ```dart
 final session = DoubleRatchet.initiate(
-  sharedSecret: secret, // SharedSecret32, from PQXDH or from X-Wing
+  sharedSecret: secret, // 32 bytes, from PQXDH or from PqXWing.decapsulate
   remoteRatchetKey: bobRatchet.publicKey,
 );
 final sealed = session.seal(plaintext, aad: aad);
@@ -109,6 +109,6 @@ state cannot grow a second format.
   map.
 - After a Diffie-Hellman step, the previous chain key does not derive the
   new message key.
-- A `SharedSecret32` produced by the future X-Wing decapsulation is
-  accepted. A 1216-byte X-Wing public key is not.
+- The 32-byte result of `PqXWing.decapsulate` is an acceptable root. A
+  1216-byte X-Wing public key is not.
 - The default `PqForgeHybridKeyAgreement` test vectors are unchanged.

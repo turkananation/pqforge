@@ -544,6 +544,31 @@ dart run pqforge ecdsa-verify \
 `verify`, `hybrid-verify`, and `ecdsa-verify` exit `0` on a valid signature and
 `1` on a failed one, so they slot directly into shell `&&` chains and CI gates.
 
+## HPKE (X-Wing)
+
+`hpke` is not `encrypt` and not `keygen`. It does not read or write `.pqf`
+or `.pqfs`. The output magic is `XW01`. `--kem` accepts only `xwing`.
+PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet are not
+flags here.
+
+```bash
+dart run pqforge hpke keygen --key-id demo --out-dir keys
+dart run pqforge hpke seal \
+  --recipient-public keys/demo.xwing.public.json \
+  --in note.txt \
+  --out note.xwing
+dart run pqforge hpke open \
+  --recipient-secret keys/demo.xwing.secret.json \
+  --in note.xwing \
+  --out note.opened.txt
+```
+
+`keygen` writes `demo.xwing.public.json` (`kind` `xwing-public`) and
+`demo.xwing.secret.json` (`kind` `xwing-secret`). `algorithmId` is
+`xwing`. `seal` refuses a different kind. `--cipher` is `aes-256-gcm`
+(the default), `aes-128-gcm`, or `chacha20-poly1305`. The default
+`keygen` and `encrypt` commands are unchanged.
+
 ## Certificates
 
 `cert` speaks the same objects as `openssl req` and `openssl x509 -req`.

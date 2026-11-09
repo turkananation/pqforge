@@ -1,8 +1,8 @@
 # HPKE
 
 Status: shipped. `PqHpke` is in the library. This page describes that code.
-The five DHKEMs below are the implemented set. X-Wing is not one of them.
-See [XWING.md](XWING.md).
+The five RFC 9180 DHKEMs below are implemented. X-Wing is an additional
+KEM, not one of those five. See [XWING.md](XWING.md).
 
 `PqHpke` is [RFC 9180](https://www.rfc-editor.org/rfc/rfc9180) Hybrid Public
 Key Encryption. Import it from the web-safe entrypoint:
@@ -13,13 +13,15 @@ import 'package:pqforge/pqforge.dart';
 
 It does not change `.pqf` or `.pqfs`. It is not TLS, not a trust store, and
 not a FIPS module. The five DHKEMs in RFC 9180 are implemented. X448 is
-not a constant-time ladder.
+not a constant-time ladder. `HpkeKem.xWing` (`0x647A`) is
+draft-connolly-cfrg-xwing-kem-11. It is not a DHKEM and not a FIPS
+construction. Auth and authPSK throw. Base and PSK do not.
 
 ## Suites
 
 | Piece | Values |
 | --- | --- |
-| KEM | DHKEM(X25519, HKDF-SHA256) `0x0020`, DHKEM(X448, HKDF-SHA512) `0x0021`, DHKEM(P-256, HKDF-SHA256) `0x0010`, DHKEM(P-384, HKDF-SHA384) `0x0011`, DHKEM(P-521, HKDF-SHA512) `0x0012` |
+| KEM | DHKEM(X25519, HKDF-SHA256) `0x0020`, DHKEM(X448, HKDF-SHA512) `0x0021`, DHKEM(P-256, HKDF-SHA256) `0x0010`, DHKEM(P-384, HKDF-SHA384) `0x0011`, DHKEM(P-521, HKDF-SHA512) `0x0012`, and X-Wing `0x647A` |
 | KDF | HKDF-SHA256 `0x0001`, HKDF-SHA384 `0x0002`, HKDF-SHA512 `0x0003` |
 | AEAD | AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, export-only `0xFFFF` |
 | Mode | base `0x00`, PSK `0x01`, auth `0x02`, authPSK `0x03` |
@@ -157,8 +159,11 @@ peer to the OpenSSL pin. That pin is OpenSSL 4.1.0, whose `hpke.h` exports
 these calls. The run recorded here is OpenSSL 3.5.9.
 
 The X25519 testing seed BoringSSL accepts is the ephemeral private key.
-The P-256 testing seed is the `DeriveKeyPair` ikm. `PqHpke.setupSender`'s
-`ephemeralIkm` is always the ikm, for every KEM. Leave it unset outside tests.
+The P-256 testing seed is the `DeriveKeyPair` ikm. For the five DHKEMs,
+`ephemeralIkm` is that ikm. For `HpkeKem.xWing` it is the 64-byte
+encapsulation seed, and 32 bytes is an error. Leave it unset outside
+tests. X-Wing known answers are draft-11 Appendix C, not the RFC 9180
+file. There is no BoringSSL or OpenSSL comparison for KEM `0x647A`.
 
 ## The shape a TLS stack needs
 

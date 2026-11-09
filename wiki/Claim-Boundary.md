@@ -14,7 +14,10 @@ Allowed claims:
 - RFC 9180 HPKE over X25519, X448, P-256, P-384, and P-521. Not a FIPS
   module and not TLS. BoringSSL evidence is base and auth on X25519 and
   P-256. OpenSSL evidence is all four modes on X448 and P-521. `PqX448` is
-  not a constant-time claim.
+  not a constant-time claim. X-Wing (`PqXWing`, `HpkeKem.xWing`, `0x647A`)
+  is an additional KEM. It is not a FIPS construction, not an authenticated
+  KEM, and not a `.pqf` algorithm. There is no BoringSSL or OpenSSL
+  evidence for that id.
 - Best-effort zeroization in Dart.
 
 Forbidden claims:

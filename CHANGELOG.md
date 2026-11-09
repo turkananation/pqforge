@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+X-Wing, draft-connolly-cfrg-xwing-kem-11, beside the custom hybrid.
+No `.pqf` / `.pqfs` wire-format change. 0.4.13 stays the RSA SHA-224
+release.
+
+- **`PqXWing`** — 32-byte seed, 1216-byte encapsulation key, 1120-byte
+  ciphertext, 32-byte shared secret. The combiner is
+  `SHA3-256(ss_M || ss_X || ct_X || pk_X || 5c2e2f2f5e5c)`, label last.
+  Known answers are the three draft-11 Appendix C records. A flipped
+  ciphertext returns 32 bytes. An ML-KEM encapsulation key that fails
+  the coefficient check throws before a ciphertext is returned. An
+  all-zero X25519 public key still encapsulates. The expanded ML-KEM
+  private key is not returned.
+- **`HpkeKem.xWing`** is id `0x647A`. Base and PSK seal and open. Auth
+  and authPSK throw before encapsulation. `DeriveKeyPair` is
+  `SHAKE256(ikm, 32)` and then the seed. `ephemeralIkm` for this KEM is
+  the 64-byte encapsulation seed. The five DHKEMs still take the RFC
+  9180 ikm. The suite KDF stays HKDF.
+- **`PqHybridAgreementMode.xWing`** is opt-in.
+  `encapsulateXWing` and `decapsulateXWing` throw on the default mode.
+  `initiate` and `accept` throw on the X-Wing mode. The default
+  handshake bytes are unchanged.
+- **`pqforge hpke keygen|seal|open`** writes magic `XW01`. `--kem`
+  accepts only `xwing`. It is not `encrypt` and not `keygen --kem`.
+- **`PqFipsMode`** rejects X-Wing at `PqHpke` and at
+  `PqForgeHybridKeyAgreement`. `PqXWing` does not read the flag. X-Wing
+  is not a FIPS construction. There is no BoringSSL or OpenSSL
+  comparison for `0x647A`.
+
 ## 0.4.13
 
 RSA verification accepts a 1024-bit modulus. No `.pqf` / `.pqfs`

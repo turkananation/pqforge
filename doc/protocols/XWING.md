@@ -1,8 +1,9 @@
 # X-Wing
 
-Status: not implemented. No `PqXWing` symbol exists in `lib/`. Target
-release: 0.4.14. This page is the contract for that change. It is not a
-call that works today.
+Status: shipped. `PqXWing`, `HpkeKem.xWing`, and `PqXWingMessage` are
+exported from `package:pqforge/pqforge.dart`. The custom hybrid stays
+the default. `.pqf` and `.pqfs` are unchanged. This is not PQXDH, not
+the Double Ratchet, and not the Sparse Post-Quantum Ratchet.
 
 Specification: [draft-connolly-cfrg-xwing-kem-11](https://datatracker.ietf.org/doc/draft-connolly-cfrg-xwing-kem/).
 The construction paper is [ePrint 2024/039](https://eprint.iacr.org/2024/039).
@@ -47,7 +48,7 @@ stored. The stored secret remains the 32-byte seed.
 `eseed` splits as ML-KEM encapsulation coins, then the X25519 ephemeral
 scalar. The first 32 bytes are not the scalar.
 
-## What the tests have to match
+## What the tests match
 
 Appendix C of draft-11 has three records: `seed`, `pk`, `eseed`, `ct`,
 `ss`. The appendix heading still says those vectors are to be replaced, so
@@ -63,7 +64,7 @@ For each record, `GenerateKeyPairDerand(seed)` equals `pk`,
 seed)` equals `ss`. A local round trip is not the acceptance test. Both
 sides can share a wrong label order and still agree.
 
-Also required, once the vectors pass:
+Also required:
 
 - A length that is one byte off throws. No slicing.
 - A 64-byte ML-KEM seed passed as an X-Wing secret throws.
@@ -96,39 +97,75 @@ seed. `GenerateKeyPair` is 32 raw random bytes and is not shaken.
 The HPKE sender's ephemeral input for this KEM is the 64-byte `eseed`.
 A 32-byte value is an error. It does not go through `DeriveKeyPair`. The
 suite KDF stays HKDF. The KEM secret is not hashed a second time with
-SHA3-256 inside the key schedule.
+SHA3-256 inside the key schedule. PSK uses that schedule. Auth does not
+run.
 
-Base mode can seal and open only after the three KEM vectors match. There
-is no BoringSSL or OpenSSL comparison until the pinned build exports
+`pqforge hpke seal` writes magic `XW01`. It does not write `PQF1`.
+There is no BoringSSL or OpenSSL comparison until a pin exports
 `0x647A`.
 
-## Proposed API
-
-These symbols are not exported.
+## API
 
 ```dart
-enum PqHybridAgreementMode { pqforge, xWing }
+final pair = await PqXWing.generateKeyPair();
+final enc = await PqXWing.encapsulate(pair.publicKey);
+final ss = await PqXWing.decapsulate(enc.ciphertext, pair.secretKey);
 
-final kp = PqXWing.generateKeyPair(); // secret is 32 bytes, public is 1216
-final enc = PqXWing.encapsulate(kp.publicKey);
-final ss = PqXWing.decapsulate(enc.ciphertext, kp.secretKey);
+final known = await PqXWing.generateKeyPairDerand(seed);
+final derand = await PqXWing.encapsulateDerand(known.publicKey, eseed);
 
-// Opt-in. The default mode stays pqforge.
+final derived = await PqHpke.deriveKeyPair(kem: HpkeKem.xWing, ikm: ikm);
+
 final agreement = PqForgeHybridKeyAgreement(
   mode: PqHybridAgreementMode.xWing,
 );
+final out = await agreement.encapsulateXWing(known.publicKey, eseed: eseed);
+final opened = await agreement.decapsulateXWing(out.ciphertext, seed);
 ```
 
-`PqXWingPublicKey`, `PqXWingCiphertext`, and `SharedSecret32` check their
-lengths in the constructor. `initiate` and `accept` on the `xWing` mode
-throw before the deployment-salt check. Encapsulate on the `pqforge` mode
-throws. The X-Wing mode has no salt, transcript, or info parameter.
+`pair.secretKey` is 32 bytes. `pair.publicKey` is 1216. Lengths that
+are off by one byte throw. There is no `PqXWingPublicKey` type.
 
-`keygen --kem xwing` is opt-in. A default keygen emits the same files it
-emits in 0.4.13.
+`PqForgeHybridKeyAgreement()` stays `PqHybridAgreementMode.pqforge`.
+`initiate` and `accept` on that mode are unchanged.
+`encapsulateXWing` on that mode throws. `initiate` and `accept` on
+`PqHybridAgreementMode.xWing` throw `X-Wing does not use the pqforge
+handshake` before the deployment salt is read. That mode has no salt,
+transcript, or info parameter.
 
-## Out of scope for 0.4.14
+`PqFipsMode.enable()` makes `PqHpke` and `PqForgeHybridKeyAgreement`
+throw `FIPS mode forbids X-Wing`. `PqXWing` itself does not read the
+flag, so the known answers still run.
 
-HPKE KEM ids `0x0050` and `0x0051` without their own known-answer tests.
+The 32-byte seed can be passed to `wrapKeyWithPassphrase`. The expanded
+ML-KEM private key is not returned and is not wrapped.
+
+## CLI
+
+`keygen` and `encrypt` do not grow an X-Wing flag. The command is
+`hpke`. `--kem` accepts only `xwing`.
+
+```bash
+pqforge hpke keygen --key-id demo --out-dir .
+pqforge hpke seal \
+  --recipient-public demo.xwing.public.json \
+  --in plain.txt --out out.xwing
+pqforge hpke open \
+  --recipient-secret demo.xwing.secret.json \
+  --in out.xwing --out opened.txt
+```
+
+`keygen` writes `demo.xwing.public.json` (`kind` `xwing-public`) and
+`demo.xwing.secret.json` (`kind` `xwing-secret`). `algorithmId` is
+`xwing`. `seal` refuses any other kind. `--cipher` is `aes-256-gcm`
+(the default), `aes-128-gcm`, or `chacha20-poly1305`. The KEM stays
+X-Wing.
+
+PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet are not
+flags on this command.
+
+## Out of scope
+
+HPKE KEM ids `0x0040`, `0x0041`, `0x0042`, `0x0050`, and `0x0051`.
 Certificates and the `id-XWing` OID. An expanded-key cache. A `.pqf`
 branch. Replacing `PqForgeHybridKeyAgreement`.

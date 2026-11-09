@@ -15,7 +15,12 @@ Allowed wording:
   HKDF-SHA384, HKDF-SHA512, and the AEADs the package implements. BoringSSL
   `EVP_HPKE` evidence is base and auth on X25519 and P-256 only. OpenSSL
   `OSSL_HPKE` evidence is all four modes on X448 and P-521 only. It is not a
-  FIPS module and not TLS.
+  FIPS module and not TLS. X-Wing (`PqXWing`, `HpkeKem.xWing`, id
+  `0x647A`, draft-connolly-cfrg-xwing-kem-11) is an additional KEM. It is
+  not a FIPS construction. FIPS mode rejects it at `PqHpke` and
+  `PqForgeHybridKeyAgreement`. Auth is not defined. It does not change
+  `.pqf` or `.pqfs`. There is no BoringSSL or OpenSSL evidence for
+  `0x647A`.
 - Brainpool ECDH (`PqBrainpool`) for brainpoolP256r1, brainpoolP384r1, and
   brainpoolP512r1, and RFC 7919 FFDHE (`PqFfdhe`) for the five named groups
   OpenSSL negotiates. BoringSSL does not negotiate these. The byte layout
@@ -49,6 +54,8 @@ Forbidden wording:
   SHA2-128s and SHAKE-256f. Those two, ML-KEM-768, ML-KEM-1024, and
   ML-DSA-44/65/87 are the sets that pin exports. The rest of SLH-DSA is
   an OpenSSL 4.1.0 check.
+- X-Wing is a FIPS construction, a `.pqf` or `.pqfs` algorithm, or
+  checked against BoringSSL or OpenSSL. Id `0x647A` has no such evidence.
 
 `pqforge` can inherit algorithm-evidence wording from `pqcrypto`, but it must not
 upgrade that into module-validation wording. Public-key trust, identity vetting,

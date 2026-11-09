@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-11-08",
+  "last_updated": "2026-11-09",
   "generated_by": "dart run tool/visibility/generate_visibility.dart",
   "project": {
     "name": "pqforge",
     "title": "pqforge: Post-Quantum Application Recipes for Dart",
     "short_title": "pqforge",
     "tagline": "Post-quantum encryption, signing, hybrid sessions, gigabyte-scale streaming, and a CLI for Dart, Flutter, and Serverpod — built on pqcrypto ML-KEM/ML-DSA/SLH-DSA.",
-    "summary": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA hybrids and signatures, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign is an opt-in 2-leg or 3-leg signature. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group. The core is pure Dart and web-safe — no dart:ffi.",
+    "summary": "pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, X-Wing (draft-connolly-cfrg-xwing-kem-11, not a .pqf algorithm), AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA hybrids and signatures, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign is an opt-in 2-leg or 3-leg signature. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group. The core is pure Dart and web-safe — no dart:ffi.",
     "license": "MIT",
     "maintainer": "Turkana Nation",
     "canonical_url": "https://turkananation.github.io/pqforge/",
@@ -25,7 +25,7 @@
   "pqcrypto_relationship": {
     "summary": "pqforge is the application layer built on top of pqcrypto. pqcrypto provides the post-quantum primitives; pqforge provides everything you need to ship a feature with them.",
     "pqcrypto_is": "pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM, FIPS 204 ML-DSA, and FIPS 205 SLH-DSA (all 12 parameter sets), plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.",
-    "pqforge_is": "pqforge is the composition package: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM/ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 and PKCS#10, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, identity bindings), compose-sign, and a CLI. It composes pqcrypto SLH-DSA into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign can take one SLH-DSA leg when that key is passed.",
+    "pqforge_is": "pqforge is the composition package: KEM-DEM envelopes, RFC 9180 HPKE, X-Wing (draft-connolly-cfrg-xwing-kem-11, not a .pqf algorithm), AES-256-GCM/ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 and PKCS#10, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, identity bindings), compose-sign, and a CLI. It composes pqcrypto SLH-DSA into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign can take one SLH-DSA leg when that key is passed.",
     "pqcrypto_pub_dev": "https://pub.dev/packages/pqcrypto",
     "pqcrypto_repository": "https://github.com/turkananation/pqcrypto",
     "differentiation": [
@@ -42,7 +42,7 @@
     "SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign. compose-sign can take one SLH-DSA leg when that key is passed",
     "AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine",
     "RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD",
-    "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384",
+    "RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384. X-Wing (HpkeKem.xWing, 0x647A, draft-connolly-cfrg-xwing-kem-11) is an additional base and PSK KEM. Auth is rejected. Not a FIPS construction. Not a .pqf or .pqfs algorithm. No BoringSSL or OpenSSL evidence for 0x647A",
     "X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT",
     "ECDSA P-384 (PqEcdsaP384, low-S), ECDSA P-521 (PqEcdsaP521, low-S; not the HPKE share and not a TLS group), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519) and Ed448 (PqEd448, empty context; not an X.509 algorithm)",
     "Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB",
@@ -69,6 +69,8 @@
     "RC4 or unauthenticated encryption",
     "BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512",
     "An OpenSSL HPKE claim for X25519, P-256, or P-384",
+    "X-Wing as a FIPS construction, an authenticated HPKE KEM, a .pqf or .pqfs algorithm, or a BoringSSL or OpenSSL interop claim",
+    "PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet",
     "A WebPKI trust store, AIA, OCSP fetching, or certificate transparency",
     "ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs",
     "SHA-1 as a signature or as the hash for a new protocol. PqBytes.sha1 is only the RFC 3174 digest"
@@ -280,7 +282,12 @@
     {
       "title": "HPKE",
       "url": "doc/protocols/HPKE.md",
-      "description": "RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary."
+      "description": "RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary. X-Wing is the additional KEM in XWING.md."
+    },
+    {
+      "title": "X-Wing",
+      "url": "doc/protocols/XWING.md",
+      "description": "draft-connolly-cfrg-xwing-kem-11 as PqXWing and HpkeKem.xWing (0x647A). Not the custom hybrid and not a .pqf algorithm."
     },
     {
       "title": "Signatures",
@@ -383,7 +390,7 @@
     },
     {
       "question": "What HPKE does pqforge implement?",
-      "answer": "RFC 9180 Hybrid Public Key Encryption as PqHpke. Modes are base, PSK, auth, and authPSK. KEMs are DHKEM(X25519, HKDF-SHA256), DHKEM(X448, HKDF-SHA512), DHKEM(P-256, HKDF-SHA256), DHKEM(P-384, HKDF-SHA384), and DHKEM(P-521, HKDF-SHA512). Key-schedule KDFs are HKDF-SHA256, HKDF-SHA384, and HKDF-SHA512. AEADs are AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. A sender seals, a recipient opens, and export does not use the sequence number. X448 is RFC 7748 on Dart integers and is not a constant-time claim. BoringSSL 0.20261020.0 is checked for base and auth, both directions, on X25519 and P-256, with HKDF-SHA256 and HKDF-SHA384 and the three AEADs. That API has no PSK and no X448 or P-521. OpenSSL 3.5.9 OSSL_HPKE is checked for all four modes, both directions, on X448 and P-521, with HKDF-SHA256 and HKDF-SHA512 and the three AEADs. That is not an OpenSSL claim for X25519, P-256, or P-384. This is not TLS and not a FIPS module. .pqf and .pqfs are unchanged."
+      "answer": "RFC 9180 Hybrid Public Key Encryption as PqHpke. Modes are base, PSK, auth, and authPSK. KEMs are DHKEM(X25519, HKDF-SHA256), DHKEM(X448, HKDF-SHA512), DHKEM(P-256, HKDF-SHA256), DHKEM(P-384, HKDF-SHA384), and DHKEM(P-521, HKDF-SHA512). X-Wing is an additional KEM, HpkeKem.xWing, id 0x647A, from draft-connolly-cfrg-xwing-kem-11. It is not a DHKEM. Base and PSK work. Auth and authPSK throw. It is not a FIPS construction. FIPS mode rejects it at PqHpke and PqForgeHybridKeyAgreement. There is no BoringSSL or OpenSSL evidence for 0x647A. pqforge hpke writes magic XW01, not PQF1. The custom hybrid is unchanged. Key-schedule KDFs are HKDF-SHA256, HKDF-SHA384, and HKDF-SHA512. AEADs are AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. A sender seals, a recipient opens, and export does not use the sequence number. X448 is RFC 7748 on Dart integers and is not a constant-time claim. BoringSSL 0.20261020.0 is checked for base and auth, both directions, on X25519 and P-256, with HKDF-SHA256 and HKDF-SHA384 and the three AEADs. That API has no PSK and no X448 or P-521. OpenSSL 3.5.9 OSSL_HPKE is checked for all four modes, both directions, on X448 and P-521, with HKDF-SHA256 and HKDF-SHA512 and the three AEADs. That is not an OpenSSL claim for X25519, P-256, or P-384. This is not TLS and not a FIPS module. .pqf and .pqfs are unchanged."
     },
     {
       "question": "What is the ChaCha20 keystream for?",

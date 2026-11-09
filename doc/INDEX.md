@@ -40,7 +40,7 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | --- | --- |
 | [protocols/README.md](protocols/README.md) | Which protocol is which, what is shipped, and the order they land |
 | [protocols/HPKE.md](protocols/HPKE.md) | RFC 9180 HPKE as implemented by `PqHpke` |
-| [protocols/XWING.md](protocols/XWING.md) | X-Wing KEM. Not implemented. Target: 0.4.14 |
+| [protocols/XWING.md](protocols/XWING.md) | X-Wing KEM. `PqXWing` and `pqforge hpke`. Not `.pqf` |
 | [protocols/DOUBLE_RATCHET.md](protocols/DOUBLE_RATCHET.md) | Double Ratchet. Not implemented |
 | [protocols/PQXDH.md](protocols/PQXDH.md) | PQXDH. Not implemented. Needs XEdDSA |
 | [protocols/SPARSE_POST_QUANTUM_RATCHET.md](protocols/SPARSE_POST_QUANTUM_RATCHET.md) | Sparse Post-Quantum Ratchet and the Triple Ratchet. Not implemented |
