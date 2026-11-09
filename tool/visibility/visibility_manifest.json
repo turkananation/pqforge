@@ -279,7 +279,7 @@
     },
     {
       "title": "HPKE",
-      "url": "doc/HPKE.md",
+      "url": "doc/protocols/HPKE.md",
       "description": "RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary."
     },
     {

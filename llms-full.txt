@@ -214,7 +214,7 @@ Forbidden claims:
 - [Envelope Formats](https://github.com/turkananation/pqforge/blob/main/doc/architecture/ENVELOPE_FORMATS.md): The .pqf one-shot and .pqfs streaming container layouts and AAD binding.
 - [Threat Model](https://github.com/turkananation/pqforge/blob/main/doc/security/THREAT_MODEL.md): Assets, adversaries, what the package defends, and what the application must own.
 - [Key Custody](https://github.com/turkananation/pqforge/blob/main/doc/architecture/KEY_CUSTODY.md): Wrapped key storage and pluggable custody model.
-- [HPKE](https://github.com/turkananation/pqforge/blob/main/doc/HPKE.md): RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary.
+- [HPKE](https://github.com/turkananation/pqforge/blob/main/doc/protocols/HPKE.md): RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary.
 - [Signatures](https://github.com/turkananation/pqforge/blob/main/site/content/signatures.md): Opt-in dual and triple signature legs. Does not replace HPKE, certificates, ECDH, or envelope signatures.
 - [Claim Boundary](https://github.com/turkananation/pqforge/blob/main/doc/security/CLAIM_BOUNDARY.md): Allowed and forbidden claims for package consumers and agents.
 

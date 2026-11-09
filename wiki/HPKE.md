@@ -2,7 +2,7 @@
 
 `PqHpke` is RFC 9180 Hybrid Public Key Encryption. The long form, with the
 suite table and the BoringSSL sentence, is
-[doc/HPKE.md](https://github.com/turkananation/pqforge/blob/main/doc/protocols/HPKE.md).
+[doc/protocols/HPKE.md](https://github.com/turkananation/pqforge/blob/main/doc/protocols/HPKE.md).
 
 Modes: base, PSK, auth, authPSK.
 
