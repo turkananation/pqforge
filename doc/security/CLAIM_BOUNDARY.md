@@ -21,6 +21,12 @@ Allowed wording:
   `PqForgeHybridKeyAgreement`. Auth is not defined. It does not change
   `.pqf` or `.pqfs`. There is no BoringSSL or OpenSSL evidence for
   `0x647A`.
+- The Double Ratchet (`DoubleRatchet`) is Signal revision 4 over X25519
+  and pqforge AES-256-GCM or ChaCha20-Poly1305, with a 12-byte zero nonce
+  and a 40-byte header. Healing is classical. It is not PQXDH, not the
+  Sparse Post-Quantum Ratchet, not libsignal bytes, and not a FIPS
+  module. `PqFipsMode` refuses the ChaCha suite. `Pqxdh` and
+  `TripleRatchet` are exported and throw.
 - `PqFipsMode` is a process-wide switch, not a validated module. It also
   rejects RSA-SHA-1 and an RSA modulus under 2048 bits at `PqRsa.signPkcs1`
   and `signPss` (verify returns false). HPKE seal and open refuse an AEAD
@@ -63,6 +69,8 @@ Forbidden wording:
   an OpenSSL 4.1.0 check.
 - X-Wing is a FIPS construction, a `.pqf` or `.pqfs` algorithm, or
   checked against BoringSSL or OpenSSL. Id `0x647A` has no such evidence.
+- The Double Ratchet is libsignal-compatible, PQXDH, the Sparse
+  Post-Quantum Ratchet, header encryption, or a FIPS module.
 
 `pqforge` can inherit algorithm-evidence wording from `pqcrypto`, but it must not
 upgrade that into module-validation wording. Public-key trust, identity vetting,

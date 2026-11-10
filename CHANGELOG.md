@@ -6,8 +6,9 @@ Classical key generation reads `PqRandom`. Background isolates re-enable
 `PqFipsMode` and refuse a custom generator. HPKE seal and open refuse an
 AEAD other than AES-256-GCM while the flag is on. Sync AES-GCM uses the
 same pure-Dart engine as the fast path on little-endian hosts. The CLI
-takes `--fips` and `keygen --pbkdf2-iterations`. No `.pqf` / `.pqfs`
-wire-format change.
+takes `--fips` and `keygen --pbkdf2-iterations`. The Double Ratchet
+(Signal revision 4) is exported. PQXDH and the Triple Ratchet are
+exported and throw. No `.pqf` / `.pqfs` wire-format change.
 
 X-Wing, draft-connolly-cfrg-xwing-kem-11, beside the custom hybrid.
 No `.pqf` / `.pqfs` wire-format change. 0.4.13 stays the RSA SHA-224
@@ -63,6 +64,17 @@ release.
   not throw. Outside FIPS mode, SHA-1 and a 1024-bit verify stay legal.
   The mode is not a validated module.
 - **Folder unpack** refuses to follow a symlink under the output directory.
+- **`DoubleRatchet`** is Signal revision 4, sections 3 and 7.2, over
+  X25519 and pqforge AES-256-GCM or ChaCha20-Poly1305. HMAC is pqcrypto.
+  HKDF is RFC 5869 over that HMAC, because pqcrypto does not export HKDF.
+  The header is 40 bytes. The nonce is 12 zero bytes. SHA-512 chain and
+  message keys are the leftmost 32 bytes. `MAX_SKIP` defaults to 1000.
+  This is not a libsignal byte match, not PQXDH, not the Sparse
+  Post-Quantum Ratchet, and not a FIPS construction. `PqFipsMode` refuses
+  the ChaCha suite. `Pqxdh` and `TripleRatchet` are exported and throw:
+  XEdDSA is not in this package, and neither is the ML-KEM Braid's
+  incremental interface. A 1216-byte X-Wing key and an expanded ML-KEM
+  private key are rejected. No `.pqf` / `.pqfs` change.
 
 ## 0.4.13
 

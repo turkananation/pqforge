@@ -1,10 +1,11 @@
 # Sparse Post-Quantum Ratchet
 
-Status: not implemented. This is the last of the four protocols. It is not
-part of 0.4.14, and it does not start until the Double Ratchet page is
-implemented and the ML-KEM Braid's incremental interface is available.
-`pqcrypto`, as used here, exposes ML-KEM key generation, encapsulation,
-and decapsulation. It does not expose the split the braid requires.
+Status: scaffold. `TripleRatchet` and `SpqrKem` are exported.
+`TripleRatchet.initiate` checks the 32-byte inputs, then throws. The braid
+is not implemented. `pqcrypto` exposes ML-KEM key generation,
+encapsulation, and decapsulation. It does not expose the incremental
+interface the braid requires. A 1216-byte X-Wing key is rejected by
+`RatchetPublicKey` before that throw. `SpqrKem.xWing` is not a value.
 
 The Triple Ratchet is this protocol running beside the
 [Double Ratchet](DOUBLE_RATCHET.md). It is not a separate KEM, and it is
@@ -71,23 +72,24 @@ share inside the braid secret, and there is no
 epoch by calling ordinary `encapsulate` on a full 1184-byte key, on every
 message, is a different protocol. It must not be named this one.
 
-## Proposed API
+## API
 
-These symbols are not exported.
+The symbols are exported. `initiate` throws. It does not encapsulate.
 
 ```dart
-final session = TripleRatchet.initiate(
+// Throws. The braid's incremental interface is not in pqcrypto.
+final session = await TripleRatchet.initiate(
   sharedSecret: secret,             // SharedSecret32, from PQXDH
   remoteRatchetKey: bobRatchet.publicKey,
   kem: SpqrKem.mlKem768,            // the braid's KEM, not X-Wing
 );
-final sealed = session.seal(plaintext, aad: aad);
 ```
 
-`sealed` carries the Double Ratchet header and whatever braid chunk this
-message is responsible for. `open` advances either ratchet only when the
-bytes say it should. A chunk that fails its epoch check is rejected and
-does not move the root key.
+When the braid exists, `sealed` carries the Double Ratchet header and
+whatever braid chunk this message is responsible for. `open` advances
+either ratchet only when the bytes say it should. A chunk that fails its
+epoch check is rejected and does not move the root key. None of that
+runs today.
 
 `SpqrKem.xWing` is not a value. X-Wing remains the one-shot KEM in
 [XWING.md](XWING.md).

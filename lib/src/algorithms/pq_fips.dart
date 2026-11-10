@@ -10,7 +10,7 @@
 /// Enabling the mode enforces, at the package's sanctioned entry points:
 ///
 ///  * AEAD suite must be AES-256-GCM (`PqForgeSecureSession`,
-///    `PqForgeStreamCipher`, `PqHpke` seal and open);
+///    `PqForgeStreamCipher`, `PqHpke` seal and open, and `DoubleRatchet`);
 ///  * passphrase key wrapping must use PBKDF2-HMAC-SHA256 (SP 800-132), not
 ///    Argon2id;
 ///  * X-Wing is rejected by `PqHpke` and `PqForgeHybridKeyAgreement`

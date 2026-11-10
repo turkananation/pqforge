@@ -39,7 +39,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
   - BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512
   - An OpenSSL HPKE claim for X25519, P-256, or P-384
   - X-Wing as a FIPS construction, an authenticated HPKE KEM, a .pqf or .pqfs algorithm, or a BoringSSL or OpenSSL interop claim
-  - PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet
+  - PQXDH and the Sparse Post-Quantum Ratchet (exported scaffolds that throw; XEdDSA and the ML-KEM Braid incremental interface are absent). A libsignal byte match or a FIPS-validated Double Ratchet
   - A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
   - ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs
   - SHA-1 as a signature or as the hash for a new protocol. PqBytes.sha1 is only the RFC 3174 digest

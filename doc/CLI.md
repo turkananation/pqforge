@@ -554,8 +554,8 @@ dart run pqforge ecdsa-verify \
 
 `hpke` is not `encrypt` and not `keygen`. It does not read or write `.pqf`
 or `.pqfs`. The output magic is `XW01`. `--kem` accepts only `xwing`.
-PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet are not
-flags here.
+PQXDH and the Sparse Post-Quantum Ratchet are not flags here. The Double
+Ratchet is a library session, not a CLI command.
 
 ```bash
 dart run pqforge hpke keygen --key-id demo --out-dir keys
