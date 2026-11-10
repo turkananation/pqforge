@@ -16,11 +16,11 @@
 /// This is not constant-time and not a TLS stack.
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:zeroize/zeroize.dart';
 
+import '../primitives/pq_primitives.dart';
 import 'pq_ffdhe_primes.dart';
 
 /// One RFC 7919 group.
@@ -88,12 +88,8 @@ abstract final class PqFfdhe {
   }
 
   static Uint8List _randomExponent(PqFfdheGroup group) {
-    final random = Random.secure();
-    final raw = Uint8List(group.bytes + 8);
+    final raw = PqBytes.randomBytes(group.bytes + 8);
     try {
-      for (var i = 0; i < raw.length; i++) {
-        raw[i] = random.nextInt(256);
-      }
       final q = (group.prime - BigInt.one) >> 1;
       final exponent = (_bytes(raw) % (q - BigInt.one)) + BigInt.one;
       return _encode(exponent, group.bytes);

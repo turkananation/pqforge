@@ -207,4 +207,48 @@ void main() {
     }
     expect(File('${dir.path}/escape').existsSync(), isFalse);
   });
+
+  test('unpack rejects an entry that traverses a symlink', () async {
+    final outside = Directory('${dir.path}/outside')..createSync();
+    final out = Directory('${dir.path}/out')..createSync();
+    Link('${out.path}/link').createSync(outside.path);
+    final malicious = _packEntry('link/file', utf8.encode('secret'));
+    final packFile = File('${dir.path}/link.pack')..writeAsBytesSync(malicious);
+    final source = await packFile.open();
+    try {
+      await expectLater(
+        PqFolderPack.unpack(source: source, outputDirPath: out.path),
+        throwsA(isA<PqForgeException>()),
+      );
+    } finally {
+      await source.close();
+    }
+    expect(File('${outside.path}/file').existsSync(), isFalse);
+    expect(File('${out.path}/link/file').existsSync(), isFalse);
+  });
+
+  test('unpackFromStream rejects an entry that traverses a symlink', () async {
+    final outside = Directory('${dir.path}/outside-stream')..createSync();
+    final out = Directory('${dir.path}/out-stream')..createSync();
+    Link('${out.path}/link').createSync(outside.path);
+    await expectLater(
+      PqFolderPack.unpackFromStream(
+        Stream.value(_packEntry('link/file', utf8.encode('secret'))),
+        outputDirPath: out.path,
+      ),
+      throwsA(isA<PqForgeException>()),
+    );
+    expect(File('${outside.path}/file').existsSync(), isFalse);
+  });
+}
+
+Uint8List _packEntry(String relativePath, List<int> content) {
+  final path = PqBytes.utf8Bytes(relativePath);
+  final body = Uint8List.fromList(content);
+  return PqBytes.concat([
+    PqBytes.uint32(path.length),
+    path,
+    PqBytes.uint64(body.length),
+    body,
+  ]);
 }

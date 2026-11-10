@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:pointycastle/export.dart' as pc;
 import 'package:pqforge/pqforge.dart';
 import 'package:test/test.dart';
 
@@ -380,6 +381,116 @@ void main() {
         }
       },
     );
+  });
+
+  group('sync AES-GCM', () {
+    test('round trip, empty plaintext, and a flipped tag', () {
+      final key = PqBytes.randomBytes(32);
+      final nonce = PqBytes.randomBytes(12);
+      final plain = Uint8List.fromList(utf8.encode('one-shot seal'));
+      final aad = Uint8List.fromList(utf8.encode('pqf'));
+      final sealed = PqSymmetricPrimitives.aesGcmEncrypt(
+        key: key,
+        nonce: nonce,
+        plaintext: plain,
+        aad: aad,
+      );
+      expect(sealed.length, plain.length + 16);
+      expect(
+        PqSymmetricPrimitives.aesGcmDecrypt(
+          key: key,
+          nonce: nonce,
+          ciphertext: sealed,
+          aad: aad,
+        ),
+        orderedEquals(plain),
+      );
+      final empty = PqSymmetricPrimitives.aesGcmEncrypt(
+        key: key,
+        nonce: nonce,
+        plaintext: Uint8List(0),
+        aad: aad,
+      );
+      expect(empty.length, 16);
+      expect(
+        PqSymmetricPrimitives.aesGcmDecrypt(
+          key: key,
+          nonce: nonce,
+          ciphertext: empty,
+          aad: aad,
+        ),
+        isEmpty,
+      );
+      final flipped = Uint8List.fromList(sealed)..last ^= 0x01;
+      expect(
+        () => PqSymmetricPrimitives.aesGcmDecrypt(
+          key: key,
+          nonce: nonce,
+          ciphertext: flipped,
+          aad: aad,
+        ),
+        throwsA(isA<PqForgeAuthTagException>()),
+      );
+    });
+
+    test('AES-128 round trip', () {
+      final key = PqBytes.randomBytes(16);
+      final nonce = PqBytes.randomBytes(12);
+      final plain = Uint8List.fromList([0, 1, 2, 3, 4]);
+      final sealed = PqSymmetricPrimitives.aes128GcmEncrypt(
+        key: key,
+        nonce: nonce,
+        plaintext: plain,
+      );
+      expect(
+        PqSymmetricPrimitives.aes128GcmDecrypt(
+          key: key,
+          nonce: nonce,
+          ciphertext: sealed,
+        ),
+        orderedEquals(plain),
+      );
+    });
+
+    test('matches PointyCastle', () {
+      final key = Uint8List.fromList(List<int>.generate(32, (i) => i));
+      final nonce = Uint8List.fromList(List<int>.generate(12, (i) => i + 1));
+      final plain = Uint8List.fromList(List<int>.generate(40, (i) => i));
+      final aad = Uint8List.fromList([9, 8, 7]);
+      final cipher = pc.GCMBlockCipher(pc.AESEngine())
+        ..init(true, pc.AEADParameters(pc.KeyParameter(key), 128, nonce, aad));
+      expect(
+        PqSymmetricPrimitives.aesGcmEncrypt(
+          key: key,
+          nonce: nonce,
+          plaintext: plain,
+          aad: aad,
+        ),
+        orderedEquals(cipher.process(plain)),
+      );
+    }, testOn: 'vm');
+
+    test('matches the cryptography session engine', () async {
+      final key = PqBytes.randomBytes(32);
+      final nonce = PqBytes.randomBytes(12);
+      final plain = Uint8List.fromList(List<int>.generate(40, (i) => i));
+      final aad = Uint8List.fromList([1, 2, 3]);
+      final sync = PqSymmetricPrimitives.aesGcmEncrypt(
+        key: key,
+        nonce: nonce,
+        plaintext: plain,
+        aad: aad,
+      );
+      final engine = PqForgeCryptographyAeadEngine(
+        PqForgeCipherSuite.aes256Gcm,
+      );
+      expect(
+        sync,
+        orderedEquals(
+          await engine.seal(key: key, nonce: nonce, plaintext: plain, aad: aad),
+        ),
+      );
+    });
   });
 
   group('PqKemPrimitives.checkEncapsulationKey', () {

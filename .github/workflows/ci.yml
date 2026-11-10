@@ -165,6 +165,14 @@ jobs:
           grep -q 'localhost' "$tmp/inspect.txt"
           dart run pqforge cert verify --in "$tmp/localhost.pem" --anchor "$tmp/localhost.pem"
           openssl x509 -in "$tmp/localhost.pem" -noout -subject | grep -q 'localhost'
+          # --fips: PBKDF2 wrap, AES-256-GCM round trip, ChaCha and X-Wing refused.
+          dart run pqforge --fips keygen --profile compact --key-id fips --out-dir "$tmp/fips-keys" --no-classical --no-slh-dsa --passphrase-env PQFORGE_PASSPHRASE --pbkdf2-iterations 1000
+          grep -q pbkdf2-hmac-sha256 "$tmp/fips-keys/fips.kem.secret.wrapped.json"
+          dart run pqforge --fips encrypt --recipient-public "$tmp/fips-keys/fips.kem.public.json" --in "$tmp/plain.txt" --out "$tmp/fips.pqf" --profile compact
+          dart run pqforge --fips decrypt --recipient-secret "$tmp/fips-keys/fips.kem.secret.wrapped.json" --passphrase-env PQFORGE_PASSPHRASE --in "$tmp/fips.pqf" --out "$tmp/fips.txt"
+          cmp "$tmp/plain.txt" "$tmp/fips.txt"
+          if dart run pqforge --fips encrypt --cipher chacha20-poly1305 --recipient-public "$tmp/fips-keys/fips.kem.public.json" --in "$tmp/plain.txt" --out "$tmp/nope.pqf" --profile compact; then echo "fips allowed chacha" && exit 1; fi
+          if dart run pqforge --fips hpke keygen --out-dir "$tmp/fips-keys"; then echo "fips allowed xwing" && exit 1; fi
 
       - name: Verify pub.dev archive
         run: dart run tool/agent/check_publish_surface.dart --strict
@@ -188,6 +196,9 @@ jobs:
       # does not; the helper uses the cryptography Dart engine. Do not skip.
       - name: Run sync ChaCha tests in Chrome
         run: dart test -p chrome test/pq_kdf_aead_exports_test.dart --name "sync ChaCha20-Poly1305"
+
+      - name: Run sync AES-GCM tests in Chrome
+        run: dart test -p chrome test/pq_kdf_aead_exports_test.dart --name "sync AES-GCM"
 
   openssl-interop:
     name: Pinned OpenSSL 4.1.0 and BoringSSL 0.20261020.0

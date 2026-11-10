@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart' as crypto;
 import 'package:pqforge/pqforge.dart';
 import 'package:test/test.dart';
 
@@ -72,6 +73,40 @@ void main() {
           serverKemSecretKey: serverKem.secretKey,
           request: tampered,
           deploymentSalt: Uint8List.fromList(List<int>.filled(32, 9)),
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+    });
+
+    test('rejects an all-zero X25519 shared secret', () async {
+      final secret = Uint8List(32)..[0] = 9;
+      await expectLater(
+        PqForgeHybridKeyAgreement.x25519SharedSecret(
+          secretKey: secret,
+          remotePublicKey: Uint8List(32),
+        ),
+        throwsA(
+          isA<PqForgeException>().having(
+            (error) => error.message,
+            'message',
+            contains('all zeros'),
+          ),
+        ),
+      );
+      const agreement = PqForgeHybridKeyAgreement(
+        profile: PqForgeProfile.compact,
+      );
+      final serverKem = PqForge(
+        profile: PqForgeProfile.compact,
+      ).generateKemKeyPair();
+      await expectLater(
+        agreement.initiate(
+          serverClassicalPublicKey: crypto.SimplePublicKey(
+            Uint8List(32),
+            type: crypto.KeyPairType.x25519,
+          ),
+          serverKemPublicKey: serverKem.publicKey,
+          deploymentSalt: Uint8List(32),
         ),
         throwsA(isA<PqForgeException>()),
       );
@@ -190,6 +225,47 @@ void main() {
         );
       },
     );
+
+    test('accept-either cannot widen a stored require-both check', () async {
+      const profile = PqForgeProfile.compact;
+      final pqc = PqForge(profile: profile).generateSignatureKeyPair();
+      const signer = PqForgeHybridSigner(profile: profile);
+      final classical = await signer.generateClassicalKeyPair();
+      final message = _bytes('release manifest');
+      final signature = await signer.sign(
+        pqcSecretKey: pqc.secretKey,
+        classicalKeyPair: classical,
+        message: message,
+        policy: PqDualSignaturePolicy.acceptEither,
+      );
+      final widened = PqHybridSignature(
+        pqcSignature: signature.pqcSignature,
+        classicalSignature: Uint8List.fromList(signature.classicalSignature)
+          ..[0] ^= 1,
+        pqcAlgorithm: signature.pqcAlgorithm,
+        classicalAlgorithm: signature.classicalAlgorithm,
+        policy: PqDualSignaturePolicy.acceptEither,
+      );
+      expect(
+        await signer.verify(
+          pqcPublicKey: pqc.publicKey,
+          classicalPublicKey: classical.publicKey,
+          message: message,
+          signature: widened,
+        ),
+        isFalse,
+      );
+      expect(
+        await signer.verify(
+          pqcPublicKey: pqc.publicKey,
+          classicalPublicKey: classical.publicKey,
+          message: message,
+          signature: widened,
+          policy: PqDualSignaturePolicy.acceptEither,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('classical key persistence helpers', () {

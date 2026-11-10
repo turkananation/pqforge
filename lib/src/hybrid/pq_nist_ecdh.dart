@@ -15,12 +15,12 @@
 /// [PqForgeHybridKeyAgreement].
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
 
 import 'pq_ecdsa_p256.dart';
+import 'pq_scalar.dart';
 
 /// NIST-curve ECDH with a TLS/SP 800-56A byte contract.
 abstract final class PqNistEcdh {
@@ -158,7 +158,7 @@ abstract final class PqNistEcdh {
       ..init(
         pc.ParametersWithRandom(
           pc.ECKeyGeneratorParameters(domain),
-          _seededFortuna(),
+          pqSeededFortuna(),
         ),
       );
     final pair = generator.generateKeyPair();
@@ -324,16 +324,5 @@ abstract final class PqNistEcdh {
       result = (result << 8) | BigInt.from(byte & 0xff);
     }
     return result;
-  }
-
-  static pc.SecureRandom _seededFortuna() {
-    final fortuna = pc.FortunaRandom();
-    final random = Random.secure();
-    final seed = Uint8List(32);
-    for (var i = 0; i < seed.length; i++) {
-      seed[i] = random.nextInt(256);
-    }
-    fortuna.seed(pc.KeyParameter(seed));
-    return fortuna;
   }
 }

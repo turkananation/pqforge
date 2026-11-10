@@ -9,7 +9,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
-import 'package:pqforge/src/exceptions/pqforge_exception.dart';
+import 'package:pqforge/pqforge.dart';
 
 import 'src/cert_commands.dart';
 import 'src/compose_commands.dart';
@@ -109,6 +109,14 @@ final class PqForgeRunner extends CommandRunner<void> {
         defaultsTo: true,
         help:
             'Use ANSI colors (use --no-color to disable; auto-off when piped).',
+      )
+      ..addFlag(
+        'fips',
+        negatable: false,
+        help:
+            'Refuse ChaCha20-Poly1305, Argon2id, X-Wing, and an HPKE AEAD '
+            'other than AES-256-GCM. keygen then wraps with '
+            'PBKDF2-HMAC-SHA256. Not a validated module.',
       );
     addCommand(KeygenCommand());
     addCommand(InspectCommand());
@@ -141,6 +149,9 @@ final class PqForgeRunner extends CommandRunner<void> {
     if (topLevelResults['version'] as bool) {
       console.info('pqforge $pqforgeCliVersion');
       return;
+    }
+    if (topLevelResults['fips'] == true) {
+      PqFipsMode.enable();
     }
     return super.runCommand(topLevelResults);
   }

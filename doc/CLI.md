@@ -212,6 +212,7 @@ container and auto-detected on read.
 | `--recipient-public` (repeatable) | Encrypt once, key-wrap the payload key to several recipients (first = primary). |
 | `--cipher chacha20-poly1305` | Use ChaCha20-Poly1305 instead of AES-256-GCM (~2.6× faster in pure Dart, ideal where hardware AES is not dispatched). Recorded as a tamper-evident `aeadSuite` marker. |
 | `--engine cryptography\|pure-dart` | Pick the AEAD backend. `cryptography` (default) is ~10× the PointyCastle throughput even in pure Dart and hardware-backed on Flutter; `pure-dart` is the PointyCastle reference. Wire formats are engine-independent. |
+| `--fips` | Global. Refuse ChaCha20-Poly1305, Argon2id, X-Wing, and an HPKE AEAD other than AES-256-GCM. `keygen` then wraps with PBKDF2-HMAC-SHA256 (`--pbkdf2-iterations`, default 600000). Not a validated module. |
 | `--profile` / `--kem` / `--sig` | Composition strength. `--kem`/`--sig` decouple the KEM and signature levels (e.g. a strong KEM with a lighter signature). |
 | `--signer-secret` | Sign the envelope/header with an ML-DSA key (cost is O(1) in file size). |
 
@@ -482,8 +483,11 @@ dart run pqforge compose-verify \
   --signature firmware.triple.json
 ```
 
-`--policy accept-any` succeeds when one leg verifies. The default is
-`require-all`. `hybrid-sign` is still exactly one ML-DSA leg plus one
+`--policy` on `compose-verify` is the caller's policy and defaults to
+`require-all`. It must equal the policy stored in the signature. The file
+cannot widen `require-all` into `accept-any`. `accept-any` succeeds when one
+leg verifies, but only when both the signer and the verifier chose it.
+`hybrid-sign` is still exactly one ML-DSA leg plus one
 classical leg, and that classical leg may now be P-384 or P-521.
 `ecdsa-sign` follows the key's algorithm id.
 
@@ -511,9 +515,11 @@ dart run pqforge hybrid-verify \
 
 `--context` is an optional domain-separation string; when supplied to
 `hybrid-sign` it is stored in the signature JSON and reused automatically by
-`hybrid-verify` (override it with `--context` if needed). The default `--policy
-require-both` fails unless **both** signatures verify; `--policy accept-either`
-records an either-or policy instead.
+`hybrid-verify` (override it with `--context` if needed). `--policy` is
+recorded by `hybrid-sign` and must be passed again to `hybrid-verify`. The
+default is `require-both`, which fails unless **both** signatures verify.
+`accept-either` succeeds when one signature verifies, but only when the
+verifier passes the same policy. The signature file cannot widen the check.
 
 For gigabyte inputs, add `--digest`: `hybrid-sign --digest` signs the streamed
 SHA-256 of the input (O(1) memory) under a domain-separation label, recorded in
@@ -548,8 +554,8 @@ dart run pqforge ecdsa-verify \
 
 `hpke` is not `encrypt` and not `keygen`. It does not read or write `.pqf`
 or `.pqfs`. The output magic is `XW01`. `--kem` accepts only `xwing`.
-PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet are not
-flags here.
+PQXDH and the Sparse Post-Quantum Ratchet are not flags here. The Double
+Ratchet is a library session, not a CLI command.
 
 ```bash
 dart run pqforge hpke keygen --key-id demo --out-dir keys
@@ -566,8 +572,10 @@ dart run pqforge hpke open \
 `keygen` writes `demo.xwing.public.json` (`kind` `xwing-public`) and
 `demo.xwing.secret.json` (`kind` `xwing-secret`). `algorithmId` is
 `xwing`. `seal` refuses a different kind. `--cipher` is `aes-256-gcm`
-(the default), `aes-128-gcm`, or `chacha20-poly1305`. The default
-`keygen` and `encrypt` commands are unchanged.
+(the default), `aes-128-gcm`, or `chacha20-poly1305`. `--fips` refuses
+this command, because the KEM is X-Wing, and refuses an AEAD other than
+AES-256-GCM on the DHKEMs. The default `keygen` and `encrypt` commands
+are unchanged.
 
 ## Certificates
 

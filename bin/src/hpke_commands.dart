@@ -53,6 +53,7 @@ final class HpkeKeygenCommand extends Command<void> {
 
   @override
   Future<void> run() async {
+    PqFipsMode.requireXWingAllowed();
     final results = argResults!;
     final keyId = results['key-id'] as String;
     final outDir = Directory(results['out-dir'] as String);
@@ -118,6 +119,7 @@ final class HpkeSealCommand extends Command<void> {
 
   @override
   Future<void> run() async {
+    PqFipsMode.requireXWingAllowed();
     final results = argResults!;
     final public = await readKey(results['recipient-public'] as String);
     if (public.kind != _xwingPublicKind ||
@@ -174,6 +176,7 @@ final class HpkeOpenCommand extends Command<void> {
 
   @override
   Future<void> run() async {
+    PqFipsMode.requireXWingAllowed();
     final results = argResults!;
     final secret = await readKey(results['recipient-secret'] as String);
     if (secret.kind != _xwingSecretKind ||

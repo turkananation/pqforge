@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.4.14
+
+Classical key generation reads `PqRandom`. Background isolates re-enable
+`PqFipsMode` and refuse a custom generator. HPKE seal and open refuse an
+AEAD other than AES-256-GCM while the flag is on. Sync AES-GCM uses the
+same pure-Dart engine as the fast path on little-endian hosts. The CLI
+takes `--fips` and `keygen --pbkdf2-iterations`. The Double Ratchet
+(Signal revision 4) is exported. PQXDH and the Triple Ratchet are
+exported and throw. No `.pqf` / `.pqfs` wire-format change.
 
 X-Wing, draft-connolly-cfrg-xwing-kem-11, beside the custom hybrid.
 No `.pqf` / `.pqfs` wire-format change. 0.4.13 stays the RSA SHA-224
@@ -29,6 +37,44 @@ release.
   `PqForgeHybridKeyAgreement`. `PqXWing` does not read the flag. X-Wing
   is not a FIPS construction. There is no BoringSSL or OpenSSL
   comparison for `0x647A`.
+
+- **Signature policy is caller-pinned.** `dualVerify`,
+  `PqForgeHybridSigner.verify`, and `PqForgeSignatureComposer.verify` default
+  to require-both / require-all and return false unless the stored policy is
+  exactly that. `hybrid-verify --policy` and `compose-verify --policy` throw
+  when the file disagrees. The file cannot widen the check.
+- **`PqForgeProfile.resolve`** rejects a built-in name whose KEM or signature
+  does not match that profile, so the DEM label cannot diverge from the
+  wire KEM.
+- **X.509.** Anchor selection uses the first subject match whose key verifies
+  the top certificate. A same-DN certificate with a different public key is
+  not treated as self-signed, so the anchor's name constraints still apply.
+  Permitted `directoryName` values match if any one matches. `validate` takes
+  an optional `extendedKeyUsage` list; omitting it still does not check
+  purpose.
+- **`PqForgeSecureSession`** nonces are a 4-byte per-session salt plus a
+  64-bit counter (SP 800-38D §8.2.1). The packet is still
+  `nonce || ciphertext || tag`. One session throws after 2^32 messages.
+- **`PqForgeHybridKeyAgreement.x25519SharedSecret`** rejects an all-zero
+  X25519 share. `initiate` and `accept` use that check. `PqXWing` does not.
+- **`aesGcmDecrypt` and `aes128GcmDecrypt`** throw `PqForgeAuthTagException`
+  and wipe the output buffer when the tag fails.
+- **FIPS mode** makes `PqRsa.signPkcs1` / `signPss` throw for SHA-1 or a
+  modulus under 2048 bits. Verify returns false for those inputs and does
+  not throw. Outside FIPS mode, SHA-1 and a 1024-bit verify stay legal.
+  The mode is not a validated module.
+- **Folder unpack** refuses to follow a symlink under the output directory.
+- **`DoubleRatchet`** is Signal revision 4, sections 3 and 7.2, over
+  X25519 and pqforge AES-256-GCM or ChaCha20-Poly1305. HMAC is pqcrypto.
+  HKDF is RFC 5869 over that HMAC, because pqcrypto does not export HKDF.
+  The header is 40 bytes. The nonce is 12 zero bytes. SHA-512 chain and
+  message keys are the leftmost 32 bytes. `MAX_SKIP` defaults to 1000.
+  This is not a libsignal byte match, not PQXDH, not the Sparse
+  Post-Quantum Ratchet, and not a FIPS construction. `PqFipsMode` refuses
+  the ChaCha suite. `Pqxdh` and `TripleRatchet` are exported and throw:
+  XEdDSA is not in this package, and neither is the ML-KEM Braid's
+  incremental interface. A 1216-byte X-Wing key and an expanded ML-KEM
+  private key are rejected. No `.pqf` / `.pqfs` change.
 
 ## 0.4.13
 

@@ -1425,13 +1425,18 @@ class PqForge {
     );
   }
 
+  /// [policy] must match [PqDualSignature.policy]. A signature file cannot
+  /// widen [PqDualSignaturePolicy.requireBoth] into
+  /// [PqDualSignaturePolicy.acceptEither].
   bool dualVerify({
     required Uint8List publicKey,
     required Uint8List message,
     required PqDualSignature signature,
     required PqClassicalSignatureVerifier classicalVerifier,
     PqSignatureAlgorithm? algorithm,
+    PqDualSignaturePolicy policy = PqDualSignaturePolicy.requireBoth,
   }) {
+    if (signature.policy != policy) return false;
     final pqcValid = verify(
       publicKey,
       message,
@@ -1443,7 +1448,7 @@ class PqForge {
       message,
       signature.classicalSignature,
     );
-    return signature.combine(pqcValid, classicalValid);
+    return policy.combine(pqcValid, classicalValid);
   }
 
   Uint8List deriveHybridSessionKey({

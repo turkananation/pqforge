@@ -165,11 +165,13 @@ abstract final class PqMultiRecipient {
             ...entries.where((e) => e.keyId == recipientKeyId),
             ...entries.where((e) => e.keyId != recipientKeyId),
           ];
+    Uint8List? opened;
     for (final entry in ordered) {
       if (entry.ephemeralPublicKey != null && recipientKexSecretKey == null) {
         continue; // hybrid entry, no X25519 key available
       }
       Uint8List? kek;
+      Uint8List? unwrapped;
       try {
         final sharedSecret = PqKemPrimitives.decapsulate(
           profile.kem,
@@ -196,7 +198,7 @@ abstract final class PqMultiRecipient {
             PqForgeCombiner.wipe(classicalShared);
           }
         }
-        return PqSymmetricPrimitives.aesGcmDecrypt(
+        unwrapped = PqSymmetricPrimitives.aesGcmDecrypt(
           key: kek,
           nonce: entry.nonce,
           ciphertext: entry.wrappedKey,
@@ -204,13 +206,19 @@ abstract final class PqMultiRecipient {
         );
       } catch (_) {
         // Wrong recipient for this entry (tag mismatch via the implicit-
-        // rejection shared secret) — try the next one.
+        // rejection shared secret) — try the next one. Every entry is tried
+        // so a hit cannot reveal which wrap authenticated.
         continue;
       } finally {
         if (kek != null) PqForgeCombiner.wipe(kek);
       }
+      if (opened == null) {
+        opened = unwrapped;
+      } else {
+        PqForgeCombiner.wipe(unwrapped);
+      }
     }
-    return null;
+    return opened;
   }
 
   /// Parses and validates the `recipients[]` entries in [metadata]. Returns

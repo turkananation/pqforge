@@ -1,9 +1,10 @@
 # PQXDH
 
-Status: not implemented. `lib/` has X25519 and Ed25519. It does not have
-XEdDSA. Ed25519 is not XEdDSA, and this protocol is not started until that
-primitive exists and has its own vectors. This page is the contract, not
-a call that works today. It lands after the [Double Ratchet](DOUBLE_RATCHET.md).
+Status: scaffold. `Pqxdh`, `PqxdhBundle`, `PqxdhKem`, and `PqxdhResult` are
+exported. `initiate` and `accept` throw `PqForgeException` and do not
+encapsulate. `lib/` has X25519 and Ed25519. It does not have XEdDSA.
+Ed25519 is not XEdDSA, so the handshake stays closed. The bundle
+constructor is live: a 1216-byte X-Wing key is rejected.
 
 Specification: [The PQXDH Key Agreement Protocol](https://signal.org/docs/specifications/pqxdh/),
 revision 3, dated 2023-05-24, last updated 2024-01-23.
@@ -61,17 +62,18 @@ Authentication in this revision is classical. The post-quantum contribution
 is confidentiality of `SK` against a later break of X25519. A future
 `Pqxdh` type does not claim post-quantum authentication.
 
-## Proposed API
+## API
 
-These symbols are not exported. They are also blocked on XEdDSA.
+The symbols are exported. Both calls throw. They are blocked on XEdDSA.
 
 ```dart
-final secret = Pqxdh.initiate(
+// Throws. Does not encapsulate and does not return SK.
+final secret = await Pqxdh.initiate(
   identityKey: aliceIdentity,          // X25519 key, XEdDSA-capable
   bundle: bobBundle,                    // already fetched
   kem: PqxdhKem.kyber1024,              // the spec example, not X-Wing
 );
-final session = secret.ratchet;        // DoubleRatchet, already initialized
+final session = secret.ratchet;        // DoubleRatchet, once XEdDSA exists
 final message = secret.initialMessage; // header, ciphertext, Alice's ephemeral key
 ```
 

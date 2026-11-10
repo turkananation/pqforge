@@ -15,8 +15,8 @@ import 'dart:typed_data';
 /// (16-byte) authentication tag. That shared geometry is what lets a wire
 /// packet produced by one backend be decrypted by the other.
 enum PqForgeCipherSuite {
-  /// AES-256-GCM — the enterprise standard; fastest where AES-NI hardware
-  /// acceleration is available.
+  /// AES-256-GCM. The engines in this package are pure Dart. AES-NI is only
+  /// available when a host supplies its own backend.
   aes256Gcm(id: 'aes-256-gcm', keyLength: 32, nonceLength: 12, tagLength: 16),
 
   /// ChaCha20-Poly1305 (RFC 8439) — constant-time in software and ideal on

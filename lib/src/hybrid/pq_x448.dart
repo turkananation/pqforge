@@ -11,8 +11,9 @@
 /// that output; this function does not.
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
+
+import '../primitives/pq_primitives.dart';
 
 /// X448 key agreement (RFC 7748 §5).
 abstract final class PqX448 {
@@ -28,11 +29,7 @@ abstract final class PqX448 {
 
   /// 56 random bytes and `X448(scalar, 5)`.
   static ({Uint8List publicKey, Uint8List secretKey}) generateKeyPair() {
-    final random = Random.secure();
-    final secretKey = Uint8List(keyBytes);
-    for (var i = 0; i < secretKey.length; i++) {
-      secretKey[i] = random.nextInt(256);
-    }
+    final secretKey = PqBytes.randomBytes(keyBytes);
     return (publicKey: publicKeyFromPrivate(secretKey), secretKey: secretKey);
   }
 

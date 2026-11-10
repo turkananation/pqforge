@@ -10,10 +10,11 @@
 /// [verify] returns false and does not throw. The 32-byte secret is a seed.
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+
+import '../primitives/pq_primitives.dart';
 
 /// Ed25519 signatures. Secret keys are 32-byte seeds.
 class PqEd25519 {
@@ -34,11 +35,7 @@ class PqEd25519 {
   static final _Pt _base = _basePoint(_init);
 
   static ({Uint8List publicKey, Uint8List secretKey}) generateKeyPair() {
-    final secret = Uint8List(secretKeyBytes);
-    final random = Random.secure();
-    for (var i = 0; i < secret.length; i++) {
-      secret[i] = random.nextInt(256);
-    }
+    final secret = PqBytes.randomBytes(secretKeyBytes);
     return (publicKey: publicKeyFromSeed(secret), secretKey: secret);
   }
 

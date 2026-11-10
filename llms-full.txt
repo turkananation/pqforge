@@ -6,7 +6,7 @@ Repository: https://github.com/turkananation/pqforge
 Package: https://pub.dev/packages/pqforge
 API docs: https://pub.dev/documentation/pqforge/latest/
 Lab: Yardenah PQ (https://yardenah.com)
-Version: 0.4.13
+Version: 0.4.14
 
 ## Identity
 
@@ -35,6 +35,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine
 - RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD
 - RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384. X-Wing (HpkeKem.xWing, 0x647A, draft-connolly-cfrg-xwing-kem-11) is an additional base and PSK KEM. Auth is rejected. Not a FIPS construction. Not a .pqf or .pqfs algorithm. No BoringSSL or OpenSSL evidence for 0x647A
+- Signal Double Ratchet revision 4 (DoubleRatchet) over X25519 and pqforge AES-256-GCM or ChaCha20-Poly1305. The header is 40 bytes and the nonce is 12 zero bytes. HMAC is pqcrypto. Not libsignal bytes, not PQXDH, not the Sparse Post-Quantum Ratchet, and not a FIPS module. PqFipsMode refuses the ChaCha suite. Pqxdh and TripleRatchet are exported and throw
 - X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT
 - ECDSA P-384 (PqEcdsaP384, low-S), ECDSA P-521 (PqEcdsaP521, low-S; not the HPKE share and not a TLS group), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519) and Ed448 (PqEd448, empty context; not an X.509 algorithm)
 - Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB
@@ -63,7 +64,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512
 - An OpenSSL HPKE claim for X25519, P-256, or P-384
 - X-Wing as a FIPS construction, an authenticated HPKE KEM, a .pqf or .pqfs algorithm, or a BoringSSL or OpenSSL interop claim
-- PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet
+- PQXDH and the Sparse Post-Quantum Ratchet (exported scaffolds that throw; XEdDSA and the ML-KEM Braid incremental interface are absent). A libsignal byte match or a FIPS-validated Double Ratchet
 - A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
 - ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs
 - SHA-1 as a signature or as the hash for a new protocol. PqBytes.sha1 is only the RFC 3174 digest

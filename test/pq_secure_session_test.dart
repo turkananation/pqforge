@@ -185,6 +185,22 @@ void main() {
           isNot(orderedEquals(b.sublist(0, suite.nonceLength))),
         );
       });
+
+      test('${suite.id}: nonce is a session salt plus a counter', () async {
+        final session = PqForgeSecureSession(
+          secretKey: _filled(32, 4),
+          cipherSuite: suite,
+        );
+        final a = await session.encrypt(_bytes('one'));
+        final b = await session.encrypt(_bytes('two'));
+        final nonceLength = suite.nonceLength;
+        expect(a.sublist(0, 4), orderedEquals(b.sublist(0, 4)));
+        expect(a.sublist(4, nonceLength), everyElement(0));
+        expect(b.sublist(4, nonceLength - 1), everyElement(0));
+        expect(b[nonceLength - 1], 1);
+        expect(await session.decrypt(a), orderedEquals(_bytes('one')));
+        expect(await session.decrypt(b), orderedEquals(_bytes('two')));
+      });
     }
   });
 

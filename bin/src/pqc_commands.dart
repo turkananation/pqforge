@@ -120,6 +120,14 @@ final class KeygenCommand extends Command<void> {
             'Secret keys wrapped in parallel (1-4). Each Argon2id instance '
             'holds 2^argon-memory-power-of-2 KiB (default 64 MiB), so raise '
             'this only on machines with RAM to spare.',
+      )
+      ..addOption(
+        'pbkdf2-iterations',
+        defaultsTo: '600000',
+        valueHelp: 'n',
+        help:
+            'PBKDF2-HMAC-SHA256 iterations when --fips is set. Ignored for '
+            'Argon2id wrapping.',
       );
     addPassphraseOptions(argParser);
     addQuietOption(argParser);
@@ -407,6 +415,10 @@ final class KeygenCommand extends Command<void> {
       argResults['argon-memory-power-of-2'] as String,
     );
     final lanes = int.parse(argResults['argon-lanes'] as String);
+    final pbkdf2Iterations = int.parse(
+      argResults['pbkdf2-iterations'] as String,
+    );
+    final fips = PqFipsMode.isEnabled;
     // Argon2id wrapping is a deliberate ~0.5 s CPU+RAM burn per key; with the
     // full default key set that is the dominant keygen cost. Wrap on a small
     // pool of background isolates — bounded because every concurrent wrap
@@ -429,6 +441,8 @@ final class KeygenCommand extends Command<void> {
               iterations: iterations,
               memoryPowerOf2: memoryPowerOf2,
               lanes: lanes,
+              pbkdf2Iterations: pbkdf2Iterations,
+              fips: fips,
             );
             await writeJson(
               outDir.child(entry.key.replaceFirst('.json', '.wrapped.json')),
@@ -456,16 +470,21 @@ Future<PqWrappedKey> _wrapKeyInIsolate(
   required int iterations,
   required int memoryPowerOf2,
   required int lanes,
+  required int pbkdf2Iterations,
+  required bool fips,
 }) {
-  return Isolate.run(
-    () => const PqForge().wrapKeyWithPassphrase(
+  return Isolate.run(() {
+    if (fips) PqFipsMode.enable();
+    return const PqForge().wrapKeyWithPassphrase(
       key,
       passphrase,
+      kdf: fips ? PqKdf.pbkdf2HmacSha256 : PqKdf.argon2id,
       iterations: iterations,
       memoryPowerOf2: memoryPowerOf2,
       lanes: lanes,
-    ),
-  );
+      pbkdf2Iterations: pbkdf2Iterations,
+    );
+  });
 }
 
 /// Prints the suite/engine/signature detail lines every encrypt/decrypt
@@ -947,6 +966,7 @@ final class EncryptFolderCommand extends Command<void> {
               signerKeyId: keyId,
               engineProvider: engineProvider,
               cipherSuite: cipher,
+              fips: PqFipsMode.isEnabled,
               progressPort: port,
             ),
             onProgress: (processed, total) {
@@ -1001,9 +1021,11 @@ Future<void> _encryptFolderEntryInIsolate({
   required String? signerKeyId,
   required PqForgeEngineProvider engineProvider,
   required PqForgeCipherSuite cipherSuite,
+  required bool fips,
   SendPort? progressPort,
 }) {
   return Isolate.run(() async {
+    if (fips) PqFipsMode.enable();
     final input = File(inputPath);
     final output = File(outputPath);
     final length = await input.length();
@@ -1186,6 +1208,7 @@ final class DecryptFolderCommand extends Command<void> {
               aad: aad,
               signerPublicKey: signer?.bytes,
               engineProvider: engineProvider,
+              fips: PqFipsMode.isEnabled,
               progressPort: port,
             ),
             onProgress: (processed, total) {
@@ -1227,9 +1250,11 @@ Future<void> _decryptFolderEntryInIsolate({
   required Uint8List? aad,
   required Uint8List? signerPublicKey,
   required PqForgeEngineProvider engineProvider,
+  required bool fips,
   SendPort? progressPort,
 }) {
   return Isolate.run(() async {
+    if (fips) PqFipsMode.enable();
     void report(int processed, int? total) {
       progressPort?.send(<Object?>[processed, total]);
     }

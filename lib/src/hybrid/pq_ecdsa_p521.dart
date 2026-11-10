@@ -9,10 +9,11 @@
 /// accepts high-S. Not a constant-time implementation, and not a TLS group.
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+
+import 'pq_ecdsa.dart';
 
 /// ECDSA over NIST P-521, byte-oriented and self-contained.
 class PqEcdsaP521 {
@@ -27,175 +28,42 @@ class PqEcdsaP521 {
   /// Raw `r || s` signature length in bytes.
   static const int signatureBytes = 132;
 
-  static final pc.ECDomainParameters _domain = pc.ECCurve_secp521r1();
+  static final PqEcdsaCurve _curve = PqEcdsaCurve(
+    domain: pc.ECCurve_secp521r1(),
+    privateKeyBytes: privateKeyBytes,
+    publicKeyBytes: publicKeyBytes,
+    signatureBytes: signatureBytes,
+    newDigest: pc.SHA512Digest.new,
+    hmacBlockBytes: 128,
+  );
 
   /// Generates a fresh P-521 key pair.
-  static ({Uint8List publicKey, Uint8List secretKey}) generateKeyPair() {
-    final generator = pc.ECKeyGenerator()
-      ..init(
-        pc.ParametersWithRandom(
-          pc.ECKeyGeneratorParameters(_domain),
-          _seededFortuna(),
-        ),
-      );
-    final pair = generator.generateKeyPair();
-    return (
-      secretKey: _bigIntToFixed(pair.privateKey.d!, privateKeyBytes),
-      publicKey: pair.publicKey.Q!.getEncoded(false),
-    );
-  }
+  static ({Uint8List publicKey, Uint8List secretKey}) generateKeyPair() =>
+      _curve.generateKeyPair();
 
   /// Uncompressed SEC1 public key for a 66-byte private scalar.
-  static Uint8List publicKeyFromPrivate(Uint8List privateKey) {
-    if (privateKey.length != privateKeyBytes) {
-      throw ArgumentError.value(
-        privateKey.length,
-        'privateKey',
-        'expected $privateKeyBytes bytes',
-      );
-    }
-    final d = _bytesToBigInt(privateKey);
-    if (d < BigInt.one || d >= _domain.n) {
-      throw ArgumentError.value(
-        privateKey,
-        'privateKey',
-        'scalar is not in the range [1, n)',
-      );
-    }
-    final q = _domain.G * d;
-    if (q == null || q.isInfinity) {
-      throw ArgumentError.value(
-        privateKey,
-        'privateKey',
-        'derived point at infinity',
-      );
-    }
-    return q.getEncoded(false);
-  }
+  static Uint8List publicKeyFromPrivate(Uint8List privateKey) =>
+      _curve.publicKeyFromPrivate(privateKey);
 
-  /// Signs [message] with [privateKey], returning raw `r || s`.
-  ///
-  /// SHA-512 is applied inside the signer. Do not pre-hash.
+  /// Signs [message]. The signature is `r || s`, 132 bytes, low-S.
   static Uint8List sign({
     required Uint8List privateKey,
     required Uint8List message,
-  }) {
-    if (privateKey.length != privateKeyBytes) {
-      throw ArgumentError.value(
-        privateKey.length,
-        'privateKey',
-        'expected $privateKeyBytes bytes',
-      );
-    }
-    final signer = _newSigner()
-      ..init(
-        true,
-        pc.PrivateKeyParameter<pc.ECPrivateKey>(
-          pc.ECPrivateKey(_bytesToBigInt(privateKey), _domain),
-        ),
-      );
-    final signature = signer.generateSignature(message) as pc.ECSignature;
-    return Uint8List(signatureBytes)
-      ..setRange(0, 66, _bigIntToFixed(signature.r, 66))
-      ..setRange(66, 132, _bigIntToFixed(signature.s, 66));
-  }
+  }) => _curve.sign(privateKey: privateKey, message: message);
 
-  /// Verifies raw `r || s` over [message] under [publicKey].
-  ///
-  /// [publicKey] may be uncompressed or compressed SEC1. High-S is accepted.
-  /// SHA-512 is applied inside the signer.
+  /// Verifies `r || s`. High-S is accepted. Returns false on any malformed
+  /// input instead of throwing.
   static bool verify({
     required Uint8List publicKey,
     required Uint8List message,
     required Uint8List signature,
-  }) {
-    final encoded = normalizePoint(publicKey);
-    if (encoded == null || signature.length != signatureBytes) return false;
-    try {
-      final point = _domain.curve.decodePoint(encoded);
-      if (point == null || point.isInfinity) return false;
-      final verifier = _verifier()
-        ..init(
-          false,
-          pc.PublicKeyParameter<pc.ECPublicKey>(pc.ECPublicKey(point, _domain)),
-        );
-      final r = _bytesToBigInt(Uint8List.sublistView(signature, 0, 66));
-      final s = _bytesToBigInt(Uint8List.sublistView(signature, 66, 132));
-      if (r == BigInt.zero ||
-          s == BigInt.zero ||
-          r >= _domain.n ||
-          s >= _domain.n) {
-        return false;
-      }
-      return verifier.verifySignature(message, pc.ECSignature(r, s));
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Uncompressed `0x04 || X || Y`, or null when [encoded] is not a P-521 point.
-  static Uint8List? normalizePoint(Uint8List encoded) =>
-      _normalizePoint(encoded, _domain, publicKeyBytes);
-
-  static pc.NormalizedECDSASigner _newSigner() => pc.NormalizedECDSASigner(
-    pc.ECDSASigner(pc.SHA512Digest(), pc.HMac(pc.SHA512Digest(), 128)),
-    enforceNormalized: true,
+  }) => _curve.verify(
+    publicKey: publicKey,
+    message: message,
+    signature: signature,
   );
 
-  static pc.ECDSASigner _verifier() =>
-      pc.ECDSASigner(pc.SHA512Digest(), pc.HMac(pc.SHA512Digest(), 128));
-
-  static Uint8List _bigIntToFixed(BigInt value, int length) {
-    final out = Uint8List(length);
-    final mask = BigInt.from(0xff);
-    var remaining = value;
-    for (var i = length - 1; i >= 0; i--) {
-      out[i] = (remaining & mask).toInt();
-      remaining = remaining >> 8;
-    }
-    return out;
-  }
-
-  static BigInt _bytesToBigInt(List<int> bytes) {
-    var result = BigInt.zero;
-    for (final byte in bytes) {
-      result = (result << 8) | BigInt.from(byte & 0xff);
-    }
-    return result;
-  }
-
-  static pc.SecureRandom _seededFortuna() {
-    final fortuna = pc.FortunaRandom();
-    final random = Random.secure();
-    final seed = Uint8List(32);
-    for (var i = 0; i < seed.length; i++) {
-      seed[i] = random.nextInt(256);
-    }
-    fortuna.seed(pc.KeyParameter(seed));
-    return fortuna;
-  }
-}
-
-Uint8List? _normalizePoint(
-  Uint8List encoded,
-  pc.ECDomainParameters domain,
-  int uncompressedLength,
-) {
-  if (encoded.isEmpty) return null;
-  final tag = encoded[0];
-  final compressed = tag == 0x02 || tag == 0x03;
-  if (tag != 0x04 && !compressed) return null;
-  final expected = compressed
-      ? (uncompressedLength ~/ 2) + 1
-      : uncompressedLength;
-  if (encoded.length != expected) return null;
-  try {
-    final point = domain.curve.decodePoint(encoded);
-    if (point == null || point.isInfinity) return null;
-    final raw = point.getEncoded(false);
-    if (raw.length != uncompressedLength || raw[0] != 0x04) return null;
-    return Uint8List.fromList(raw);
-  } catch (_) {
-    return null;
-  }
+  /// Uncompressed point, or null when [encoded] is not a P-521 point.
+  static Uint8List? normalizePoint(Uint8List encoded) =>
+      _curve.normalizePoint(encoded);
 }

@@ -230,6 +230,15 @@ final class ComposeVerifyCommand extends Command<void> {
         mandatory: true,
         valueHelp: 'file',
         help: 'Composite signature JSON from compose-sign.',
+      )
+      ..addOption(
+        'policy',
+        allowed: ['require-all', 'accept-any'],
+        defaultsTo: 'require-all',
+        valueHelp: 'policy',
+        help:
+            'Caller policy. Must equal the policy in the signature file. '
+            'The file cannot widen require-all into accept-any.',
       );
     addQuietOption(argParser);
   }
@@ -257,6 +266,14 @@ final class ComposeVerifyCommand extends Command<void> {
     final signature = PqCompositeSignature.fromJson(
       await readJsonMap(File(results['signature'] as String)),
     );
+    final policy = PqCompositePolicy.byId(results['policy'] as String);
+    if (signature.policy != policy) {
+      throw PqForgeException(
+        'Composite signature policy is ${signature.policy.id}, not '
+        '${policy.id}. Pass the same --policy that compose-sign recorded. '
+        'The file cannot change the verification policy.',
+      );
+    }
     final mlPath = results['ml-dsa-public'] as String?;
     Uint8List? mlPublic;
     if (mlPath != null) {
@@ -308,6 +325,7 @@ final class ComposeVerifyCommand extends Command<void> {
         mlDsaPublic: mlPublic,
         slhPublic: slhPublic,
         classicalPublic: classical,
+        policy: policy,
       );
       if (ok) {
         progress.completeFile(fileName);

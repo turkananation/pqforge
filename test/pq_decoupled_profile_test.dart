@@ -48,4 +48,30 @@ void main() {
       message,
     );
   });
+
+  test('a built-in profile name cannot carry a different KEM', () {
+    expect(
+      () => PqForgeProfile.resolve(
+        'balanced',
+        PqKemAlgorithm.mlKem1024,
+        PqSignatureAlgorithm.mlDsa65,
+      ),
+      throwsA(isA<PqForgeException>()),
+    );
+    expect(
+      PqForgeProfile.resolve(
+        'balanced',
+        PqKemAlgorithm.mlKem768,
+        PqSignatureAlgorithm.mlDsa65,
+      ),
+      same(PqForgeProfile.balanced),
+    );
+    final custom = PqForgeProfile.resolve(
+      'custom-${PqKemAlgorithm.mlKem1024.id}-${PqSignatureAlgorithm.mlDsa44.id}',
+      PqKemAlgorithm.mlKem1024,
+      PqSignatureAlgorithm.mlDsa44,
+    );
+    expect(custom.kem, PqKemAlgorithm.mlKem1024);
+    expect(custom.signature, PqSignatureAlgorithm.mlDsa44);
+  });
 }

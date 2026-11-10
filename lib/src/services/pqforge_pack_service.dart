@@ -159,11 +159,13 @@ abstract final class PqFolderPack {
         }
         final relativePath = _decodeUtf8(await reader.readExactly(pathLen));
         _requireSafeRelativePath(relativePath);
+        _rejectSymlink(outputDirPath, relativePath);
         final contentLen = _readUint64(await reader.readExactly(8));
         onEntryStart?.call(relativePath, contentLen);
 
         final output = File(_join(outputDirPath, relativePath));
         await output.parent.create(recursive: true);
+        _rejectSymlink(outputDirPath, relativePath);
         final sink = await output.open(mode: FileMode.write);
         created.add(output);
         try {
@@ -221,10 +223,12 @@ abstract final class PqFolderPack {
       }
       final relativePath = _decodeUtf8(await _readExactly(source, pathLen));
       _requireSafeRelativePath(relativePath);
+      _rejectSymlink(outputDirPath, relativePath);
       final contentLen = _readUint64(await _readExactly(source, 8));
 
       final output = File(_join(outputDirPath, relativePath));
       await output.parent.create(recursive: true);
+      _rejectSymlink(outputDirPath, relativePath);
       final sink = await output.open(mode: FileMode.write);
       try {
         var remaining = contentLen;
@@ -321,6 +325,25 @@ void _requireSafeRelativePath(String relativePath) {
       relativePath.contains(r'\') ||
       segments.any((s) => s.isEmpty || s == '.' || s == '..')) {
     throw PqForgeException('Unsafe pack relative path: $relativePath');
+  }
+}
+
+/// A symlink under [outputDirPath] would let a safe-looking relative path
+/// write outside the tree (`link/file` when `link` points elsewhere).
+/// Checked before and after `create`, because `create(recursive: true)`
+/// follows an existing link.
+void _rejectSymlink(String outputDirPath, String relativePath) {
+  var current = outputDirPath;
+  if (FileSystemEntity.isLinkSync(current)) {
+    throw PqForgeException('Refusing to unpack through a symlink: $current');
+  }
+  for (final segment in relativePath.split('/')) {
+    current = _join(current, segment);
+    if (FileSystemEntity.isLinkSync(current)) {
+      throw PqForgeException(
+        'Refusing to unpack through a symlink: $relativePath',
+      );
+    }
   }
 }
 

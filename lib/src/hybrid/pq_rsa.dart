@@ -10,10 +10,13 @@
 /// Verify hashes [message] itself. Do not pre-hash. Verify never throws.
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+
+import '../algorithms/pq_fips.dart';
+import '../exceptions/pqforge_exception.dart';
+import 'pq_scalar.dart';
 
 /// Digest used by [PqRsa]. The signer hashes the message.
 enum PqRsaHash {
@@ -78,7 +81,7 @@ class PqRsa {
       ..init(
         pc.ParametersWithRandom(
           pc.RSAKeyGeneratorParameters(BigInt.from(65537), modulusBits, 64),
-          _seededFortuna(),
+          pqSeededFortuna(),
         ),
       );
     final pair = generator.generateKeyPair();
@@ -100,12 +103,14 @@ class PqRsa {
   }
 
   /// PKCS#1 v1.5 signature. [hash] selects the DigestInfo. The message is
-  /// hashed inside the signer.
+  /// hashed inside the signer. FIPS mode rejects SHA-1 and a modulus under
+  /// 2048 bits.
   static Uint8List signPkcs1({
     required PqRsaPrivateKey privateKey,
     required Uint8List message,
     required PqRsaHash hash,
   }) {
+    _requireFips(hash, privateKey.modulus);
     final signer = pc.RSASigner(_digest(hash), _digestId[hash]!)
       ..init(
         true,
@@ -116,6 +121,7 @@ class PqRsa {
   }
 
   /// Returns false for a bad modulus, exponent, length, or signature.
+  /// FIPS mode also returns false for SHA-1 and a modulus under 2048 bits.
   static bool verifyPkcs1({
     required Uint8List modulus,
     required Uint8List exponent,
@@ -123,6 +129,7 @@ class PqRsa {
     required Uint8List signature,
     required PqRsaHash hash,
   }) {
+    if (!_fipsAllows(hash, modulus)) return false;
     final key = _public(modulus, exponent);
     if (key == null || signature.length != key.modulus!.bitLength ~/ 8) {
       return false;
@@ -137,12 +144,14 @@ class PqRsa {
   }
 
   /// RSASSA-PSS. [saltLength] defaults to the hash length. Trailer is `0xBC`.
+  /// FIPS mode rejects SHA-1 and a modulus under 2048 bits.
   static Uint8List signPss({
     required PqRsaPrivateKey privateKey,
     required Uint8List message,
     required PqRsaHash hash,
     int? saltLength,
   }) {
+    _requireFips(hash, privateKey.modulus);
     final salt = saltLength ?? hash.digestBytes;
     if (salt < 0 || salt > 512) {
       throw ArgumentError.value(salt, 'saltLength', 'expected 0..512');
@@ -161,7 +170,7 @@ class PqRsa {
         true,
         pc.ParametersWithSaltConfiguration(
           pc.PrivateKeyParameter<pc.RSAPrivateKey>(_private(privateKey)),
-          _seededFortuna(),
+          pqSeededFortuna(),
           salt,
         ),
       );
@@ -172,7 +181,8 @@ class PqRsa {
   /// Returns false for a bad modulus, exponent, length, or signature.
   ///
   /// [saltLength] defaults to the hash length. RFC 4055's omitted salt is 20,
-  /// which a caller passes explicitly.
+  /// which a caller passes explicitly. FIPS mode returns false for SHA-1 and
+  /// a modulus under 2048 bits.
   static bool verifyPss({
     required Uint8List modulus,
     required Uint8List exponent,
@@ -181,6 +191,7 @@ class PqRsa {
     required PqRsaHash hash,
     int? saltLength,
   }) {
+    if (!_fipsAllows(hash, modulus)) return false;
     final salt = saltLength ?? hash.digestBytes;
     if (salt < 0 || salt > 512) return false;
     final key = _public(modulus, exponent);
@@ -195,7 +206,7 @@ class PqRsa {
           false,
           pc.ParametersWithSaltConfiguration(
             pc.PublicKeyParameter<pc.RSAPublicKey>(key),
-            _seededFortuna(),
+            pqSeededFortuna(),
             salt,
           ),
         );
@@ -203,6 +214,22 @@ class PqRsa {
     } catch (_) {
       return false;
     }
+  }
+
+  static void _requireFips(PqRsaHash hash, Uint8List modulus) {
+    if (_fipsAllows(hash, modulus)) return;
+    throw const PqForgeException(
+      'FIPS mode forbids RSA-SHA-1 and moduli under 2048 bits',
+    );
+  }
+
+  /// Verify stays non-throwing. SHA-1 and a 1024-bit modulus are legal
+  /// outside FIPS mode.
+  static bool _fipsAllows(PqRsaHash hash, Uint8List modulus) {
+    if (!PqFipsMode.isEnabled) return true;
+    if (hash == PqRsaHash.sha1) return false;
+    final bits = _modulus(modulus)?.bitLength;
+    return bits != null && bits >= 2048;
   }
 
   static pc.RSAPublicKey? _public(Uint8List modulus, Uint8List exponent) {
@@ -315,15 +342,4 @@ class PqRsa {
     PqRsaHash.sha384 => pc.SHA384Digest(),
     PqRsaHash.sha512 => pc.SHA512Digest(),
   };
-
-  static pc.SecureRandom _seededFortuna() {
-    final fortuna = pc.FortunaRandom();
-    final random = Random.secure();
-    final seed = Uint8List(32);
-    for (var i = 0; i < seed.length; i++) {
-      seed[i] = random.nextInt(256);
-    }
-    fortuna.seed(pc.KeyParameter(seed));
-    return fortuna;
-  }
 }

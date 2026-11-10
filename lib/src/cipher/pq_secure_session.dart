@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:zeroize/zeroize.dart';
 
 import '../algorithms/pq_fips.dart';
+import '../exceptions/pqforge_exception.dart';
 import '../primitives/pq_primitives.dart';
 import 'pq_cipher_suite.dart';
 import 'pq_cryptography_aead_engine.dart';
@@ -36,8 +37,11 @@ import 'pq_pointycastle_aead_engine.dart';
 /// +-----------------------------+------------------------------------+
 /// ```
 ///
-/// [encrypt] generates a fresh cryptographically secure nonce, prepends it, and
-/// appends the AEAD ciphertext-and-tag. [decrypt] slices the leading
+/// [encrypt] uses a per-session nonce: 4 random bytes chosen at construction,
+/// then a 64-bit counter (SP 800-38D §8.2.1). The 12-byte nonce is prepended
+/// and the AEAD ciphertext-and-tag follows. One session cannot repeat a nonce.
+/// Two sessions that share a key stay distinct until their 32-bit salts
+/// collide. [decrypt] slices the leading
 /// [PqForgeCipherSuite.nonceLength] bytes back off as the nonce before
 /// authenticating the remainder. Because both engines emit the identical
 /// `ciphertext || tag` layout, a packet produced by one [PqForgeEngineProvider]
@@ -54,6 +58,7 @@ final class PqForgeSecureSession {
     required this.cipherSuite,
     this.engineProvider = PqForgeEngineProvider.pureDart,
   }) : _secretKey = Uint8List.fromList(secretKey),
+       _nonceSalt = PqBytes.randomBytes(4),
        _engine = _resolveEngine(cipherSuite, engineProvider) {
     PqFipsMode.requireApprovedSuite(cipherSuite);
     cipherSuite.requireKey(_secretKey);
@@ -66,7 +71,9 @@ final class PqForgeSecureSession {
   final PqForgeEngineProvider engineProvider;
 
   final Uint8List _secretKey;
+  final Uint8List _nonceSalt;
   final PqForgeAeadEngine _engine;
+  int _counter = 0;
   bool _disposed = false;
 
   static PqForgeAeadEngine _resolveEngine(
@@ -81,19 +88,32 @@ final class PqForgeSecureSession {
 
   /// Encrypts [payload] into a `nonce || ciphertext || tag` wire packet.
   ///
-  /// A fresh, cryptographically secure nonce is generated for every call — the
-  /// caller must never supply or reuse one. [associatedData] (AAD) is bound
-  /// into the authentication tag (protecting routing headers, session IDs,
-  /// sequence numbers, …) but is not encrypted and is not included in the
-  /// packet; the peer must supply the identical AAD to [decrypt].
+  /// The nonce is this session's 4-byte salt followed by the next counter.
+  /// [associatedData] (AAD) is bound into the authentication tag (protecting
+  /// routing headers, session IDs, sequence numbers, …) but is not encrypted
+  /// and is not included in the packet; the peer must supply the identical
+  /// AAD to [decrypt].
   ///
-  /// Throws [StateError] if the session has been [dispose]d.
+  /// Throws [StateError] if the session has been [dispose]d, and
+  /// [PqForgeException] after 2^32 messages.
   Future<Uint8List> encrypt(
     Uint8List payload, {
     Uint8List? associatedData,
   }) async {
     _ensureNotDisposed();
-    final nonce = PqBytes.randomBytes(cipherSuite.nonceLength);
+    if (_counter >= 0x100000000) {
+      throw const PqForgeException(
+        'Secure-session nonce counter exhausted (2^32 messages)',
+      );
+    }
+    final seq = _counter++;
+    final nonce = Uint8List(cipherSuite.nonceLength)
+      ..setRange(0, _nonceSalt.length, _nonceSalt)
+      ..setRange(
+        _nonceSalt.length,
+        cipherSuite.nonceLength,
+        PqBytes.uint64(seq),
+      );
     final body = await _engine.seal(
       key: _secretKey,
       nonce: nonce,

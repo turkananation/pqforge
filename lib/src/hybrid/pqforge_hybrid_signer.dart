@@ -153,6 +153,10 @@ class PqForgeHybridSigner {
 
   /// Verifies a [signature] over [message] under both public keys.
   ///
+  /// [policy] is the caller's policy and defaults to
+  /// [PqDualSignaturePolicy.requireBoth]. It must equal the policy stored
+  /// on [signature]. The stored value cannot widen the check.
+  ///
   /// [classicalPublicKey] is the raw classical public key (Ed25519: 32 bytes;
   /// ECDSA-P256: the 65-byte uncompressed SEC1 point).
   Future<bool> verify({
@@ -161,8 +165,10 @@ class PqForgeHybridSigner {
     required Uint8List message,
     required PqHybridSignature signature,
     Uint8List? context,
+    PqDualSignaturePolicy policy = PqDualSignaturePolicy.requireBoth,
   }) async {
     if (signature.classicalAlgorithm != classicalAlgorithm) return false;
+    if (signature.policy != policy) return false;
     final boundMessage = _hybridSignatureMessage(message, context);
     final pqcValid = PqForge(profile: profile).verify(
       pqcPublicKey,
@@ -177,7 +183,7 @@ class PqForgeHybridSigner {
       boundMessage,
       signature.classicalSignature,
     );
-    return signature.dualSignature.combine(pqcValid, classicalValid);
+    return policy.combine(pqcValid, classicalValid);
   }
 
   static Future<Uint8List> _signClassical(
