@@ -10,7 +10,7 @@ Version: 0.4.13
 
 ## Identity
 
-pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA hybrids and signatures, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign is an opt-in 2-leg or 3-leg signature. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group. The core is pure Dart and web-safe — no dart:ffi.
+pqforge turns the pqcrypto ML-KEM (FIPS 203), ML-DSA (FIPS 204), and SLH-DSA (FIPS 205) primitives into application-ready cryptography: KEM-DEM envelopes, RFC 9180 HPKE, X-Wing (draft-connolly-cfrg-xwing-kem-11, not a .pqf algorithm), AES-256-GCM and ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA hybrids and signatures, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 certificates and PKCS#10 requests that OpenSSL req reads, bounded-memory gigabyte streaming, multi-recipient envelopes, Argon2id-wrapped key custody, named recipes, and a universal CLI. SLH-DSA is composed into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign is an opt-in 2-leg or 3-leg signature. PqEcdsaP521 is not the P-521 HPKE share and not a TLS group. The core is pure Dart and web-safe — no dart:ffi.
 
 ## Relationship To pqcrypto
 
@@ -19,7 +19,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - pqcrypto package: https://pub.dev/packages/pqcrypto
 - pqcrypto repository: https://github.com/turkananation/pqcrypto
 - pqcrypto is the primitives layer: pqcrypto is the primitives package: pure-Dart NIST FIPS 203 ML-KEM, FIPS 204 ML-DSA, and FIPS 205 SLH-DSA (all 12 parameter sets), plus SHA-2 and SHA-3/SHAKE, with zero runtime dependencies. It exposes raw key generation, encapsulation/decapsulation, and sign/verify over byte arrays.
-- pqforge is the composition layer: pqforge is the composition package: KEM-DEM envelopes, RFC 9180 HPKE, AES-256-GCM/ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 and PKCS#10, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, identity bindings), compose-sign, and a CLI. It composes pqcrypto SLH-DSA into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign can take one SLH-DSA leg when that key is passed.
+- pqforge is the composition layer: pqforge is the composition package: KEM-DEM envelopes, RFC 9180 HPKE, X-Wing (draft-connolly-cfrg-xwing-kem-11, not a .pqf algorithm), AES-256-GCM/ChaCha20-Poly1305 AEAD, an RFC 8439 ChaCha20 keystream, X25519/X448/Ed25519/Ed448/ECDSA-P256/ECDSA-P384/ECDSA-P521/RSA, P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, X.509 and PKCS#10, bounded-memory streaming, multi-recipient envelopes, Argon2id key custody, named recipes (files, folders, text, media, email, documents, webhooks, tokens, records, logs, artifacts, identity bindings), compose-sign, and a CLI. It composes pqcrypto SLH-DSA into keygen, custody, and detached sign/verify; envelopes and hybrid-sign remain ML-DSA-only. compose-sign can take one SLH-DSA leg when that key is passed.
 
 - Use pqcrypto when you need the raw ML-KEM/ML-DSA/SLH-DSA algorithms and nothing else.
 - Use pqforge when you need to ship a feature: encrypt a file, sign a release, run a hybrid session, wrap a key, or expose a CLI.
@@ -34,7 +34,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - SLH-DSA (FIPS 205, all 12 parameter sets) composed into keygen, custody, and detached sign/verify; not used for envelopes or hybrid-sign. compose-sign can take one SLH-DSA leg when that key is passed
 - AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart (PointyCastle) or native (package:cryptography) engine
 - RFC 8439 ChaCha20 keystream (PqSymmetricPrimitives.chacha20) for a QUIC header-protection mask. Not an AEAD
-- RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384
+- RFC 9180 HPKE (PqHpke): base, PSK, auth, and authPSK. KEMs DHKEM X25519, X448, P-256, P-384, and P-521. KDFs HKDF-SHA256, SHA384, and SHA512. AEADs AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only. BoringSSL 0.20261020.0 interop is base and auth, X25519 and P-256, HKDF-SHA256/384, and the three AEADs. OpenSSL 3.5.9 OSSL_HPKE interop is all four modes, X448 and P-521, HKDF-SHA256/512, and the three AEADs. Not a BoringSSL claim for X448 or P-521. Not an OpenSSL claim for X25519, P-256, or P-384. X-Wing (HpkeKem.xWing, 0x647A, draft-connolly-cfrg-xwing-kem-11) is an additional base and PSK KEM. Auth is rejected. Not a FIPS construction. Not a .pqf or .pqfs algorithm. No BoringSSL or OpenSSL evidence for 0x647A
 - X.509 certificates and PKCS#10 requests (PqX509) that openssl req reads: parse, mint, one signature check, and a path check against caller anchors. cert req, cert issue, cert sign, cert inspect, and cert verify. Not a trust store, not AIA, OCSP fetching, or CT
 - ECDSA P-384 (PqEcdsaP384, low-S), ECDSA P-521 (PqEcdsaP521, low-S; not the HPKE share and not a TLS group), RSA PKCS#1 v1.5 and RSASSA-PSS (PqRsa, SHA-256/384/512), and synchronous RFC 8032 Ed25519 (PqEd25519) and Ed448 (PqEd448, empty context; not an X.509 algorithm)
 - Bounded-memory .pqfs streaming for gigabyte-scale files: signed header plus independently authenticated frames, auto-engaged at 8 MiB
@@ -62,6 +62,8 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
 - RC4 or unauthenticated encryption
 - BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512
 - An OpenSSL HPKE claim for X25519, P-256, or P-384
+- X-Wing as a FIPS construction, an authenticated HPKE KEM, a .pqf or .pqfs algorithm, or a BoringSSL or OpenSSL interop claim
+- PQXDH, the Double Ratchet, and the Sparse Post-Quantum Ratchet
 - A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
 - ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs
 - SHA-1 as a signature or as the hash for a new protocol. PqBytes.sha1 is only the RFC 3174 digest
@@ -214,7 +216,8 @@ Forbidden claims:
 - [Envelope Formats](https://github.com/turkananation/pqforge/blob/main/doc/architecture/ENVELOPE_FORMATS.md): The .pqf one-shot and .pqfs streaming container layouts and AAD binding.
 - [Threat Model](https://github.com/turkananation/pqforge/blob/main/doc/security/THREAT_MODEL.md): Assets, adversaries, what the package defends, and what the application must own.
 - [Key Custody](https://github.com/turkananation/pqforge/blob/main/doc/architecture/KEY_CUSTODY.md): Wrapped key storage and pluggable custody model.
-- [HPKE](https://github.com/turkananation/pqforge/blob/main/doc/HPKE.md): RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary.
+- [HPKE](https://github.com/turkananation/pqforge/blob/main/doc/protocols/HPKE.md): RFC 9180 HPKE: modes, suites, seal/open/export, and the BoringSSL interop boundary. X-Wing is the additional KEM in XWING.md.
+- [X-Wing](https://github.com/turkananation/pqforge/blob/main/doc/protocols/XWING.md): draft-connolly-cfrg-xwing-kem-11 as PqXWing and HpkeKem.xWing (0x647A). Not the custom hybrid and not a .pqf algorithm.
 - [Signatures](https://github.com/turkananation/pqforge/blob/main/site/content/signatures.md): Opt-in dual and triple signature legs. Does not replace HPKE, certificates, ECDH, or envelope signatures.
 - [Claim Boundary](https://github.com/turkananation/pqforge/blob/main/doc/security/CLAIM_BOUNDARY.md): Allowed and forbidden claims for package consumers and agents.
 

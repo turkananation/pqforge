@@ -19,7 +19,8 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | Coding-agent workflow | [../AGENTS.md](../AGENTS.md) |
 | Full CLI usage | [CLI.md](CLI.md) |
 | Certificates, PKCS#10, and the cert CLI | [API.md](API.md) |
-| RFC 9180 HPKE | [HPKE.md](HPKE.md) |
+| RFC 9180 HPKE | [protocols/HPKE.md](protocols/HPKE.md) |
+| Protocol roadmap (X-Wing, ratchets, PQXDH) | [protocols/README.md](protocols/README.md) |
 | App and project catalog | [cookbook/PROJECT_CATALOG.md](cookbook/PROJECT_CATALOG.md) |
 | Recipe cookbook | [cookbook/README.md](cookbook/README.md) |
 | Hybrid coverage audit (vs `pqcrypto`) | [HYBRID_AUDIT.md](HYBRID_AUDIT.md) |
@@ -32,6 +33,17 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | GitHub Pages and AI discovery generation | [../tool/visibility/README.md](../tool/visibility/README.md) |
 
 ## Full Documentation Map
+
+### Protocols
+
+| Document | Covers |
+| --- | --- |
+| [protocols/README.md](protocols/README.md) | Which protocol is which, what is shipped, and the order they land |
+| [protocols/HPKE.md](protocols/HPKE.md) | RFC 9180 HPKE as implemented by `PqHpke` |
+| [protocols/XWING.md](protocols/XWING.md) | X-Wing KEM. `PqXWing` and `pqforge hpke`. Not `.pqf` |
+| [protocols/DOUBLE_RATCHET.md](protocols/DOUBLE_RATCHET.md) | Double Ratchet. Not implemented |
+| [protocols/PQXDH.md](protocols/PQXDH.md) | PQXDH. Not implemented. Needs XEdDSA |
+| [protocols/SPARSE_POST_QUANTUM_RATCHET.md](protocols/SPARSE_POST_QUANTUM_RATCHET.md) | Sparse Post-Quantum Ratchet and the Triple Ratchet. Not implemented |
 
 ### Reference
 

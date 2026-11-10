@@ -68,4 +68,12 @@ abstract final class PqFipsMode {
       );
     }
   }
+
+  /// X-Wing is not a FIPS construction. [PqXWing] itself does not call this,
+  /// so its known-answer tests still run while the flag is on.
+  static void requireXWingAllowed() {
+    if (_enabled) {
+      throw const PqForgeException('FIPS mode forbids X-Wing');
+    }
+  }
 }

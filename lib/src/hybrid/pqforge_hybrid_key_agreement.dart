@@ -3,14 +3,52 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart' as crypto;
 import 'package:pqforge/pqforge.dart';
 
+/// Which hybrid [PqForgeHybridKeyAgreement] runs.
+///
+/// [pqforge] is the default and is unchanged. [xWing] does not use
+/// [PqForgeHybridKeyAgreement.initiate] or [PqForgeHybridKeyAgreement.accept].
+enum PqHybridAgreementMode { pqforge, xWing }
+
 class PqForgeHybridKeyAgreement {
   const PqForgeHybridKeyAgreement({
     this.profile = PqForgeProfile.balanced,
     this.classicalAlgorithm = PqClassicalKeyAgreementAlgorithm.x25519,
+    this.mode = PqHybridAgreementMode.pqforge,
   });
 
   final PqForgeProfile profile;
   final PqClassicalKeyAgreementAlgorithm classicalAlgorithm;
+  final PqHybridAgreementMode mode;
+
+  /// X-Wing encapsulation. Throws unless [mode] is [PqHybridAgreementMode.xWing].
+  /// There is no deployment salt and no transcript.
+  Future<({Uint8List ciphertext, Uint8List sharedSecret})> encapsulateXWing(
+    Uint8List publicKey, {
+    Uint8List? eseed,
+  }) {
+    if (mode != PqHybridAgreementMode.xWing) {
+      throw const PqForgeException(
+        'encapsulateXWing requires PqHybridAgreementMode.xWing',
+      );
+    }
+    PqFipsMode.requireXWingAllowed();
+    if (eseed == null) return PqXWing.encapsulate(publicKey);
+    return PqXWing.encapsulateDerand(publicKey, eseed);
+  }
+
+  /// X-Wing decapsulation. [secretKey] is the 32-byte seed.
+  Future<Uint8List> decapsulateXWing(
+    Uint8List ciphertext,
+    Uint8List secretKey,
+  ) {
+    if (mode != PqHybridAgreementMode.xWing) {
+      throw const PqForgeException(
+        'decapsulateXWing requires PqHybridAgreementMode.xWing',
+      );
+    }
+    PqFipsMode.requireXWingAllowed();
+    return PqXWing.decapsulate(ciphertext, secretKey);
+  }
 
   /// Generates a long-term X25519 key-agreement key pair.
   ///
@@ -116,6 +154,9 @@ class PqForgeHybridKeyAgreement {
     Uint8List? transcriptContext,
     Uint8List? roleContext,
   }) async {
+    if (mode == PqHybridAgreementMode.xWing) {
+      throw const PqForgeException('X-Wing does not use the pqforge handshake');
+    }
     _requireX25519PublicKey(serverClassicalPublicKey);
     requireLength(
       'serverKemPublicKey',
@@ -186,6 +227,9 @@ class PqForgeHybridKeyAgreement {
     required Uint8List deploymentSalt,
     Uint8List? roleContext,
   }) async {
+    if (mode == PqHybridAgreementMode.xWing) {
+      throw const PqForgeException('X-Wing does not use the pqforge handshake');
+    }
     if (request.classicalAlgorithm != classicalAlgorithm) {
       throw const PqForgeException(
         'Hybrid request classical algorithm mismatch',

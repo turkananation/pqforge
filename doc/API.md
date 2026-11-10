@@ -14,7 +14,7 @@ That one entrypoint provides the whole stack:
 | Hybrid KEM combining | `PqForgeCombiner` (raw bytes) and the `SecretKey.deriveHybridSecretKey` extension |
 | Built-in classical hybrid | `PqForgeHybridKeyAgreement` (X25519 + ML-KEM), `PqForgeHybridSigner` (ML-DSA + Ed25519) |
 | Certificates | `PqX509` parse, mint, and path check. `PqEcdsaP384`, `PqRsa`, synchronous `PqEd25519`, and synchronous `PqEd448` sit beside `PqEcdsaP256`. Ed448 is not an X.509 algorithm. P-384 ECDSA is not `p384SharedSecret`. |
-| HPKE | `PqHpke` — RFC 9180 base, PSK, auth, and authPSK. See [HPKE.md](HPKE.md). |
+| HPKE | `PqHpke` — RFC 9180 base, PSK, auth, and authPSK, plus X-Wing. See [HPKE.md](protocols/HPKE.md). |
 | AEAD wire packets | `PqForgeSecureSession` over AES-256-GCM / ChaCha20-Poly1305, pure-Dart or native backend |
 
 `package:cryptography` is a standard dependency (it powers the hybrid, native-AEAD,
@@ -239,7 +239,7 @@ without the hybrid wrapper.
 `PqHpke` is RFC 9180. Modes are `HpkeMode.base`, `psk`, `auth`, and
 `authPsk`. The default suite is X25519, HKDF-SHA256, AES-128-GCM
 (`HpkeSuite.x25519Aes128Gcm`). Full use cases, the exporter, and the
-BoringSSL boundary are in [HPKE.md](HPKE.md).
+BoringSSL boundary are in [HPKE.md](protocols/HPKE.md).
 
 ```dart
 final recipient = await PqHpke.generateKeyPair(HpkeKem.x25519HkdfSha256);
@@ -250,6 +250,12 @@ final sealed = await PqHpke.seal(
   plaintext: Uint8List.fromList(utf8.encode('record')),
 );
 ```
+
+X-Wing is `HpkeKem.xWing` (`0x647A`) and `PqXWing`. It is not a DHKEM.
+Auth and authPSK throw. The default `PqForgeHybridKeyAgreement()` mode
+stays `pqforge`. Opt in with `PqHybridAgreementMode.xWing`; `initiate`
+and `accept` then throw. Lengths, the combiner, and `pqforge hpke` are
+in [XWING.md](protocols/XWING.md). `.pqf` and `.pqfs` are unchanged.
 
 ## 4. AEAD secure sessions and wire packets
 

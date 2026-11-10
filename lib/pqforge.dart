@@ -56,6 +56,7 @@ export 'src/codecs/pq_streaming_envelope.dart';
 export 'src/certificates/x509.dart';
 
 export 'src/hpke/pq_hpke.dart';
+export 'src/hpke/pq_xwing_message.dart';
 
 export 'src/hybrid/pq_hybrid_combiner.dart';
 export 'src/hybrid/pq_classical_hybrid.dart';
@@ -70,6 +71,7 @@ export 'src/hybrid/pq_nist_ecdh.dart';
 export 'src/hybrid/pq_brainpool.dart';
 export 'src/hybrid/pq_ffdhe.dart';
 export 'src/hybrid/pq_x448.dart';
+export 'src/hybrid/pq_xwing.dart';
 export 'src/hybrid/pq_rsa.dart';
 export 'src/hybrid/pqforge_hybrid_signer.dart';
 export 'src/hybrid/pq_hybrid_signature.dart';

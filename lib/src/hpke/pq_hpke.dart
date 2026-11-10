@@ -24,6 +24,8 @@ import '../exceptions/pqforge_exception.dart';
 import '../hybrid/pq_classical_provider.dart';
 import '../hybrid/pq_nist_ecdh.dart';
 import '../hybrid/pq_x448.dart';
+import '../hybrid/pq_xwing.dart';
+import '../algorithms/pq_fips.dart';
 import '../primitives/pq_primitives.dart';
 import 'package:zeroize/zeroize.dart';
 
@@ -143,7 +145,13 @@ enum HpkeKem {
   x25519HkdfSha256(0x0020, 32, 32, 32, 32, HpkeKdf.hkdfSha256),
 
   /// DHKEM(X448, HKDF-SHA512), `0x0021`. 56-byte keys. `Nsecret` is 64.
-  x448HkdfSha512(0x0021, 64, 56, 56, 56, HpkeKdf.hkdfSha512);
+  x448HkdfSha512(0x0021, 64, 56, 56, 56, HpkeKdf.hkdfSha512),
+
+  /// X-Wing, draft-connolly-cfrg-xwing-kem-11, requested id `0x647A`.
+  /// Not a DHKEM. `Nsk` is the 32-byte seed. Auth is not defined.
+  /// [kdf] is unused inside the KEM. The suite KDF is still the HPKE
+  /// key schedule.
+  xWing(0x647A, 32, 1120, 1216, 32, HpkeKdf.hkdfSha256);
 
   const HpkeKem(this.id, this.nSecret, this.nEnc, this.nPk, this.nSk, this.kdf);
 
@@ -396,6 +404,22 @@ abstract final class PqHpke {
     required HpkeKem kem,
     required Uint8List ikm,
   }) async {
+    if (kem == HpkeKem.xWing) {
+      PqFipsMode.requireXWingAllowed();
+      final seed = PqXWing.deriveSeed(ikm);
+      ({Uint8List secretKey, Uint8List publicKey})? pair;
+      try {
+        pair = await PqXWing.generateKeyPairDerand(seed);
+        return HpkeKeyPair(
+          kem: kem,
+          secretKey: pair.secretKey,
+          publicKey: pair.publicKey,
+        );
+      } finally {
+        secureZero(seed);
+        if (pair != null) secureZero(pair.secretKey);
+      }
+    }
     final suiteId = _kemSuiteId(kem);
     final dkp = _labeledExtract(kem.kdf, suiteId, Uint8List(0), 'dkp_prk', ikm);
     try {
@@ -411,6 +435,9 @@ abstract final class PqHpke {
         HpkeKem.p256HkdfSha256 ||
         HpkeKem.p384HkdfSha384 ||
         HpkeKem.p521HkdfSha512 => _deriveNistScalar(kem, suiteId, dkp),
+        HpkeKem.xWing => throw StateError(
+          'X-Wing DeriveKeyPair does not use labeled expand',
+        ),
       };
       try {
         final publicKey = await _publicKey(kem, secret);
@@ -481,15 +508,27 @@ abstract final class PqHpke {
         } finally {
           secureZero(pair.secretKey);
         }
+      case HpkeKem.xWing:
+        PqFipsMode.requireXWingAllowed();
+        final pair = await PqXWing.generateKeyPair();
+        try {
+          return HpkeKeyPair(
+            kem: kem,
+            secretKey: pair.secretKey,
+            publicKey: pair.publicKey,
+          );
+        } finally {
+          secureZero(pair.secretKey);
+        }
     }
   }
 
   /// `Setup<mode>S`. Returns the encapsulated key and a sender context.
   ///
-  /// [ephemeralIkm], when set, is the RFC 9180 `Encap` ikm passed through
-  /// `DeriveKeyPair`. It is not the BoringSSL X25519 testing seed (that
-  /// seed is the ephemeral private key, which is what `DeriveKeyPair`
-  /// returns). Omit it outside tests.
+  /// For a DHKEM, [ephemeralIkm] is the RFC 9180 `DeriveKeyPair` ikm. It
+  /// is not the BoringSSL X25519 testing seed (that seed is the ephemeral
+  /// private key). For [HpkeKem.xWing] it is the 64-byte encapsulation
+  /// seed, and a 32-byte value is rejected. Omit it outside tests.
   static Future<({Uint8List enc, HpkeContext context})> setupSender({
     required HpkeSuite suite,
     required HpkeMode mode,
@@ -500,6 +539,12 @@ abstract final class PqHpke {
     HpkeKeyPair? senderKey,
     Uint8List? ephemeralIkm,
   }) async {
+    if (suite.kem == HpkeKem.xWing) {
+      PqFipsMode.requireXWingAllowed();
+      if (mode.usesAuth) {
+        throw ArgumentError('X-Wing is not an authenticated KEM');
+      }
+    }
     final materials = _materials(
       suite: suite,
       mode: mode,
@@ -541,6 +586,12 @@ abstract final class PqHpke {
     Uint8List? pskId,
     Uint8List? senderPublicKey,
   }) async {
+    if (suite.kem == HpkeKem.xWing) {
+      PqFipsMode.requireXWingAllowed();
+      if (mode.usesAuth) {
+        throw ArgumentError('X-Wing is not an authenticated KEM');
+      }
+    }
     if (recipientKey.kem != suite.kem) {
       throw ArgumentError.value(
         recipientKey.kem,
@@ -727,6 +778,23 @@ Future<({Uint8List enc, Uint8List sharedSecret})> _encap({
   required HpkeKeyPair? senderKey,
   required Uint8List? ephemeralIkm,
 }) async {
+  if (kem == HpkeKem.xWing) {
+    if (senderKey != null) {
+      throw ArgumentError('X-Wing is not an authenticated KEM');
+    }
+    if (ephemeralIkm != null && ephemeralIkm.length != PqXWing.eseedBytes) {
+      throw ArgumentError(
+        'X-Wing ephemeralIkm must be the 64-byte encapsulation seed',
+      );
+    }
+    final encapsulated = ephemeralIkm == null
+        ? await PqXWing.encapsulate(recipientPublicKey)
+        : await PqXWing.encapsulateDerand(recipientPublicKey, ephemeralIkm);
+    return (
+      enc: encapsulated.ciphertext,
+      sharedSecret: encapsulated.sharedSecret,
+    );
+  }
   final ephemeral = ephemeralIkm == null
       ? await PqHpke.generateKeyPair(kem)
       : await PqHpke.deriveKeyPair(kem: kem, ikm: ephemeralIkm);
@@ -768,6 +836,13 @@ Future<Uint8List> _decap({
   required Uint8List enc,
   required Uint8List? senderPublicKey,
 }) async {
+  if (recipientKey.kem == HpkeKem.xWing) {
+    if (senderPublicKey != null) {
+      throw ArgumentError('X-Wing is not an authenticated KEM');
+    }
+    await _requireMatchingPublicKey(recipientKey.kem, recipientKey);
+    return PqXWing.decapsulate(enc, recipientKey.secretKey);
+  }
   await _requireMatchingPublicKey(recipientKey.kem, recipientKey);
   final dhEphemeral = await _dh(recipientKey.kem, recipientKey.secretKey, enc);
   Uint8List? dhAuth;
@@ -817,6 +892,10 @@ Future<Uint8List> _publicKey(HpkeKem kem, Uint8List secretKey) async {
       return PqNistEcdh.p521PublicKeyFromPrivate(secretKey);
     case HpkeKem.x448HkdfSha512:
       return PqX448.publicKeyFromPrivate(secretKey);
+    case HpkeKem.xWing:
+      final pair = await PqXWing.generateKeyPairDerand(secretKey);
+      secureZero(pair.secretKey);
+      return pair.publicKey;
   }
 }
 
@@ -861,6 +940,8 @@ Future<Uint8List> _dh(
         throw const PqForgeException('X448 shared secret is all zeros');
       }
       return shared;
+    case HpkeKem.xWing:
+      throw StateError('X-Wing is not a DHKEM');
   }
 }
 
@@ -988,7 +1069,8 @@ pc.ECDomainParameters _nistDomain(HpkeKem kem) => switch (kem) {
   HpkeKem.p384HkdfSha384 => _p384,
   HpkeKem.p521HkdfSha512 => _p521,
   HpkeKem.x25519HkdfSha256 ||
-  HpkeKem.x448HkdfSha512 => throw StateError('${kem.name} is not a NIST KEM'),
+  HpkeKem.x448HkdfSha512 ||
+  HpkeKem.xWing => throw StateError('${kem.name} is not a NIST KEM'),
 };
 
 final _p256 = pc.ECCurve_secp256r1();
