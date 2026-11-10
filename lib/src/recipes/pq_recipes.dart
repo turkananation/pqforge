@@ -215,7 +215,17 @@ class PqSignedToken {
   }
 }
 
-enum PqDualSignaturePolicy { requireBoth, acceptEither }
+enum PqDualSignaturePolicy {
+  requireBoth,
+  acceptEither;
+
+  /// Combines the two leg results. The caller chooses the policy; a stored
+  /// signature cannot switch this on its own.
+  bool combine(bool pqcValid, bool classicalValid) => switch (this) {
+    PqDualSignaturePolicy.requireBoth => pqcValid && classicalValid,
+    PqDualSignaturePolicy.acceptEither => pqcValid || classicalValid,
+  };
+}
 
 class PqDualSignature {
   PqDualSignature({
@@ -229,12 +239,8 @@ class PqDualSignature {
   final Uint8List classicalSignature;
   final PqDualSignaturePolicy policy;
 
-  bool combine(bool pqcValid, bool classicalValid) {
-    return switch (policy) {
-      PqDualSignaturePolicy.requireBoth => pqcValid && classicalValid,
-      PqDualSignaturePolicy.acceptEither => pqcValid || classicalValid,
-    };
-  }
+  bool combine(bool pqcValid, bool classicalValid) =>
+      policy.combine(pqcValid, classicalValid);
 }
 
 class PqOffloadRequest {

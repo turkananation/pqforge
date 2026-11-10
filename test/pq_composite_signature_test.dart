@@ -85,12 +85,24 @@ void main() {
       await composer.verify(
         message: message,
         signature: signature,
+        policy: PqCompositePolicy.acceptAny,
         classicalPublic: [
           (algorithmId: 'ecdsa-p256', publicKey: p256.publicKey),
           (algorithmId: 'ecdsa-p521', publicKey: p521.publicKey),
         ],
       ),
       isTrue,
+    );
+    expect(
+      await composer.verify(
+        message: message,
+        signature: signature,
+        classicalPublic: [
+          (algorithmId: 'ecdsa-p256', publicKey: p256.publicKey),
+          (algorithmId: 'ecdsa-p521', publicKey: p521.publicKey),
+        ],
+      ),
+      isFalse,
     );
     final strict = PqCompositeSignature(
       policy: PqCompositePolicy.requireAll,

@@ -72,8 +72,14 @@ Uint8List _platformRandomBytes(int length) {
 /// Process-wide source of cryptographic randomness.
 ///
 /// Defaults to the platform CSPRNG (`Random.secure()`). FIPS 140-3 deployments
-/// can point [generator] at a validated module's DRBG so every nonce, salt, and
-/// seed pqforge draws comes from inside the module boundary:
+/// can point [generator] at a validated module's DRBG. Classical key
+/// generation, nonces, salts, and seeds go through [PqBytes.randomBytes],
+/// which calls [generator].
+///
+/// A background isolate does not inherit [generator]. The streaming
+/// `encryptFileInBackground` and `decryptFileInBackground` helpers throw
+/// when it is not the platform default, rather than silently drawing from
+/// `Random.secure` in the worker.
 ///
 /// ```dart
 /// PqRandom.generator = myValidatedModule.randomBytes;
@@ -81,6 +87,9 @@ Uint8List _platformRandomBytes(int length) {
 abstract final class PqRandom {
   /// The active generator. Must return exactly the requested number of bytes.
   static Uint8List Function(int length) generator = _platformRandomBytes;
+
+  /// Whether [generator] is still the platform CSPRNG.
+  static bool get isPlatform => identical(generator, _platformRandomBytes);
 
   /// Restores the platform CSPRNG default.
   static void useDefault() => generator = _platformRandomBytes;
@@ -568,6 +577,13 @@ class PqSlhDsaPrimitives {
   };
 }
 
+final crypto_dart.DartAesGcm? _syncAes256 = Endian.host == Endian.little
+    ? crypto_dart.DartAesGcm.with256bits()
+    : null;
+final crypto_dart.DartAesGcm? _syncAes128 = Endian.host == Endian.little
+    ? crypto_dart.DartAesGcm.with128bits()
+    : null;
+
 class PqSymmetricPrimitives {
   const PqSymmetricPrimitives._();
 
@@ -704,6 +720,12 @@ class PqSymmetricPrimitives {
     return Uint8List.sublistView(okm, 0, outputBytes);
   }
 
+  /// AES-256-GCM. [key] is 32 bytes, [nonce] is 12 bytes. Returns
+  /// `ciphertext || tag`.
+  ///
+  /// On a little-endian host this is the same pure-Dart `package:cryptography`
+  /// engine the async and streaming paths use. Big-endian hosts stay on
+  /// PointyCastle. Both are SP 800-38D with a 16-byte tag, so the bytes match.
   static Uint8List aesGcmEncrypt({
     required Uint8List key,
     required Uint8List nonce,
@@ -712,17 +734,25 @@ class PqSymmetricPrimitives {
   }) {
     requireLength('key', key, pqForgeDefaultSessionKeyBytes);
     requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
-    final cipher = pc.GCMBlockCipher(pc.AESEngine())
-      ..init(
-        true,
-        pc.AEADParameters(
-          pc.KeyParameter(key),
-          128,
-          nonce,
-          aad ?? Uint8List(0),
-        ),
+    final associated = aad ?? Uint8List(0);
+    final fast = _syncAes256;
+    if (fast != null) {
+      return _dartGcm(
+        cipher: fast,
+        forEncryption: true,
+        key: key,
+        nonce: nonce,
+        data: plaintext,
+        aad: associated,
+        suite: 'aes-256-gcm',
       );
-    return cipher.process(plaintext);
+    }
+    return _pcGcmSeal(
+      key: key,
+      nonce: nonce,
+      plaintext: plaintext,
+      aad: associated,
+    );
   }
 
   static Uint8List aesGcmDecrypt({
@@ -733,17 +763,26 @@ class PqSymmetricPrimitives {
   }) {
     requireLength('key', key, pqForgeDefaultSessionKeyBytes);
     requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
-    final cipher = pc.GCMBlockCipher(pc.AESEngine())
-      ..init(
-        false,
-        pc.AEADParameters(
-          pc.KeyParameter(key),
-          128,
-          nonce,
-          aad ?? Uint8List(0),
-        ),
+    final associated = aad ?? Uint8List(0);
+    final fast = _syncAes256;
+    if (fast != null) {
+      return _dartGcm(
+        cipher: fast,
+        forEncryption: false,
+        key: key,
+        nonce: nonce,
+        data: ciphertext,
+        aad: associated,
+        suite: 'aes-256-gcm',
       );
-    return cipher.process(ciphertext);
+    }
+    return _gcmOpen(
+      key: key,
+      nonce: nonce,
+      ciphertext: ciphertext,
+      aad: associated,
+      suite: 'aes-256-gcm',
+    );
   }
 
   /// AES-ECB single 16-byte block. [key] is 16 (AES-128) or 32 (AES-256).
@@ -774,17 +813,25 @@ class PqSymmetricPrimitives {
   }) {
     requireLength('key', key, 16);
     requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
-    final cipher = pc.GCMBlockCipher(pc.AESEngine())
-      ..init(
-        true,
-        pc.AEADParameters(
-          pc.KeyParameter(key),
-          128,
-          nonce,
-          aad ?? Uint8List(0),
-        ),
+    final associated = aad ?? Uint8List(0);
+    final fast = _syncAes128;
+    if (fast != null) {
+      return _dartGcm(
+        cipher: fast,
+        forEncryption: true,
+        key: key,
+        nonce: nonce,
+        data: plaintext,
+        aad: associated,
+        suite: 'aes-128-gcm',
       );
-    return cipher.process(plaintext);
+    }
+    return _pcGcmSeal(
+      key: key,
+      nonce: nonce,
+      plaintext: plaintext,
+      aad: associated,
+    );
   }
 
   /// AES-128-GCM open. [ciphertext] is `ciphertext || tag`.
@@ -796,17 +843,111 @@ class PqSymmetricPrimitives {
   }) {
     requireLength('key', key, 16);
     requireLength('nonce', nonce, pqForgeDefaultAeadNonceBytes);
-    final cipher = pc.GCMBlockCipher(pc.AESEngine())
-      ..init(
-        false,
-        pc.AEADParameters(
-          pc.KeyParameter(key),
-          128,
-          nonce,
-          aad ?? Uint8List(0),
-        ),
+    final associated = aad ?? Uint8List(0);
+    final fast = _syncAes128;
+    if (fast != null) {
+      return _dartGcm(
+        cipher: fast,
+        forEncryption: false,
+        key: key,
+        nonce: nonce,
+        data: ciphertext,
+        aad: associated,
+        suite: 'aes-128-gcm',
       );
-    return cipher.process(ciphertext);
+    }
+    return _gcmOpen(
+      key: key,
+      nonce: nonce,
+      ciphertext: ciphertext,
+      aad: associated,
+      suite: 'aes-128-gcm',
+    );
+  }
+
+  static Uint8List _pcGcmSeal({
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List plaintext,
+    required Uint8List aad,
+  }) {
+    final cipher = pc.GCMBlockCipher(pc.AESEngine())
+      ..init(true, pc.AEADParameters(pc.KeyParameter(key), 128, nonce, aad));
+    return cipher.process(plaintext);
+  }
+
+  static Uint8List _dartGcm({
+    required crypto_dart.DartAesGcm cipher,
+    required bool forEncryption,
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List data,
+    required Uint8List aad,
+    required String suite,
+  }) {
+    final secretKey = crypto.SecretKeyData(key);
+    if (forEncryption) {
+      final box = cipher.encryptSync(
+        data,
+        secretKeyData: secretKey,
+        nonce: nonce,
+        aad: aad,
+      );
+      final cipherText = box.cipherText;
+      final tag = box.mac.bytes;
+      return Uint8List(cipherText.length + tag.length)
+        ..setRange(0, cipherText.length, cipherText)
+        ..setRange(cipherText.length, cipherText.length + tag.length, tag);
+    }
+    if (data.length < 16) {
+      throw PqForgeAuthTagException(
+        '$suite authentication tag verification failed',
+      );
+    }
+    final split = data.length - 16;
+    final box = crypto.SecretBox(
+      Uint8List.sublistView(data, 0, split),
+      nonce: nonce,
+      mac: crypto.Mac(Uint8List.sublistView(data, split)),
+    );
+    try {
+      final clear = cipher.decryptSync(box, secretKeyData: secretKey, aad: aad);
+      return Uint8List.fromList(clear);
+    } on crypto.SecretBoxAuthenticationError {
+      throw PqForgeAuthTagException(
+        '$suite authentication tag verification failed',
+      );
+    }
+  }
+
+  static Uint8List _gcmOpen({
+    required Uint8List key,
+    required Uint8List nonce,
+    required Uint8List ciphertext,
+    required Uint8List aad,
+    required String suite,
+  }) {
+    final cipher = pc.GCMBlockCipher(pc.AESEngine())
+      ..init(false, pc.AEADParameters(pc.KeyParameter(key), 128, nonce, aad));
+    final out = Uint8List(cipher.getOutputSize(ciphertext.length));
+    try {
+      final n = ciphertext.isEmpty
+          ? 0
+          : cipher.processBytes(ciphertext, 0, ciphertext.length, out, 0);
+      final written = n + cipher.doFinal(out, n);
+      if (written == out.length) return out;
+      final exact = Uint8List.fromList(Uint8List.sublistView(out, 0, written));
+      secureZero(out);
+      return exact;
+    } on pc.InvalidCipherTextException {
+      secureZero(out);
+      throw PqForgeAuthTagException(
+        '$suite authentication tag verification failed',
+      );
+    } on Object {
+      secureZero(out);
+      rethrow;
+    }
   }
 
   /// RFC 8439 ChaCha20 keystream. Not an AEAD and not header protection by itself.

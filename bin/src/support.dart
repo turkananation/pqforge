@@ -103,8 +103,14 @@ void addCipherOption(ArgParser parser) {
 }
 
 /// Resolves `--cipher` into a suite (default AES-256-GCM).
-PqForgeCipherSuite cipherFrom(ArgResults results) =>
-    PqForgeCipherSuite.byId(results['cipher'] as String? ?? 'aes-256-gcm');
+/// A ChaCha suite is refused while [PqFipsMode] is on.
+PqForgeCipherSuite cipherFrom(ArgResults results) {
+  final suite = PqForgeCipherSuite.byId(
+    results['cipher'] as String? ?? 'aes-256-gcm',
+  );
+  PqFipsMode.requireApprovedSuite(suite);
+  return suite;
+}
 
 /// Adds the hybrid (ML-KEM + X25519) options to an encrypt-side command.
 void addHybridEncryptOptions(ArgParser parser) {

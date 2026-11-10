@@ -768,6 +768,30 @@ void main() {
         ),
         isFalse,
       );
+      final widened = PqDualSignature(
+        pqcSignature: dual.pqcSignature,
+        classicalSignature: dual.classicalSignature,
+        policy: PqDualSignaturePolicy.acceptEither,
+      );
+      expect(
+        forge.dualVerify(
+          publicKey: signer.publicKey,
+          message: message,
+          signature: widened,
+          classicalVerifier: (m, s) => false,
+        ),
+        isFalse,
+      );
+      expect(
+        forge.dualVerify(
+          publicKey: signer.publicKey,
+          message: message,
+          signature: widened,
+          classicalVerifier: (m, s) => false,
+          policy: PqDualSignaturePolicy.acceptEither,
+        ),
+        isTrue,
+      );
     });
   });
 

@@ -301,12 +301,18 @@ abstract final class PqX509 {
   /// [ocspResponsePresent] must be true when any certificate on the path
   /// requires OCSP stapling (RFC 7633). [acceptedCriticalOids] are extensions
   /// this process implements. Any other critical extension is `badConstraint`.
+  ///
+  /// [extendedKeyUsage], when set, is required on the leaf. Each OID must
+  /// appear in the leaf EKU. Omitting it does not check purpose: this is not
+  /// a WebPKI trust store, and a caller that cares about serverAuth or
+  /// clientAuth has to say so.
   static PqX509Path validate({
     required List<Uint8List> chain,
     required List<Uint8List> anchors,
     required DateTime now,
     bool ocspResponsePresent = false,
     List<List<int>> acceptedCriticalOids = const [],
+    List<List<int>>? extendedKeyUsage,
   }) {
     if (!now.isUtc) return const PqX509Path.fail(PqX509Failure.badTime);
     if (chain.isEmpty || anchors.isEmpty) {
@@ -331,7 +337,14 @@ abstract final class PqX509 {
       }
       roots.add(parsed.certificate!);
     }
-    return _path(certs, roots, now, ocspResponsePresent, acceptedCriticalOids);
+    return _path(
+      certs,
+      roots,
+      now,
+      ocspResponsePresent,
+      acceptedCriticalOids,
+      extendedKeyUsage,
+    );
   }
 
   /// PEM. [label] is `CERTIFICATE` or `CERTIFICATE REQUEST`.
@@ -1210,12 +1223,23 @@ PqX509Path _path(
   DateTime now,
   bool ocspResponsePresent,
   List<List<int>> acceptedCriticalOids,
+  List<List<int>>? extendedKeyUsage,
 ) {
   PqX509Certificate? anchor;
+  var sawName = false;
   for (final candidate in anchors) {
-    if (_same(candidate.subjectDer, certs.last.issuerDer)) anchor = candidate;
+    if (!_same(candidate.subjectDer, certs.last.issuerDer)) continue;
+    sawName = true;
+    if (_check(certs.last, candidate.publicKey)) {
+      anchor = candidate;
+      break;
+    }
   }
-  if (anchor == null) return const PqX509Path.fail(PqX509Failure.untrusted);
+  if (anchor == null) {
+    return PqX509Path.fail(
+      sawName ? PqX509Failure.badSignature : PqX509Failure.untrusted,
+    );
+  }
   for (var i = 0; i < certs.length - 1; i++) {
     if (!_same(certs[i].issuerDer, certs[i + 1].subjectDer)) {
       return const PqX509Path.fail(PqX509Failure.untrusted);
@@ -1224,12 +1248,10 @@ PqX509Path _path(
   final selfSignedLeaf =
       certs.length == 1 &&
       _same(anchor.subjectDer, certs.first.subjectDer) &&
-      _same(anchor.issuerDer, certs.first.issuerDer);
-  for (var i = 0; i < certs.length; i++) {
-    final issuerKey = i == certs.length - 1
-        ? anchor.publicKey
-        : certs[i + 1].publicKey;
-    if (!_check(certs[i], issuerKey)) {
+      _same(anchor.issuerDer, certs.first.issuerDer) &&
+      _samePublicKey(anchor.publicKey, certs.first.publicKey);
+  for (var i = 0; i < certs.length - 1; i++) {
+    if (!_check(certs[i], certs[i + 1].publicKey)) {
       return const PqX509Path.fail(PqX509Failure.badSignature);
     }
   }
@@ -1247,6 +1269,12 @@ PqX509Path _path(
     if (critical != null) return PqX509Path.fail(critical);
     if (certificate.mustStaple && !ocspResponsePresent) {
       return const PqX509Path.fail(PqX509Failure.mustStaple);
+    }
+  }
+  if (extendedKeyUsage != null) {
+    for (final oid in extendedKeyUsage) {
+      final present = certs.first.extKeyUsage.any((have) => _arcs(have, oid));
+      if (!present) return const PqX509Path.fail(PqX509Failure.badConstraint);
     }
   }
   for (var i = 0; i < path.length - 1; i++) {
@@ -1366,19 +1394,12 @@ PqX509Failure? _constrained(
             : _rdns(name.name);
         if (rdns == null) return PqX509Failure.badConstraint;
         if (_outside(permitted, excluded, (set, excludedSet) {
-          if (excludedSet.directory.any((base) {
+          return _form(set.directory, excludedSet.directory, (base) {
             final constraint = _rdns(base);
-            return constraint != null && _dnWithin(rdns, constraint);
-          })) {
-            return true;
-          }
-          for (final setDir in set.directory) {
-            final constraint = _rdns(setDir);
-            if (constraint == null) return true;
-            if (constraint.isEmpty) continue;
-            if (!_dnWithin(rdns, constraint)) return true;
-          }
-          return false;
+            if (constraint == null) return false;
+            if (constraint.isEmpty) return true;
+            return _dnWithin(rdns, constraint);
+          });
         })) {
           return PqX509Failure.badConstraint;
         }
@@ -2089,6 +2110,20 @@ bool _ia5(Uint8List bytes) {
   }
   return true;
 }
+
+bool _samePublicKey(PqX509PublicKey a, PqX509PublicKey b) => switch (a) {
+  PqX509MlDsaKey() =>
+    b is PqX509MlDsaKey && a.algorithm == b.algorithm && _same(a.raw, b.raw),
+  PqX509EcdsaP256Key() =>
+    b is PqX509EcdsaP256Key && _same(a.uncompressed, b.uncompressed),
+  PqX509EcdsaP384Key() =>
+    b is PqX509EcdsaP384Key && _same(a.uncompressed, b.uncompressed),
+  PqX509Ed25519Key() => b is PqX509Ed25519Key && _same(a.raw, b.raw),
+  PqX509RsaKey() =>
+    b is PqX509RsaKey &&
+        _same(a.modulus, b.modulus) &&
+        _same(a.exponent, b.exponent),
+};
 
 bool _same(Uint8List a, Uint8List b) {
   if (a.length != b.length) return false;

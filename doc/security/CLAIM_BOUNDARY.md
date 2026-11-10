@@ -21,6 +21,13 @@ Allowed wording:
   `PqForgeHybridKeyAgreement`. Auth is not defined. It does not change
   `.pqf` or `.pqfs`. There is no BoringSSL or OpenSSL evidence for
   `0x647A`.
+- `PqFipsMode` is a process-wide switch, not a validated module. It also
+  rejects RSA-SHA-1 and an RSA modulus under 2048 bits at `PqRsa.signPkcs1`
+  and `signPss` (verify returns false). HPKE seal and open refuse an AEAD
+  other than AES-256-GCM. Background file helpers re-enable the flag in
+  their isolate and refuse a custom `PqRandom.generator`. It does not gate
+  Brainpool, FFDHE, AES-128-GCM at the primitive (QUIC Initial), a raw
+  `PqForgeAeadEngine.seal`, or `PqXWing` itself.
 - Brainpool ECDH (`PqBrainpool`) for brainpoolP256r1, brainpoolP384r1, and
   brainpoolP512r1, and RFC 7919 FFDHE (`PqFfdhe`) for the five named groups
   OpenSSL negotiates. BoringSSL does not negotiate these. The byte layout

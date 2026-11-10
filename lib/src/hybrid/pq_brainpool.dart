@@ -15,11 +15,12 @@
 /// constant-time.
 library;
 
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
 import 'package:zeroize/zeroize.dart';
+
+import 'pq_scalar.dart';
 
 /// Brainpool ECDH with the TLS byte contract.
 abstract final class PqBrainpool {
@@ -113,7 +114,7 @@ abstract final class PqBrainpool {
       ..init(
         pc.ParametersWithRandom(
           pc.ECKeyGeneratorParameters(domain),
-          _seededFortuna(),
+          pqSeededFortuna(),
         ),
       );
     final pair = generator.generateKeyPair();
@@ -268,20 +269,5 @@ abstract final class PqBrainpool {
       result = (result << 8) | BigInt.from(byte & 0xff);
     }
     return result;
-  }
-
-  static pc.SecureRandom _seededFortuna() {
-    final fortuna = pc.FortunaRandom();
-    final seed = Uint8List(32);
-    final random = Random.secure();
-    for (var i = 0; i < seed.length; i++) {
-      seed[i] = random.nextInt(256);
-    }
-    try {
-      fortuna.seed(pc.KeyParameter(seed));
-      return fortuna;
-    } finally {
-      secureZero(seed);
-    }
   }
 }

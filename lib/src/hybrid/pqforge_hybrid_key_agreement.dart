@@ -88,13 +88,18 @@ class PqForgeHybridKeyAgreement {
   static Future<Uint8List> x25519SharedSecret({
     required Uint8List secretKey,
     required Uint8List remotePublicKey,
-  }) {
+  }) async {
     requireLength('secretKey', secretKey, 32);
     requireLength('remotePublicKey', remotePublicKey, 32);
-    return PqClassical.provider.x25519SharedSecret(
+    final shared = await PqClassical.provider.x25519SharedSecret(
       secretKey: secretKey,
       remotePublicKey: remotePublicKey,
     );
+    if (_allZero(shared)) {
+      PqForgeCombiner.wipe(shared);
+      throw const PqForgeException('X25519 shared secret is all zeros');
+    }
+    return shared;
   }
 
   /// P-256 ECDH between a 32-byte [secretKey] scalar and a 65-byte uncompressed
@@ -171,7 +176,7 @@ class PqForgeHybridKeyAgreement {
     Uint8List? classicalSharedSecret;
     Uint8List? latticeSharedSecret;
     try {
-      classicalSharedSecret = await PqClassical.provider.x25519SharedSecret(
+      classicalSharedSecret = await x25519SharedSecret(
         secretKey: clientKeyPair.secretKey,
         remotePublicKey: Uint8List.fromList(serverClassicalPublicKey.bytes),
       );
@@ -257,7 +262,7 @@ class PqForgeHybridKeyAgreement {
         await serverClassicalKeyPair.extractPrivateKeyBytes(),
       );
       try {
-        classicalSharedSecret = await PqClassical.provider.x25519SharedSecret(
+        classicalSharedSecret = await x25519SharedSecret(
           secretKey: serverSecretKey,
           remotePublicKey: request.clientClassicalPublicKey,
         );
@@ -328,4 +333,12 @@ void _requireX25519PublicKey(crypto.SimplePublicKey publicKey) {
       publicKey.bytes.length != 32) {
     throw const PqForgeException('Expected a 32-byte X25519 public key');
   }
+}
+
+bool _allZero(Uint8List bytes) {
+  var acc = 0;
+  for (final byte in bytes) {
+    acc |= byte;
+  }
+  return acc == 0;
 }

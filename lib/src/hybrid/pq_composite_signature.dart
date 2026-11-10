@@ -199,6 +199,9 @@ class PqForgeSignatureComposer {
     );
   }
 
+  /// Verifies [signature]. [policy] defaults to
+  /// [PqCompositePolicy.requireAll] and must equal [PqCompositeSignature.policy].
+  /// The signature JSON cannot switch a require-all signature to accept-any.
   Future<bool> verify({
     required Uint8List message,
     required PqCompositeSignature signature,
@@ -206,7 +209,9 @@ class PqForgeSignatureComposer {
     Uint8List? slhPublic,
     List<({String algorithmId, Uint8List publicKey})> classicalPublic =
         const [],
+    PqCompositePolicy policy = PqCompositePolicy.requireAll,
   }) async {
+    if (signature.policy != policy) return false;
     final bound = compositeSignatureMessage(message, signature.context);
     final classicalById = {
       for (final key in classicalPublic) key.algorithmId: key.publicKey,
@@ -255,7 +260,7 @@ class PqForgeSignatureComposer {
         ),
       );
     }
-    return signature.policy.combine(results);
+    return policy.combine(results);
   }
 }
 

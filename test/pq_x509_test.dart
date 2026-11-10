@@ -429,6 +429,162 @@ void main() {
       expect(PqX509.checkSignature(parsed, parsed.publicKey), isTrue);
     });
 
+    test('anchor key, directory-name OR, and optional EKU', () {
+      final rightKeys = PqSignaturePrimitives.generateKeyPair(
+        PqSignatureAlgorithm.mlDsa65,
+      );
+      final wrongKeys = PqSignaturePrimitives.generateKeyPair(
+        PqSignatureAlgorithm.mlDsa65,
+      );
+      final otherKeys = PqSignaturePrimitives.generateKeyPair(
+        PqSignatureAlgorithm.mlDsa65,
+      );
+      final leafKeys = PqSignaturePrimitives.generateKeyPair(
+        PqSignatureAlgorithm.mlDsa65,
+      );
+      Uint8List signWith(Uint8List secret, Uint8List tbs) =>
+          PqSignaturePrimitives.sign(PqSignatureAlgorithm.mlDsa65, secret, tbs);
+      final caName = PqX509Name.commonName('ca');
+      final alpha = PqX509Name.commonName('alpha');
+      final beta = PqX509Name.commonName('beta');
+      final right = PqX509.mint(
+        issuer: caName,
+        subject: caName,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, rightKeys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => signWith(rightKeys.secretKey, tbs),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([2]),
+        ca: true,
+        digitalSignature: false,
+        keyCertSign: true,
+        includeEku: false,
+        permittedDns: ['example.com'],
+      );
+      final wrong = PqX509.mint(
+        issuer: caName,
+        subject: caName,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, wrongKeys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => signWith(wrongKeys.secretKey, tbs),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([3]),
+        ca: true,
+        digitalSignature: false,
+        keyCertSign: true,
+        includeEku: false,
+      );
+      final leaf = PqX509.mint(
+        issuer: caName,
+        subject: PqX509Name.commonName('leaf'),
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, leafKeys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => signWith(rightKeys.secretKey, tbs),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([4]),
+        subjectAltNames: [PqX509DnsName('www.example.com')],
+      );
+      expect(
+        PqX509.validate(
+          chain: [leaf],
+          anchors: [right, wrong],
+          now: now,
+        ).trusted,
+        isTrue,
+      );
+      final reissued = PqX509.mint(
+        issuer: caName,
+        subject: caName,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, otherKeys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => signWith(rightKeys.secretKey, tbs),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([5]),
+        subjectAltNames: [PqX509DnsName('www.other.test')],
+      );
+      expect(
+        PqX509.validate(chain: [reissued], anchors: [right], now: now).failure,
+        PqX509Failure.badConstraint,
+      );
+      final directoryCa = PqX509.mint(
+        issuer: caName,
+        subject: caName,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, rightKeys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => signWith(rightKeys.secretKey, tbs),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([6]),
+        ca: true,
+        digitalSignature: false,
+        keyCertSign: true,
+        includeEku: false,
+        permittedDirectory: [alpha, beta],
+      );
+      final alphaLeaf = PqX509.mint(
+        issuer: caName,
+        subject: alpha,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, leafKeys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => signWith(rightKeys.secretKey, tbs),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([7]),
+        includeEku: false,
+      );
+      expect(
+        PqX509.validate(
+          chain: [alphaLeaf],
+          anchors: [directoryCa],
+          now: now,
+        ).trusted,
+        isTrue,
+      );
+      final gammaLeaf = PqX509.mint(
+        issuer: caName,
+        subject: PqX509Name.commonName('gamma'),
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, leafKeys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => signWith(rightKeys.secretKey, tbs),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: Uint8List.fromList([8]),
+        includeEku: false,
+      );
+      expect(
+        PqX509.validate(
+          chain: [gammaLeaf],
+          anchors: [directoryCa],
+          now: now,
+        ).failure,
+        PqX509Failure.badConstraint,
+      );
+      const serverAuth = [1, 3, 6, 1, 5, 5, 7, 3, 1];
+      const clientAuth = [1, 3, 6, 1, 5, 5, 7, 3, 2];
+      expect(
+        PqX509.validate(
+          chain: [leaf],
+          anchors: [right],
+          now: now,
+          extendedKeyUsage: [serverAuth],
+        ).trusted,
+        isTrue,
+      );
+      expect(
+        PqX509.validate(
+          chain: [leaf],
+          anchors: [right],
+          now: now,
+          extendedKeyUsage: [clientAuth],
+        ).failure,
+        PqX509Failure.badConstraint,
+      );
+    });
+
     test('PEM round-trips and rejects a private key block', () {
       final keys = PqEcdsaP256.generateKeyPair();
       final der = _leaf(

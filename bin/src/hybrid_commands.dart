@@ -55,7 +55,9 @@ final class HybridSignCommand extends Command<void> {
         allowed: ['require-both', 'accept-either'],
         defaultsTo: 'require-both',
         valueHelp: 'policy',
-        help: 'Combination policy recorded for verification.',
+        help:
+            'Combination policy recorded in the signature. hybrid-verify '
+            'must be given the same --policy. The file cannot widen the check.',
       )
       ..addFlag(
         'digest',
@@ -198,6 +200,15 @@ final class HybridVerifyCommand extends Command<void> {
         help: 'Hybrid signature JSON file.',
       )
       ..addOption(
+        'policy',
+        allowed: ['require-both', 'accept-either'],
+        defaultsTo: 'require-both',
+        valueHelp: 'policy',
+        help:
+            'Caller policy. Must equal the policy in the signature file. '
+            'The file cannot widen require-both into accept-either.',
+      )
+      ..addOption(
         'context',
         valueHelp: 'string',
         help: 'Override the context stored in the signature JSON.',
@@ -234,6 +245,14 @@ final class HybridVerifyCommand extends Command<void> {
 
     final sigJson = await readJsonMap(File(results['signature'] as String));
     final signature = PqHybridSignature.fromJson(sigJson);
+    final policy = _policyFrom(results['policy'] as String);
+    if (signature.policy != policy) {
+      throw PqForgeException(
+        'Hybrid signature policy is ${signature.policy.name}, not '
+        '${policy.name}. Pass the same --policy that hybrid-sign recorded. '
+        'The file cannot change the verification policy.',
+      );
+    }
 
     final classicalKeyAlgorithm = PqClassicalSignatureAlgorithm.byId(
       classicalPublic.algorithmId,
@@ -278,6 +297,7 @@ final class HybridVerifyCommand extends Command<void> {
         message: message,
         signature: signature,
         context: context,
+        policy: policy,
       );
       if (ok) {
         progress.completeFile(fileName);

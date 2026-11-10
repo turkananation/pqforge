@@ -406,37 +406,51 @@ class PqForgeProfile {
   final int sessionKeyBytes;
   final String infoPrefix;
 
+  static PqForgeProfile? _builtin(String name) => switch (name) {
+    'compact' => compact,
+    'balanced' => balanced,
+    'maximum' => maximum,
+    _ => null,
+  };
+
   static PqForgeProfile byName(String name) {
-    return switch (name) {
-      'compact' => compact,
-      'balanced' => balanced,
-      'maximum' => maximum,
-      _ => throw PqForgeException('Unsupported pqforge profile: $name'),
-    };
+    return _builtin(name) ??
+        (throw PqForgeException('Unsupported pqforge profile: $name'));
   }
 
   /// Resolves [name] to a built-in profile, or reconstructs a custom profile
   /// (e.g. a decoupled `--kem`/`--sig` composition) from the algorithms a
   /// serialized envelope carries alongside the name.
+  ///
+  /// A built-in name must carry that profile's KEM and, when [signature] is
+  /// present, its signature. Otherwise the DEM label would be derived from
+  /// the built-in KEM while decapsulation used the wire KEM.
   static PqForgeProfile resolve(
     String name,
     PqKemAlgorithm kem,
     PqSignatureAlgorithm? signature,
   ) {
-    try {
-      return byName(name);
-    } on PqForgeException {
-      return PqForgeProfile(
-        name: name,
-        kem: kem,
-        signature: signature ?? PqSignatureAlgorithm.mlDsa65,
-        slhDsa: switch (kem) {
-          PqKemAlgorithm.mlKem512 => PqSlhDsaAlgorithm.shake128f,
-          PqKemAlgorithm.mlKem768 => PqSlhDsaAlgorithm.shake192f,
-          PqKemAlgorithm.mlKem1024 => PqSlhDsaAlgorithm.shake256f,
-        },
-      );
+    final builtin = _builtin(name);
+    if (builtin != null) {
+      if (builtin.kem != kem ||
+          (signature != null && builtin.signature != signature)) {
+        throw PqForgeException(
+          'Profile $name is ${builtin.kem.id}/${builtin.signature.id}, '
+          'not ${kem.id}/${signature?.id ?? builtin.signature.id}',
+        );
+      }
+      return builtin;
     }
+    return PqForgeProfile(
+      name: name,
+      kem: kem,
+      signature: signature ?? PqSignatureAlgorithm.mlDsa65,
+      slhDsa: switch (kem) {
+        PqKemAlgorithm.mlKem512 => PqSlhDsaAlgorithm.shake128f,
+        PqKemAlgorithm.mlKem768 => PqSlhDsaAlgorithm.shake192f,
+        PqKemAlgorithm.mlKem1024 => PqSlhDsaAlgorithm.shake256f,
+      },
+    );
   }
 }
 

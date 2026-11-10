@@ -118,6 +118,109 @@ void main() {
       );
       PqForgeStreamCipher(); // default AES-256-GCM still constructs
     });
+
+    test('HPKE refuses AES-128 and ChaCha, and still seals AES-256', () async {
+      PqFipsMode.enable();
+      final recipient = await PqHpke.generateKeyPair(HpkeKem.x25519HkdfSha256);
+      final plaintext = Uint8List.fromList([1, 2, 3]);
+      expect(
+        PqHpke.seal(
+          suite: const HpkeSuite(
+            kem: HpkeKem.x25519HkdfSha256,
+            aead: HpkeAead.aes128Gcm,
+          ),
+          mode: HpkeMode.base,
+          recipientPublicKey: recipient.publicKey,
+          plaintext: plaintext,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+      expect(
+        PqHpke.seal(
+          suite: const HpkeSuite(
+            kem: HpkeKem.x25519HkdfSha256,
+            aead: HpkeAead.chacha20Poly1305,
+          ),
+          mode: HpkeMode.base,
+          recipientPublicKey: recipient.publicKey,
+          plaintext: plaintext,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+      final sealed = await PqHpke.seal(
+        suite: const HpkeSuite(
+          kem: HpkeKem.x25519HkdfSha256,
+          aead: HpkeAead.aes256Gcm,
+        ),
+        mode: HpkeMode.base,
+        recipientPublicKey: recipient.publicKey,
+        plaintext: plaintext,
+      );
+      sealed.context.dispose();
+    });
+
+    test('a background seal keeps the flag and refuses ChaCha', () async {
+      PqFipsMode.enable();
+      expect(
+        PqForgeStreamCipher.encryptFileInBackground(
+          recipientPublicKey: Uint8List(800),
+          inputPath: 'unused.bin',
+          outputPath: 'unused.pqfs',
+          profile: PqForgeProfile.compact,
+          cipherSuite: PqForgeCipherSuite.chaCha20Poly1305,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+    });
+
+    test('forbids RSA-SHA-1 and a modulus under 2048 bits', () {
+      PqFipsMode.enable();
+      final modulus = Uint8List(256)..[0] = 0x80;
+      final small = Uint8List(128)..[0] = 0x80;
+      final dummy = PqRsaPrivateKey(
+        modulus: modulus,
+        privateExponent: Uint8List.fromList([1]),
+        prime1: Uint8List.fromList([1]),
+        prime2: Uint8List.fromList([1]),
+        publicExponent: Uint8List.fromList([1, 0, 1]),
+      );
+      expect(
+        () => PqRsa.signPkcs1(
+          privateKey: dummy,
+          message: Uint8List.fromList([1]),
+          hash: PqRsaHash.sha1,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+      expect(
+        () => PqRsa.signPss(
+          privateKey: dummy,
+          message: Uint8List.fromList([1]),
+          hash: PqRsaHash.sha1,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+      expect(
+        PqRsa.verifyPkcs1(
+          modulus: modulus,
+          exponent: Uint8List.fromList([1, 0, 1]),
+          message: Uint8List.fromList([1]),
+          signature: Uint8List(256),
+          hash: PqRsaHash.sha1,
+        ),
+        isFalse,
+      );
+      expect(
+        PqRsa.verifyPkcs1(
+          modulus: small,
+          exponent: Uint8List.fromList([1, 0, 1]),
+          message: Uint8List.fromList([1]),
+          signature: Uint8List(128),
+          hash: PqRsaHash.sha256,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('PqRandom (module DRBG hook)', () {
@@ -135,6 +238,34 @@ void main() {
     test('a generator returning the wrong length is rejected', () {
       PqRandom.generator = (length) => Uint8List(length + 1);
       expect(() => PqBytes.randomBytes(8), throwsStateError);
+    });
+
+    test('classical keygens read the generator', () {
+      var calls = 0;
+      PqRandom.generator = (length) {
+        calls++;
+        return Uint8List.fromList(List<int>.filled(length, 0x42));
+      };
+      final ed = PqEd25519.generateKeyPair();
+      final x = PqX448.generateKeyPair();
+      expect(ed.secretKey, everyElement(0x42));
+      expect(x.secretKey, everyElement(0x42));
+      expect(calls, 2);
+      PqEcdsaP256.generateKeyPair();
+      expect(calls, 3);
+    });
+
+    test('a background seal refuses a custom generator', () {
+      PqRandom.generator = (length) => Uint8List(length);
+      expect(
+        () => PqForgeStreamCipher.encryptFileInBackground(
+          recipientPublicKey: Uint8List(800),
+          inputPath: 'unused.bin',
+          outputPath: 'unused.pqfs',
+          profile: PqForgeProfile.compact,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
     });
   });
 }

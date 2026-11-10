@@ -1,26 +1,37 @@
 /// FIPS deployment policy (FIPS 140-3 oriented) for pqforge.
 ///
-/// pqforge's algorithm set is FIPS-approved end to end — ML-KEM (FIPS 203),
-/// ML-DSA / HashML-DSA (FIPS 204), SLH-DSA / HashSLH-DSA (FIPS 205), AES-256-GCM
-/// with deterministic IVs (SP 800-38D), SHA-256 (FIPS 180-4), HKDF (SP 800-56C
-/// rev 2) — but two defaults are deliberately *better-than-FIPS* and therefore
-/// not approved:
-/// ChaCha20-Poly1305 as an alternative AEAD suite, and Argon2id as the
-/// passphrase KDF. [PqFipsMode] lets a deployment refuse those at runtime.
+/// pqforge's algorithm set can be deployed in a FIPS-oriented way — ML-KEM
+/// (FIPS 203), ML-DSA / HashML-DSA (FIPS 204), SLH-DSA / HashSLH-DSA (FIPS 205),
+/// AES-256-GCM (SP 800-38D), SHA-256 (FIPS 180-4), HKDF (SP 800-56C rev 2) —
+/// but several defaults are deliberately outside that set:
+/// ChaCha20-Poly1305, Argon2id, X-Wing, RSA-SHA-1, and a modulus under
+/// 2048 bits. [PqFipsMode] lets a deployment refuse those at runtime.
 ///
 /// Enabling the mode enforces, at the package's sanctioned entry points:
 ///
 ///  * AEAD suite must be AES-256-GCM (`PqForgeSecureSession`,
-///    `PqForgeStreamCipher`);
+///    `PqForgeStreamCipher`, `PqHpke` seal and open);
 ///  * passphrase key wrapping must use PBKDF2-HMAC-SHA256 (SP 800-132), not
-///    Argon2id.
+///    Argon2id;
+///  * X-Wing is rejected by `PqHpke` and `PqForgeHybridKeyAgreement`
+///    (`PqXWing` itself does not read the flag, so its known answers still run);
+///  * `PqRsa.signPkcs1` / `signPss` reject SHA-1 and a modulus under 2048 bits.
+///    The verify methods return false for those inputs instead of throwing.
 ///
-/// What a runtime flag **cannot** do is make the implementation a validated
-/// cryptographic module. For actual FIPS 140-3 compliance, route the AEAD
-/// through `PqForgeAeadEngine` to an OS validated module and the lattice ops
-/// through `PqLatticeProvider` to a validated library, and source randomness
-/// from the module via `PqRandom.generator`. See
-/// `doc/technical/SCOPE_AUDIT_AND_LIMITS.md` §5.
+/// The flag is per isolate. `encryptFileInBackground` and
+/// `decryptFileInBackground` turn it back on in the worker. A custom
+/// `PqRandom.generator` cannot cross that boundary and those helpers throw
+/// instead of falling back to the platform CSPRNG.
+///
+/// `PqForgeSecureSession` nonces are a random 32-bit salt plus a 64-bit
+/// counter (SP 800-38D §8.2.1). They are not a purely random 96-bit IV.
+/// The mode does not gate Brainpool, FFDHE, AES-128-GCM at the primitive
+/// (QUIC Initial still needs it), a raw `PqForgeAeadEngine.seal`, or
+/// `PqXWing` itself. It also does not make this package a validated
+/// module. For actual FIPS 140-3 compliance, route the AEAD through a
+/// validated module and the lattice ops through `PqLatticeProvider`, and
+/// source randomness from the module via `PqRandom.generator`. See
+/// `doc/security/CLAIM_BOUNDARY.md`.
 library;
 
 import 'package:pqforge/src/exceptions/pqforge_exception.dart';

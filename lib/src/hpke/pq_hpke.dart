@@ -1203,35 +1203,47 @@ bool _isAllZero(Uint8List bytes) {
   return acc == 0;
 }
 
+void _requireFipsAead(HpkeAead aead) {
+  if (!PqFipsMode.isEnabled || aead == HpkeAead.aes256Gcm) return;
+  throw PqForgeException(
+    'FIPS mode forbids the HPKE AEAD ${aead.name}; use aes-256-gcm',
+  );
+}
+
 Uint8List _aeadSeal(
   HpkeAead aead,
   Uint8List key,
   Uint8List nonce,
   Uint8List plaintext,
   Uint8List aad,
-) => switch (aead) {
-  HpkeAead.aes128Gcm => PqSymmetricPrimitives.aes128GcmEncrypt(
-    key: key,
-    nonce: nonce,
-    plaintext: plaintext,
-    aad: aad,
-  ),
-  HpkeAead.aes256Gcm => PqSymmetricPrimitives.aesGcmEncrypt(
-    key: key,
-    nonce: nonce,
-    plaintext: plaintext,
-    aad: aad,
-  ),
-  HpkeAead.chacha20Poly1305 => PqSymmetricPrimitives.chacha20Poly1305Encrypt(
-    key: key,
-    nonce: nonce,
-    plaintext: plaintext,
-    aad: aad,
-  ),
-  HpkeAead.exportOnly => throw const PqForgeException(
-    'export-only HPKE AEAD cannot seal',
-  ),
-};
+) {
+  _requireFipsAead(aead);
+  switch (aead) {
+    case HpkeAead.aes128Gcm:
+      return PqSymmetricPrimitives.aes128GcmEncrypt(
+        key: key,
+        nonce: nonce,
+        plaintext: plaintext,
+        aad: aad,
+      );
+    case HpkeAead.aes256Gcm:
+      return PqSymmetricPrimitives.aesGcmEncrypt(
+        key: key,
+        nonce: nonce,
+        plaintext: plaintext,
+        aad: aad,
+      );
+    case HpkeAead.chacha20Poly1305:
+      return PqSymmetricPrimitives.chacha20Poly1305Encrypt(
+        key: key,
+        nonce: nonce,
+        plaintext: plaintext,
+        aad: aad,
+      );
+    case HpkeAead.exportOnly:
+      throw const PqForgeException('export-only HPKE AEAD cannot seal');
+  }
+}
 
 Uint8List _aeadOpen(
   HpkeAead aead,
@@ -1240,6 +1252,7 @@ Uint8List _aeadOpen(
   Uint8List ciphertext,
   Uint8List aad,
 ) {
+  _requireFipsAead(aead);
   try {
     return switch (aead) {
       HpkeAead.aes128Gcm => PqSymmetricPrimitives.aes128GcmDecrypt(

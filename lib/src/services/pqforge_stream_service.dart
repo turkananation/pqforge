@@ -29,6 +29,14 @@ class PqStreamingStats {
   final bool signed;
 }
 
+void _requireSendableRandom() {
+  if (PqRandom.isPlatform) return;
+  throw const PqForgeException(
+    'A background isolate cannot carry a custom PqRandom.generator. '
+    'Run this operation on the calling isolate.',
+  );
+}
+
 /// Encrypts and decrypts files in bounded memory using the `.pqfs` streaming
 /// envelope. Construct once and reuse; the [engine] is the hardware-acceleration
 /// lever.
@@ -117,27 +125,29 @@ class PqForgeStreamCipher {
         PqForgeEngineProvider.nativeCryptography,
     PqForgeCipherSuite cipherSuite = PqForgeCipherSuite.aes256Gcm,
   }) {
-    return Isolate.run(
-      () =>
-          PqForgeStreamCipher.forProvider(
-            engineProvider,
-            cipherSuite: cipherSuite,
-          ).encryptFile(
-            recipientPublicKey: recipientPublicKey,
-            recipientKexPublicKey: recipientKexPublicKey,
-            additionalRecipients: additionalRecipients,
-            recipientKeyId: recipientKeyId,
-            input: File(inputPath),
-            output: File(outputPath),
-            profile: profile,
-            aad: aad,
-            metadata: metadata,
-            signerSecretKey: signerSecretKey,
-            signatureAlgorithm: signatureAlgorithm,
-            signerKeyId: signerKeyId,
-            frameSize: frameSize,
-          ),
-    );
+    final fips = PqFipsMode.isEnabled;
+    _requireSendableRandom();
+    return Isolate.run(() {
+      if (fips) PqFipsMode.enable();
+      return PqForgeStreamCipher.forProvider(
+        engineProvider,
+        cipherSuite: cipherSuite,
+      ).encryptFile(
+        recipientPublicKey: recipientPublicKey,
+        recipientKexPublicKey: recipientKexPublicKey,
+        additionalRecipients: additionalRecipients,
+        recipientKeyId: recipientKeyId,
+        input: File(inputPath),
+        output: File(outputPath),
+        profile: profile,
+        aad: aad,
+        metadata: metadata,
+        signerSecretKey: signerSecretKey,
+        signatureAlgorithm: signatureAlgorithm,
+        signerKeyId: signerKeyId,
+        frameSize: frameSize,
+      );
+    });
   }
 
   /// Runs [decryptFile] on a background isolate (Axis A offload).
@@ -155,8 +165,11 @@ class PqForgeStreamCipher {
     PqForgeEngineProvider engineProvider =
         PqForgeEngineProvider.nativeCryptography,
   }) {
-    return Isolate.run(
-      () => PqForgeStreamCipher.forProvider(engineProvider).decryptFile(
+    final fips = PqFipsMode.isEnabled;
+    _requireSendableRandom();
+    return Isolate.run(() {
+      if (fips) PqFipsMode.enable();
+      return PqForgeStreamCipher.forProvider(engineProvider).decryptFile(
         recipientSecretKey: recipientSecretKey,
         recipientKexSecretKey: recipientKexSecretKey,
         recipientKeyId: recipientKeyId,
@@ -164,8 +177,8 @@ class PqForgeStreamCipher {
         output: File(outputPath),
         signerPublicKey: signerPublicKey,
         aadResolver: aad == null ? null : (_) => aad,
-      ),
-    );
+      );
+    });
   }
 
   /// Streams [input] into a `.pqfs` container at [output].
@@ -730,12 +743,14 @@ class PqForgeStreamCipher {
               body: current.body,
             );
           } else {
-            // First frame of a multi-recipient container: trial-open the
-            // candidates and keep the one that authenticates.
+            // First frame of a multi-recipient container: try every candidate.
+            // The first success is kept; later successes are wiped. Stopping
+            // at the first hit would reveal which key authenticated.
             Uint8List? opened;
+            Uint8List? chosen;
             for (final candidate in candidates) {
               try {
-                opened = await PqStreamingEnvelope.openFrameBody(
+                final trial = await PqStreamingEnvelope.openFrameBody(
                   engine: aead,
                   demKey: candidate,
                   headerHash: container.headerHash,
@@ -744,12 +759,22 @@ class PqForgeStreamCipher {
                   isFinal: current.isFinal,
                   body: current.body,
                 );
-                demKey = candidate;
-                break;
+                if (opened == null) {
+                  opened = trial;
+                  chosen = candidate;
+                } else {
+                  PqForgeCombiner.wipe(trial);
+                }
               } on PqForgeAuthTagException {
                 continue;
               }
             }
+            for (final candidate in candidates) {
+              if (!identical(candidate, chosen)) {
+                PqForgeCombiner.wipe(candidate);
+              }
+            }
+            demKey = chosen;
             plaintext =
                 opened ??
                 (throw const PqForgeException(
