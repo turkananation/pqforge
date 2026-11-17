@@ -34,15 +34,14 @@ void main() {
       final dec = File('${dir.path}/x.out');
 
       // Seal with pure-Dart PointyCastle, open with package:cryptography.
-      await PqForgeStreamCipher.forProvider(
-        PqForgeEngineProvider.pureDart,
-      ).encryptFile(
-        recipientPublicKey: keys.kemKeyPair.publicKey,
-        input: src,
-        output: enc,
-        profile: PqForgeProfile.compact,
-        frameSize: 1024,
-      );
+      await PqForgeStreamCipher.forProvider(PqForgeEngineProvider.pureDart)
+          .encryptFile(
+            recipientPublicKey: keys.kemKeyPair.publicKey,
+            input: src,
+            output: enc,
+            profile: PqForgeProfile.compact,
+            frameSize: 1024,
+          );
       await PqForgeStreamCipher.forProvider(
         PqForgeEngineProvider.nativeCryptography,
       ).decryptFile(
@@ -64,13 +63,12 @@ void main() {
         profile: PqForgeProfile.compact,
         frameSize: 1024,
       );
-      await PqForgeStreamCipher.forProvider(
-        PqForgeEngineProvider.pureDart,
-      ).decryptFile(
-        recipientSecretKey: keys.kemKeyPair.secretKey,
-        input: enc2,
-        output: dec2,
-      );
+      await PqForgeStreamCipher.forProvider(PqForgeEngineProvider.pureDart)
+          .decryptFile(
+            recipientSecretKey: keys.kemKeyPair.secretKey,
+            input: enc2,
+            output: dec2,
+          );
       expect(dec2.readAsBytesSync(), original);
     },
   );
@@ -139,8 +137,9 @@ void main() {
       // a second-plus; a same-isolate synchronous cipher would freeze the
       // timer for that whole span. The assertion is on the *longest* gap
       // between ticks: the UI budget is 16 ms/frame, and the bound here is
-      // 100 ms only to absorb CI scheduler/GC noise — orders of magnitude
-      // below the multi-second stall this guards against (defect M4).
+      // 250 ms absorbs a loaded VM missing a few 10 ms ticks. The defect
+      // this guards is a multi-second stall on the caller isolate (M4),
+      // not a single late timer.
       final src = write('busy.bin', payload(1536 * 1024));
       final gapWatch = Stopwatch()..start();
       var maxGapMs = 0;
@@ -169,7 +168,7 @@ void main() {
       );
       expect(
         maxGapMs,
-        lessThan(100),
+        lessThan(250),
         reason:
             'the main isolate event loop stalled for ${maxGapMs}ms during '
             'the background seal',

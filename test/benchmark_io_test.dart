@@ -299,9 +299,7 @@ void _heavyBaselineGroup() {
         }
       }
     },
-    skip: enabled
-        ? false
-        : 'Set PQFORGE_BENCH=1 to run the heavy I/O baseline (slow; see file doc).',
+    skip: enabled ? false : 'Set PQFORGE_BENCH=1 to run the heavy I/O baseline (slow; see file doc).',
   );
 }
 

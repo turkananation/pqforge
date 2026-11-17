@@ -42,7 +42,8 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | [protocols/HPKE.md](protocols/HPKE.md) | RFC 9180 HPKE as implemented by `PqHpke` |
 | [protocols/XWING.md](protocols/XWING.md) | X-Wing KEM. `PqXWing` and `pqforge hpke`. Not `.pqf` |
 | [protocols/DOUBLE_RATCHET.md](protocols/DOUBLE_RATCHET.md) | Double Ratchet. Shipped. Not libsignal bytes |
-| [protocols/PQXDH.md](protocols/PQXDH.md) | PQXDH. Scaffold that throws. Needs XEdDSA |
+| [protocols/XEDDSA.md](protocols/XEDDSA.md) | XEdDSA. `PqXeddsa`. libsignal Curve25519 bytes |
+| [protocols/PQXDH.md](protocols/PQXDH.md) | PQXDH. Scaffold that throws. The prekey check is `PqXeddsa` |
 | [protocols/SPARSE_POST_QUANTUM_RATCHET.md](protocols/SPARSE_POST_QUANTUM_RATCHET.md) | Sparse Post-Quantum Ratchet. Scaffold that throws |
 
 ### Reference

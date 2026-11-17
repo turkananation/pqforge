@@ -96,9 +96,8 @@ void main() {
       const agreement = PqForgeHybridKeyAgreement(
         profile: PqForgeProfile.compact,
       );
-      final serverKem = PqForge(
-        profile: PqForgeProfile.compact,
-      ).generateKemKeyPair();
+      final serverKem = PqForge(profile: PqForgeProfile.compact)
+          .generateKemKeyPair();
       await expectLater(
         agreement.initiate(
           serverClassicalPublicKey: crypto.SimplePublicKey(

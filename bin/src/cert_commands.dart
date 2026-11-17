@@ -336,8 +336,7 @@ final class CertInspectCommand extends Command<void> {
       'in',
       mandatory: true,
       valueHelp: 'file',
-      help:
-          'PEM or DER. A PEM file may hold certificates, requests, and private keys.',
+      help: 'PEM or DER. A PEM file may hold certificates, requests, and private keys.',
     );
   }
 
@@ -394,8 +393,7 @@ final class CertVerifyCommand extends Command<void> {
         'in',
         mandatory: true,
         valueHelp: 'file',
-        help:
-            'Leaf PEM or DER. Further PEM blocks are intermediates, leaf first.',
+        help: 'Leaf PEM or DER. Further PEM blocks are intermediates, leaf first.',
       )
       ..addOption(
         'anchor',

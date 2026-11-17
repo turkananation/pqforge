@@ -378,9 +378,8 @@ final class KeygenCommand extends Command<void> {
       );
     }
     final algorithm = PqClassicalSignatureAlgorithm.byId(algo);
-    final pair = await PqForgeHybridSigner(
-      classicalAlgorithm: algorithm,
-    ).generateClassicalKeyPair();
+    final pair = await PqForgeHybridSigner(classicalAlgorithm: algorithm)
+        .generateClassicalKeyPair();
     return (
       public: PqExportedKey(
         kind: classicalSignaturePublicKind,
@@ -1261,9 +1260,8 @@ Future<void> _decryptFolderEntryInIsolate({
 
     final input = File(inputPath);
     if (await PqForgeStreamCipher.isStreamingFile(input)) {
-      final header = await PqForgeStreamCipher.forProvider(
-        engineProvider,
-      ).readHeader(input);
+      final header = await PqForgeStreamCipher.forProvider(engineProvider)
+          .readHeader(input);
       final relativePath = _folderRelativePath(header.metadata, input.path);
       await PqForgeStreamCipher.forProvider(engineProvider).decryptFile(
         recipientSecretKey: recipientSecretKey,
@@ -2207,9 +2205,8 @@ final class InspectCommand extends Command<void> {
         hybrid: hybrid,
         suite: PqAeadSuite.of(header.metadata),
         signature: header.isSigned ? header.signatureAlgorithm : null,
-        additionalRecipients: PqMultiRecipient.parseEntries(
-          header.metadata,
-        ).length,
+        additionalRecipients: PqMultiRecipient.parseEntries(header.metadata)
+            .length,
       );
       if (header.signerKeyId != null) {
         console.detail('signer key id', header.signerKeyId!);
@@ -2231,9 +2228,8 @@ final class InspectCommand extends Command<void> {
         hybrid: hybrid,
         suite: PqAeadSuite.of(envelope.metadata),
         signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
-        additionalRecipients: PqMultiRecipient.parseEntries(
-          envelope.metadata,
-        ).length,
+        additionalRecipients: PqMultiRecipient.parseEntries(envelope.metadata)
+            .length,
       );
       if (envelope.signerKeyId != null) {
         console.detail('signer key id', envelope.signerKeyId!);
@@ -2316,8 +2312,7 @@ final class SignCommand extends Command<void> {
         'signer-secret',
         mandatory: true,
         valueHelp: 'file',
-        help:
-            'Raw or wrapped ML-DSA or SLH-DSA secret key JSON from pqforge keygen.',
+        help: 'Raw or wrapped ML-DSA or SLH-DSA secret key JSON from pqforge keygen.',
       )
       ..addOption(
         'in',
@@ -2377,8 +2372,7 @@ final class SignCommand extends Command<void> {
       ..addOption(
         'timestamp-ms',
         valueHelp: 'ms',
-        help:
-            'Webhook timestamp in milliseconds. Defaults to the current time when signing.',
+        help: 'Webhook timestamp in milliseconds. Defaults to the current time when signing.',
       );
     addPassphraseOptions(argParser);
     addQuietOption(argParser);

@@ -1,14 +1,14 @@
 /// PQXDH scaffold. The handshake is not implemented.
 ///
-/// Signal PQXDH revision 3 needs XEdDSA. This package has Ed25519, and
-/// Ed25519 is not XEdDSA. [Pqxdh.initiate] and [Pqxdh.accept] throw until
-/// that primitive exists and has its own vectors. The bundle type is live
-/// so a 1216-byte X-Wing key cannot be passed as a PQXDH key.
+/// [PqXeddsa] signs an X25519 key. [Pqxdh.initiate] and [Pqxdh.accept]
+/// still throw. Ed25519 is not the handshake. The bundle type is live so
+/// a 1216-byte X-Wing key cannot be passed as a PQXDH key.
 library;
 
 import 'dart:typed_data';
 
 import '../exceptions/pqforge_exception.dart';
+import '../hybrid/pq_ed25519.dart';
 import 'pq_double_ratchet.dart';
 import 'pq_ratchet_types.dart';
 
@@ -70,8 +70,21 @@ abstract interface class PqxdhResult {
   DoubleRatchetMessage? get initialMessage;
 }
 
-/// PQXDH entry points. Both throw. The types are ready for the next release.
+/// PQXDH entry points. The handshake throws. The signed-prekey check does not.
 abstract final class Pqxdh {
+  /// Whether [bundle]'s signed prekey was signed by its identity key.
+  ///
+  /// The message is the 32-byte signed-prekey public key. That is the
+  /// encoding libsignal passes to `PrivateKey::calculate_signature`.
+  /// This does not encapsulate and does not derive SK.
+  static bool signedPrekeyAuthentic(PqxdhBundle bundle) {
+    return PqXeddsa.verify(
+      publicKey: bundle.identityKey.bytes,
+      message: bundle.signedPrekey.bytes,
+      signature: bundle.signedPrekeySignature,
+    );
+  }
+
   /// Alice. Throws. Does not encapsulate and does not return a secret.
   static Future<PqxdhResult> initiate({
     required RatchetKeyPair identityKey,
@@ -89,8 +102,8 @@ abstract final class Pqxdh {
       );
     }
     throw const PqForgeException(
-      'PQXDH is not implemented. It needs XEdDSA, and Ed25519 is not XEdDSA. '
-      'Pass a 32-byte shared secret to DoubleRatchet.initiate instead.',
+      'PQXDH is not implemented. Sign with PqXeddsa, or pass a 32-byte '
+      'secret to DoubleRatchet.initiate.',
     );
   }
 
@@ -113,7 +126,8 @@ abstract final class Pqxdh {
       throw const PqForgeException('PQXDH initial message is empty');
     }
     throw const PqForgeException(
-      'PQXDH is not implemented. It needs XEdDSA, and Ed25519 is not XEdDSA.',
+      'PQXDH is not implemented. PqXeddsa verifies an X25519 signature. '
+      'The handshake does not run.',
     );
   }
 }

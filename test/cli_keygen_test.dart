@@ -52,11 +52,9 @@ void main() {
     final slhPublic = PqExportedKey.fromJson(
       Map<String, Object?>.from(
         jsonDecode(
-              await File(
-                '${outDir.path}/vault.slh-dsa-shake-256f.public.json',
-              ).readAsString(),
-            )
-            as Map,
+          await File('${outDir.path}/vault.slh-dsa-shake-256f.public.json')
+              .readAsString(),
+        ) as Map,
       ),
     );
     expect(slhPublic.kind, PqKeyKind.signaturePublic);
@@ -215,9 +213,8 @@ void main() {
       isTrue,
     );
     expect(
-      File(
-        '${outDir.path}/classic.slh-dsa-shake-128f.public.json',
-      ).existsSync(),
+      File('${outDir.path}/classic.slh-dsa-shake-128f.public.json')
+          .existsSync(),
       isFalse,
     );
     expect(
@@ -250,9 +247,8 @@ void main() {
         '${outDir.path}/archive.slh-dsa-shake-128f.secret.wrapped.json';
     expect(File(wrappedPath).existsSync(), isTrue);
     expect(
-      File(
-        '${outDir.path}/archive.slh-dsa-shake-128f.secret.json',
-      ).existsSync(),
+      File('${outDir.path}/archive.slh-dsa-shake-128f.secret.json')
+          .existsSync(),
       isFalse,
     );
 

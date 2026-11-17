@@ -14,8 +14,10 @@ import '../keys/pq_keys.dart';
 import '../primitives/pq_primitives.dart';
 import '../recipes/pq_recipes.dart';
 
-typedef PqClassicalSignatureVerifier =
-    bool Function(Uint8List message, Uint8List signature);
+typedef PqClassicalSignatureVerifier = bool Function(
+  Uint8List message,
+  Uint8List signature,
+);
 
 class PqForge {
   const PqForge({this.profile = PqForgeProfile.balanced});

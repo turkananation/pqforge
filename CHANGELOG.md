@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.15
+
+`PqXeddsa` signs a 32-byte X25519 key. The 64-byte signature matches
+libsignal `PrivateKey::calculate_signature` for the same secret, message,
+and 64-byte `Z`. `signAll` and `verifyAll` batch that work on isolates
+when `dart:isolate` exists. `Pqxdh.signedPrekeyAuthentic` checks the
+signed prekey. The handshake still throws.
+
+Ed25519 inversion uses the ref10 addition chain. Scalar multiplication
+uses a 4-bit window. Canonical compares use `rangeEquals`. The SDK
+constraint is `^3.14.0`. A 16-bit limb product does not fit in signed
+`Int32x4`, so the field multiply is unchanged. Not VXEdDSA, not XEd448,
+not a FIPS signature, and not a CLI command. No `.pqf` / `.pqfs` change.
+
 ## 0.4.14
 
 Classical key generation reads `PqRandom`. Background isolates re-enable

@@ -20,8 +20,8 @@
 /// * HPKE — [PqHpke], RFC 9180 base, PSK, auth, and authPSK over X25519,
 ///   X448, P-256, P-384, and P-521;
 /// * the Double Ratchet — [DoubleRatchet], from any 32-byte secret.
-///   [Pqxdh] and [TripleRatchet] are reserved and throw until XEdDSA and
-///   the ML-KEM Braid exist;
+///   [PqXeddsa] signs an X25519 key. [Pqxdh.signedPrekeyAuthentic] checks
+///   that signature. [Pqxdh.initiate] and [TripleRatchet] still throw;
 /// * AEAD wire packets — [PqForgeSecureSession] over AES-256-GCM or
 ///   ChaCha20-Poly1305, on either the pure-Dart PointyCastle or the native
 ///   `package:cryptography` backend ([PqForgeEngineProvider]).

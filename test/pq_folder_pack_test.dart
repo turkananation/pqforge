@@ -146,12 +146,10 @@ void main() {
       final cipher = PqForgeStreamCipher();
 
       final src = Directory('${dir.path}/src2')..createSync();
-      File(
-        '${src.path}/a.bin',
-      ).writeAsBytesSync(List<int>.generate(9000, (i) => i & 0xFF));
-      File(
-        '${src.path}/b.bin',
-      ).writeAsBytesSync(List<int>.generate(9000, (i) => (i + 1) & 0xFF));
+      File('${src.path}/a.bin')
+          .writeAsBytesSync(List<int>.generate(9000, (i) => i & 0xFF));
+      File('${src.path}/b.bin')
+          .writeAsBytesSync(List<int>.generate(9000, (i) => (i + 1) & 0xFF));
 
       final archive = File('${dir.path}/trunc.pqf');
       await cipher.encryptStream(

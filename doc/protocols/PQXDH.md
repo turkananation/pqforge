@@ -2,9 +2,10 @@
 
 Status: scaffold. `Pqxdh`, `PqxdhBundle`, `PqxdhKem`, and `PqxdhResult` are
 exported. `initiate` and `accept` throw `PqForgeException` and do not
-encapsulate. `lib/` has X25519 and Ed25519. It does not have XEdDSA.
-Ed25519 is not XEdDSA, so the handshake stays closed. The bundle
-constructor is live: a 1216-byte X-Wing key is rejected.
+encapsulate. `PqXeddsa` signs the X25519 identity key.
+`Pqxdh.signedPrekeyAuthentic` checks the signed prekey with it. The
+handshake is not built on that check. The bundle constructor is live: a
+1216-byte X-Wing key is rejected.
 
 Specification: [The PQXDH Key Agreement Protocol](https://signal.org/docs/specifications/pqxdh/),
 revision 3, dated 2023-05-24, last updated 2024-01-23.
@@ -64,7 +65,9 @@ is confidentiality of `SK` against a later break of X25519. A future
 
 ## API
 
-The symbols are exported. Both calls throw. They are blocked on XEdDSA.
+The symbols are exported. `initiate` and `accept` throw.
+`signedPrekeyAuthentic` does not. It calls `PqXeddsa.verify` on the
+32-byte signed prekey.
 
 ```dart
 // Throws. Does not encapsulate and does not return SK.
@@ -73,7 +76,7 @@ final secret = await Pqxdh.initiate(
   bundle: bobBundle,                    // already fetched
   kem: PqxdhKem.kyber1024,              // the spec example, not X-Wing
 );
-final session = secret.ratchet;        // DoubleRatchet, once XEdDSA exists
+final session = secret.ratchet;        // DoubleRatchet, once the handshake exists
 final message = secret.initialMessage; // header, ciphertext, Alice's ephemeral key
 ```
 
@@ -88,8 +91,7 @@ also an X-Wing public key and an `X25519MLKEM768` share.
 
 ## Tests that gate it
 
-- XEdDSA sign and verify against the XEdDSA specification vectors, before
-  any PQXDH test.
+- XEdDSA vectors live in `test/pq_xeddsa_test.dart`. They are not PQXDH.
 - A bundle with a bad signed-prekey signature is rejected and no `SK` is
   returned.
 - With a fixed identity, prekeys, ephemeral key, and KEM coins, `SK`

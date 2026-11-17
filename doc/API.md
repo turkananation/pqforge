@@ -233,6 +233,12 @@ deterministic nonces and canonical low-S signatures; the standalone `PqEcdsaP256
 primitive (keygen / sign / verify over raw bytes) is also exported for use
 without the hybrid wrapper.
 
+`PqXeddsa` signs and verifies with a 32-byte X25519 secret. `sign` takes
+an optional 64-byte `randomness` (`Z`). The signature is 64 bytes, and
+the high bit of `S` is the Edwards sign bit, matching libsignal
+`PrivateKey::calculate_signature`. `signAll` and `verifyAll` batch that
+work. It is not Ed25519. There is no CLI command.
+
 ---
 
 ## 3. HPKE

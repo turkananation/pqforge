@@ -27,6 +27,14 @@ Allowed wording:
   Sparse Post-Quantum Ratchet, not libsignal bytes, and not a FIPS
   module. `PqFipsMode` refuses the ChaCha suite. `Pqxdh` and
   `TripleRatchet` are exported and throw.
+- `PqXeddsa` is Curve25519 XEdDSA as libsignal ships it. The same secret,
+  message, and 64-byte `Z` match `PrivateKey::calculate_signature`. The
+  Edwards sign bit is stored in the high bit of `S`. It is not the paper's
+  sign-bit-forced-to-zero variant, not VXEdDSA, not XEd448, and not a FIPS
+  signature. The ladder is the variable-time 4-bit window used by
+  `PqEd25519`. `signAll` draws `Z` on the caller isolate. There is no CLI
+  command. `Pqxdh.signedPrekeyAuthentic` checks a signed prekey. The
+  handshake still throws.
 - `PqFipsMode` is a process-wide switch, not a validated module. It also
   rejects RSA-SHA-1 and an RSA modulus under 2048 bits at `PqRsa.signPkcs1`
   and `signPss` (verify returns false). HPKE seal and open refuse an AEAD
