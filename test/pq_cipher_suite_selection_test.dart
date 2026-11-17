@@ -226,13 +226,12 @@ void main() {
         frameSize: 64 * 1024,
       );
       final out = File('${dir.path}/out.bin');
-      await PqForgeStreamCipher.forProvider(
-        PqForgeEngineProvider.pureDart,
-      ).decryptFile(
-        recipientSecretKey: keys.kemKeyPair.secretKey,
-        input: enc,
-        output: out,
-      );
+      await PqForgeStreamCipher.forProvider(PqForgeEngineProvider.pureDart)
+          .decryptFile(
+            recipientSecretKey: keys.kemKeyPair.secretKey,
+            input: enc,
+            output: out,
+          );
       expect(out.readAsBytesSync(), original);
     });
   });

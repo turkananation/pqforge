@@ -34,8 +34,8 @@
 
 ## Protocols
 
-X-Wing and the Double Ratchet are in the library. PQXDH and the Sparse
-Post-Quantum Ratchet are exported and throw. HPKE is. The custom hybrid
+X-Wing, the Double Ratchet, PQXDH, and the Sparse Post-Quantum Ratchet
+are in the library. HPKE is. The custom hybrid
 (`PqForgeHybridKeyAgreement`) stays the default and is not one of those
 protocols.
 

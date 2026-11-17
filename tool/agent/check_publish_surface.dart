@@ -61,9 +61,11 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  final size = RegExp(
-    r'Total compressed archive size:\s*([^\r\n]+)',
-  ).firstMatch(output)?.group(1)?.trim().replaceFirst(RegExp(r'\.$'), '');
+  final size = RegExp(r'Total compressed archive size:\s*([^\r\n]+)')
+      .firstMatch(output)
+      ?.group(1)
+      ?.trim()
+      .replaceFirst(RegExp(r'\.$'), '');
   stdout.writeln(
     'Pub archive surface is valid'
     '${size == null ? '' : ' (compressed: $size)'}.',

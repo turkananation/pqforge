@@ -63,7 +63,7 @@ jobs:
         run: dart pub get
 
       - name: Activate Jaspr
-        run: dart pub global activate jaspr_cli
+        run: dart pub global activate jaspr_cli 0.24.0-beta.1
 
       - name: Build site
         working-directory: site

@@ -578,9 +578,8 @@ Map<String, Uint8List> _opensslFields(String text) {
 
   for (final rawLine in text.split('\n')) {
     final line = rawLine.trim();
-    final exponent = RegExp(
-      r'^publicExponent:.*\(0x([0-9a-fA-F]+)\)$',
-    ).firstMatch(line);
+    final exponent = RegExp(r'^publicExponent:.*\(0x([0-9a-fA-F]+)\)$')
+        .firstMatch(line);
     if (exponent != null) {
       flush();
       section = null;

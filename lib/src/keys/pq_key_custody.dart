@@ -5,10 +5,13 @@ import 'dart:async';
 
 import 'package:pqforge/pqforge.dart';
 
-typedef PqKeyCustodyPut =
-    FutureOr<void> Function(String storageId, Map<String, Object?> document);
-typedef PqKeyCustodyGet =
-    FutureOr<Map<String, Object?>?> Function(String storageId);
+typedef PqKeyCustodyPut = FutureOr<void> Function(
+  String storageId,
+  Map<String, Object?> document,
+);
+typedef PqKeyCustodyGet = FutureOr<Map<String, Object?>?> Function(
+  String storageId,
+);
 typedef PqKeyCustodyDelete = FutureOr<void> Function(String storageId);
 
 abstract interface class PqKeyCustodyStore {

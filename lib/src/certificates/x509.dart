@@ -878,9 +878,8 @@ int _timeTag(DerReader reader) {
 
 DateTime _time(DerSlice slice) {
   final text = String.fromCharCodes(slice.copy());
-  final match = RegExp(
-    r'^(\d{2}|\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$',
-  ).firstMatch(text);
+  final match = RegExp(r'^(\d{2}|\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$')
+      .firstMatch(text);
   if (match == null) _die(PqX509Failure.badTime);
   var year = int.parse(match.group(1)!);
   if (match.group(1)!.length == 2) year += year >= 50 ? 1900 : 2000;

@@ -54,9 +54,8 @@ void main() {
         classicalAlgorithm: PqClassicalSignatureAlgorithm.ed25519,
       );
       final classicalKeyPair = await signer.generateClassicalKeyPair();
-      final pqcKeys = const PqForge(
-        profile: PqForgeProfile.compact,
-      ).generateKeys();
+      final pqcKeys = const PqForge(profile: PqForgeProfile.compact)
+          .generateKeys();
       final message = Uint8List.fromList(List<int>.generate(20, (i) => i));
       final signature = await signer.sign(
         pqcSecretKey: pqcKeys.signatureKeyPair.secretKey,

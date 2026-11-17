@@ -185,50 +185,47 @@ void main() {
       );
     });
 
-    test(
-      'v1 parses, a negative serial does not, and nine certificates are too long',
-      () {
-        final keys = PqSignaturePrimitives.generateKeyPair(
+    test('v1 parses, a negative serial does not, and nine certificates are too long', () {
+      final keys = PqSignaturePrimitives.generateKeyPair(
+        PqSignatureAlgorithm.mlDsa65,
+      );
+      final name = PqX509Name.commonName('localhost');
+      final der = PqX509.mint(
+        issuer: name,
+        subject: name,
+        publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, keys.publicKey),
+        algorithm: PqX509Algorithm.mlDsa65,
+        sign: (tbs) => PqSignaturePrimitives.sign(
           PqSignatureAlgorithm.mlDsa65,
-        );
-        final name = PqX509Name.commonName('localhost');
-        final der = PqX509.mint(
-          issuer: name,
-          subject: name,
-          publicKey: PqX509MlDsaKey(PqX509Algorithm.mlDsa65, keys.publicKey),
-          algorithm: PqX509Algorithm.mlDsa65,
-          sign: (tbs) => PqSignaturePrimitives.sign(
-            PqSignatureAlgorithm.mlDsa65,
-            keys.secretKey,
-            tbs,
-          ),
-          notBefore: notBefore,
-          notAfter: notAfter,
-          serial: serial,
-          includeEku: false,
-          version3: false,
-        );
-        final parsed = PqX509.parse(der).certificate!;
-        expect(parsed.version, 1);
-        expect(parsed.extensions, isEmpty);
-        expect(
-          PqX509.validate(chain: [der], anchors: [der], now: now).trusted,
-          isTrue,
-        );
-        final negative = Uint8List.fromList(der);
-        final serialAt = _indexOf(negative, [0x02, 0x01, 0x01]);
-        negative[serialAt + 2] = 0x80;
-        expect(PqX509.parse(negative).failure, PqX509Failure.notDer);
-        expect(
-          PqX509.validate(
-            chain: List<Uint8List>.filled(9, der),
-            anchors: [der],
-            now: now,
-          ).failure,
-          PqX509Failure.pathTooLong,
-        );
-      },
-    );
+          keys.secretKey,
+          tbs,
+        ),
+        notBefore: notBefore,
+        notAfter: notAfter,
+        serial: serial,
+        includeEku: false,
+        version3: false,
+      );
+      final parsed = PqX509.parse(der).certificate!;
+      expect(parsed.version, 1);
+      expect(parsed.extensions, isEmpty);
+      expect(
+        PqX509.validate(chain: [der], anchors: [der], now: now).trusted,
+        isTrue,
+      );
+      final negative = Uint8List.fromList(der);
+      final serialAt = _indexOf(negative, [0x02, 0x01, 0x01]);
+      negative[serialAt + 2] = 0x80;
+      expect(PqX509.parse(negative).failure, PqX509Failure.notDer);
+      expect(
+        PqX509.validate(
+          chain: List<Uint8List>.filled(9, der),
+          anchors: [der],
+          now: now,
+        ).failure,
+        PqX509Failure.pathTooLong,
+      );
+    });
 
     test(
       'a leaf plus an intermediate validates, and a broken link does not',

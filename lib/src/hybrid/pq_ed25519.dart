@@ -2,7 +2,13 @@
 ///
 /// The field is sixteen 16-bit limbs. A product of two reduced limbs fits in
 /// a dart2js-safe integer, which a [BigInt] field multiply does not. [BigInt]
-/// is used only to reduce scalars modulo the group order L.
+/// is used only to reduce scalars modulo the group order L. A full 16-bit
+/// product is `2^32 - 2^17 + 1`, which does not fit in a signed [Int32x4]
+/// lane, so the multiply stays scalar. Dart 3.14 lowers [Int32x4] to hardware
+/// SIMD, including Wasm `v128`. That path is not this loop. Canonical byte
+/// compares use [Uint8List.rangeEquals], which the VM lowers to `memcmp`.
+/// Scalar multiplication is a 4-bit window. Inversion is the ref10 addition
+/// chain. Neither is a constant-time claim.
 ///
 /// This is not [PqClassicalProvider.ed25519Verify]. That method returns a
 /// [Future]. [verify] is synchronous and does not call it.
@@ -13,8 +19,14 @@ library;
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart' as pc;
+import 'package:zeroize/zeroize.dart';
 
 import '../primitives/pq_primitives.dart';
+import 'xeddsa_parallel.dart'
+    if (dart.library.isolate) 'xeddsa_parallel_isolate.dart'
+    as xeddsa_parallel;
+
+part 'pq_xeddsa.dart';
 
 /// Ed25519 signatures. Secret keys are 32-byte seeds.
 class PqEd25519 {
@@ -186,6 +198,13 @@ final class _Pt {
       ..l[0] = 1;
     t.zero();
   }
+
+  void copyFrom(_Pt other) {
+    x.copyFrom(other.x);
+    y.copyFrom(other.y);
+    z.copyFrom(other.z);
+    t.copyFrom(other.t);
+  }
 }
 
 final class _Scratch {
@@ -320,8 +339,120 @@ void _carryLimbs(List<int> limb) {
   throw StateError('Ed25519 field carry did not converge');
 }
 
-void _feInvert(_Fe out, _Fe a, _Scratch scratch) {
-  _fePow(out, a, _pMinus2, scratch);
+void _feInvert(_Fe out, _Fe z, _Scratch scratch) {
+  // ref10 fe_invert. Same exponent as a bit scan of p - 2, far fewer
+  // multiplications. [out] may alias [z]; intermediates do not write [z].
+  final t0 = _Fe();
+  final t1 = _Fe();
+  final t2 = _Fe();
+  final t3 = _Fe();
+  _feSq(t0, z, scratch);
+  _feSq(t1, t0, scratch);
+  _feSq(t1, t1, scratch);
+  _feMul(t1, z, t1, scratch);
+  _feMul(t0, t0, t1, scratch);
+  _feSq(t2, t0, scratch);
+  _feMul(t1, t1, t2, scratch);
+  _feSq(t2, t1, scratch);
+  for (var i = 1; i < 5; i++) {
+    _feSq(t2, t2, scratch);
+  }
+  _feMul(t1, t2, t1, scratch);
+  _feSq(t2, t1, scratch);
+  for (var i = 1; i < 10; i++) {
+    _feSq(t2, t2, scratch);
+  }
+  _feMul(t2, t2, t1, scratch);
+  _feSq(t3, t2, scratch);
+  for (var i = 1; i < 20; i++) {
+    _feSq(t3, t3, scratch);
+  }
+  _feMul(t2, t3, t2, scratch);
+  _feSq(t2, t2, scratch);
+  for (var i = 1; i < 10; i++) {
+    _feSq(t2, t2, scratch);
+  }
+  _feMul(t1, t2, t1, scratch);
+  _feSq(t2, t1, scratch);
+  for (var i = 1; i < 50; i++) {
+    _feSq(t2, t2, scratch);
+  }
+  _feMul(t2, t2, t1, scratch);
+  _feSq(t3, t2, scratch);
+  for (var i = 1; i < 100; i++) {
+    _feSq(t3, t3, scratch);
+  }
+  _feMul(t2, t3, t2, scratch);
+  _feSq(t2, t2, scratch);
+  for (var i = 1; i < 50; i++) {
+    _feSq(t2, t2, scratch);
+  }
+  _feMul(t1, t2, t1, scratch);
+  _feSq(t1, t1, scratch);
+  for (var i = 1; i < 5; i++) {
+    _feSq(t1, t1, scratch);
+  }
+  _feMul(out, t1, t0, scratch);
+}
+
+void _feSq(_Fe out, _Fe a, _Scratch scratch) => _feMul(out, a, a, scratch);
+
+/// `z^((p - 5) / 8)`, ref10 `fe_pow22523`.
+void _fePow22523(_Fe out, _Fe z, _Scratch scratch) {
+  final t0 = _Fe();
+  final t1 = _Fe();
+  final t2 = _Fe();
+  _feSq(t0, z, scratch);
+  _feSq(t1, t0, scratch);
+  _feSq(t1, t1, scratch);
+  _feMul(t1, z, t1, scratch);
+  _feMul(t0, t0, t1, scratch);
+  _feSq(t0, t0, scratch);
+  _feMul(t0, t1, t0, scratch);
+  _feSq(t1, t0, scratch);
+  for (var i = 1; i < 5; i++) {
+    _feSq(t1, t1, scratch);
+  }
+  _feMul(t0, t1, t0, scratch);
+  _feSq(t1, t0, scratch);
+  for (var i = 1; i < 10; i++) {
+    _feSq(t1, t1, scratch);
+  }
+  _feMul(t1, t1, t0, scratch);
+  _feSq(t2, t1, scratch);
+  for (var i = 1; i < 20; i++) {
+    _feSq(t2, t2, scratch);
+  }
+  _feMul(t1, t2, t1, scratch);
+  _feSq(t1, t1, scratch);
+  for (var i = 1; i < 10; i++) {
+    _feSq(t1, t1, scratch);
+  }
+  _feMul(t0, t1, t0, scratch);
+  _feSq(t1, t0, scratch);
+  for (var i = 1; i < 50; i++) {
+    _feSq(t1, t1, scratch);
+  }
+  _feMul(t1, t1, t0, scratch);
+  _feSq(t2, t1, scratch);
+  for (var i = 1; i < 100; i++) {
+    _feSq(t2, t2, scratch);
+  }
+  _feMul(t1, t2, t1, scratch);
+  _feSq(t1, t1, scratch);
+  for (var i = 1; i < 50; i++) {
+    _feSq(t1, t1, scratch);
+  }
+  _feMul(t0, t1, t0, scratch);
+  _feSq(t0, t0, scratch);
+  _feSq(t0, t0, scratch);
+  _feMul(out, t0, z, scratch);
+}
+
+/// `z^((p + 3) / 8) = z * z^((p - 5) / 8)`.
+void _fePowP3Over8(_Fe out, _Fe z, _Scratch scratch) {
+  _fePow22523(out, z, scratch);
+  _feMul(out, out, z, scratch);
 }
 
 void _fePow(_Fe out, _Fe base, Uint8List expBe, _Scratch scratch) {
@@ -347,22 +478,6 @@ void _fePow(_Fe out, _Fe base, Uint8List expBe, _Scratch scratch) {
   }
   _feFreeze(out);
 }
-
-/// p - 2 = 2^255 - 21, 32-byte big-endian.
-final Uint8List _pMinus2 = Uint8List.fromList(<int>[
-  0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, //
-  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xeb,
-]);
-
-/// (p + 3) / 8 = 2^252 - 2.
-final Uint8List _pPlus3Over8 = Uint8List.fromList(<int>[
-  0x0f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, //
-  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
-]);
 
 bool _feEquals(_Fe a, _Fe b, _Scratch scratch) {
   scratch.t7.copyFrom(a);
@@ -394,7 +509,7 @@ _Pt? _ptDecompress(Uint8List bytes, _Scratch scratch) {
   _feInvert(inv, v, scratch);
   final x2 = _Fe();
   _feMul(x2, u, inv, scratch);
-  _fePow(scratch.t0, x2, _pPlus3Over8, scratch);
+  _fePowP3Over8(scratch.t0, x2, scratch);
   final x = _Fe()..copyFrom(scratch.t0);
   _feFreeze(x);
   final xCheck = scratch.t1;
@@ -424,11 +539,16 @@ _Pt? _ptDecompress(Uint8List bytes, _Scratch scratch) {
   return point;
 }
 
+_Fe? _sqrtM1;
+
 _Fe _sqrtNeg1(_Scratch scratch) {
+  final cached = _sqrtM1;
+  if (cached != null) return cached;
   final two = _Fe()..setInt(2);
   final out = _Fe();
-  // 2^((p-1)/4) = 2^(2^253 - 5).
+  // 2^((p-1)/4) = 2^(2^253 - 5). Computed once.
   _fePow(out, two, _sqrtNeg1Exp, scratch);
+  _sqrtM1 = out;
   return out;
 }
 
@@ -528,23 +648,53 @@ void _ptDouble(_Pt out, _Pt p, _Scratch scratch) {
   _feMul(out.z, f, g, scratch);
 }
 
+List<_Pt>? _fixedBase;
+
 void _ptMul(_Pt out, _Pt base, BigInt scalar, _Scratch scratch) {
+  final table = identical(base, PqEd25519._base)
+      ? _fixedBaseWindow(scratch)
+      : _window(base, scratch);
+  final bytes = _leBytes(scalar);
   out.setIdentity();
-  final bits = _scalarBits(scalar);
-  for (var i = 255; i >= 0; i--) {
-    _ptDouble(scratch.p1, out, scratch);
-    out.x.copyFrom(scratch.p1.x);
-    out.y.copyFrom(scratch.p1.y);
-    out.z.copyFrom(scratch.p1.z);
-    out.t.copyFrom(scratch.p1.t);
-    if (((bits[i >> 3] >> (i & 7)) & 1) == 1) {
-      _ptAdd(scratch.p1, out, base, scratch);
-      out.x.copyFrom(scratch.p1.x);
-      out.y.copyFrom(scratch.p1.y);
-      out.z.copyFrom(scratch.p1.z);
-      out.t.copyFrom(scratch.p1.t);
+  for (var window = 63; window >= 0; window--) {
+    for (var i = 0; i < 4; i++) {
+      _ptDouble(scratch.p1, out, scratch);
+      out.copyFrom(scratch.p1);
+    }
+    final nibble = _nibble(bytes, window);
+    if (nibble != 0) {
+      _ptAdd(scratch.p1, out, table[nibble], scratch);
+      out.copyFrom(scratch.p1);
     }
   }
+}
+
+List<_Pt> _fixedBaseWindow(_Scratch scratch) {
+  final cached = _fixedBase;
+  if (cached != null) return cached;
+  final table = _window(PqEd25519._base, scratch);
+  _fixedBase = table;
+  return table;
+}
+
+List<_Pt> _window(_Pt base, _Scratch scratch) {
+  final table = List<_Pt>.generate(16, (_) => _Pt(), growable: false);
+  table[0].setIdentity();
+  table[1].copyFrom(base);
+  _ptDouble(table[2], base, scratch);
+  for (var i = 3; i < 16; i++) {
+    if ((i & 1) == 0) {
+      _ptDouble(table[i], table[i >> 1], scratch);
+    } else {
+      _ptAdd(table[i], table[i - 1], base, scratch);
+    }
+  }
+  return table;
+}
+
+int _nibble(Uint8List bytes, int index) {
+  final byte = bytes[index >> 1];
+  return (index & 1) == 0 ? byte & 0x0f : byte >> 4;
 }
 
 bool _ptEquals(_Pt a, _Pt b, _Scratch scratch) {
@@ -557,8 +707,6 @@ bool _ptEquals(_Pt a, _Pt b, _Scratch scratch) {
   _feMul(right, b.y, a.z, scratch);
   return _feEquals(left, right, scratch);
 }
-
-Uint8List _scalarBits(BigInt scalar) => _leBytes(scalar);
 
 void _clamp(Uint8List scalar) {
   scalar[0] &= 248;

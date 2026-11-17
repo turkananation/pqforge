@@ -368,17 +368,16 @@ void main() {
         );
 
         final extPath =
-            await crypto.SecretKey(
-              Uint8List.fromList(classicalBytes),
-            ).deriveHybridSecretKey(
-              postQuantumSecret: crypto.SecretKey(
-                Uint8List.fromList(postQuantumBytes),
-              ),
-              info: info,
-              salt: salt,
-              profile: profile,
-              length: length,
-            );
+            await crypto.SecretKey(Uint8List.fromList(classicalBytes))
+                .deriveHybridSecretKey(
+                  postQuantumSecret: crypto.SecretKey(
+                    Uint8List.fromList(postQuantumBytes),
+                  ),
+                  info: info,
+                  salt: salt,
+                  profile: profile,
+                  length: length,
+                );
         final extBytes = await extPath.extractBytes();
 
         expect(extBytes, orderedEquals(corePath));

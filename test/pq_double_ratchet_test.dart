@@ -294,36 +294,15 @@ void main() {
     );
   });
 
-  group('PQXDH and Triple Ratchet scaffolds', () {
-    test('PQXDH throws, and a 1216-byte key is not a bundle field', () async {
+  group('PQXDH bundle boundary', () {
+    test('a 1216-byte key is not a bundle field', () async {
       final identity = await RatchetKeyPair.generate();
-      final bundle = PqxdhBundle(
-        identityKey: identity.publicKey,
-        signedPrekey: identity.publicKey,
-        signedPrekeySignature: Uint8List(64),
-        kemPublicKey: Uint8List(PqxdhKem.kyber1024.publicKeyBytes),
-      );
-      await expectLater(
-        Pqxdh.initiate(identityKey: identity, bundle: bundle),
-        throwsA(isA<PqForgeException>()),
-      );
-      final initial = DoubleRatchetMessage.parse(
-        Uint8List(DoubleRatchetMessage.headerBytes + 16),
-      );
-      await expectLater(
-        Pqxdh.accept(
-          identityKey: identity,
-          signedPrekey: identity,
-          bundle: bundle,
-          initialMessage: initial,
-        ),
-        throwsA(isA<PqForgeException>()),
-      );
       expect(
         () => PqxdhBundle(
           identityKey: identity.publicKey,
           signedPrekey: identity.publicKey,
           signedPrekeySignature: Uint8List(64),
+          kemPublicKeySignature: Uint8List(64),
           kemPublicKey: Uint8List(1216),
         ),
         throwsArgumentError,
@@ -333,21 +312,14 @@ void main() {
           identityKey: identity.publicKey,
           signedPrekey: identity.publicKey,
           signedPrekeySignature: Uint8List(1216),
+          kemPublicKeySignature: Uint8List(64),
           kemPublicKey: Uint8List(PqxdhKem.kyber1024.publicKeyBytes),
         ),
         throwsArgumentError,
       );
     });
 
-    test('TripleRatchet.initiate throws after the 32-byte checks', () async {
-      final remote = await RatchetKeyPair.generate();
-      await expectLater(
-        TripleRatchet.initiate(
-          sharedSecret: SharedSecret32(_pattern(32, 9)),
-          remoteRatchetKey: remote.publicKey,
-        ),
-        throwsA(isA<PqForgeException>()),
-      );
+    test('a 1216-byte key is not a Triple Ratchet public key', () {
       expect(
         () => TripleRatchet.initiate(
           sharedSecret: SharedSecret32(Uint8List(32)),
