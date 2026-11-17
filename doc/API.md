@@ -15,7 +15,7 @@ That one entrypoint provides the whole stack:
 | Built-in classical hybrid | `PqForgeHybridKeyAgreement` (X25519 + ML-KEM), `PqForgeHybridSigner` (ML-DSA + Ed25519) |
 | Certificates | `PqX509` parse, mint, and path check. `PqEcdsaP384`, `PqRsa`, synchronous `PqEd25519`, and synchronous `PqEd448` sit beside `PqEcdsaP256`. Ed448 is not an X.509 algorithm. P-384 ECDSA is not `p384SharedSecret`. |
 | HPKE | `PqHpke` — RFC 9180 base, PSK, auth, and authPSK, plus X-Wing. See [HPKE.md](protocols/HPKE.md). |
-| Double Ratchet | `DoubleRatchet` — Signal revision 4 over X25519 and AES-256-GCM or ChaCha20-Poly1305. Not libsignal bytes. `Pqxdh` and `TripleRatchet` are exported and throw. See [DOUBLE_RATCHET.md](protocols/DOUBLE_RATCHET.md). |
+| Double Ratchet | `DoubleRatchet` — Signal revision 4 over X25519 and AES-256-GCM or ChaCha20-Poly1305. Not libsignal bytes. `Pqxdh` is PQXDH revision 3 (Curve25519, ML-KEM-1024, HKDF-SHA-512). `TripleRatchet` is the ML-KEM Braid beside that ratchet. Not a FIPS handshake. See [PQXDH.md](protocols/PQXDH.md) and [SPARSE_POST_QUANTUM_RATCHET.md](protocols/SPARSE_POST_QUANTUM_RATCHET.md). |
 | AEAD wire packets | `PqForgeSecureSession` over AES-256-GCM / ChaCha20-Poly1305, pure-Dart or native backend |
 
 `package:cryptography` is a standard dependency (it powers the hybrid, native-AEAD,

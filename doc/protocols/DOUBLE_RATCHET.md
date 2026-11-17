@@ -7,8 +7,9 @@ one pqforge AEAD. It is not PQXDH, not the Sparse Post-Quantum Ratchet,
 not a libsignal byte match, and not a FIPS module.
 
 Specification: [The Double Ratchet Algorithm](https://signal.org/docs/specifications/doubleratchet/),
-revision 4, 2025-11-04. Sections 3 and 7.2 are the parts this session
-implements. Section 5 (the Sparse Post-Quantum Ratchet) is not.
+revision 4, 2025-11-04. Sections 3 and 7.2 are this session.
+Section 5 is [`TripleRatchet`](SPARSE_POST_QUANTUM_RATCHET.md), a
+separate type. It does not replace the X25519 step.
 
 The Double Ratchet starts from a 32-byte shared secret that some other
 protocol already agreed. [PQXDH](PQXDH.md) is one way to agree that

@@ -1,14 +1,15 @@
 # PQXDH
 
-Status: scaffold. `Pqxdh`, `PqxdhBundle`, `PqxdhKem`, and `PqxdhResult` are
-exported. `initiate` and `accept` throw `PqForgeException` and do not
-encapsulate. `PqXeddsa` signs the X25519 identity key.
-`Pqxdh.signedPrekeyAuthentic` checks the signed prekey with it. The
-handshake is not built on that check. The bundle constructor is live: a
-1216-byte X-Wing key is rejected.
+Status: shipped. `Pqxdh.publish`, `Pqxdh.initiate`, and `Pqxdh.accept` run
+revision 3 on Curve25519. The KEM is ML-KEM-1024 through `pqcrypto`, not
+round-3 CRYSTALS-Kyber and not X-Wing. `Pqxdh.signedPrekeyAuthentic` and
+`Pqxdh.kemPrekeyAuthentic` check the two XEdDSA signatures. A bad
+signature throws and returns no `SK`. This is not Signal Messenger and
+not libsignal's protobuf session.
 
 Specification: [The PQXDH Key Agreement Protocol](https://signal.org/docs/specifications/pqxdh/),
-revision 3, dated 2023-05-24, last updated 2024-01-23.
+revision 3, dated 2023-05-24, last updated 2024-01-23. The document is
+in the public domain.
 
 PQXDH is the authenticated setup. It produces one 32-byte secret. The
 Double Ratchet consumes that secret. PQXDH does not encrypt the
@@ -48,55 +49,78 @@ The info string joins the application info, the curve, the hash, and the
 KEM name with `_`. The specification's example is
 `MyProtocol_CURVE25519_SHA-512_CRYSTALS-KYBER-1024`.
 
-The example KEM is CRYSTALS-Kyber-1024. Replacing that KEM with ML-KEM,
-or with X-Wing, does not turn the handshake into X-Wing. The combiner is
-still HKDF over several Diffie-Hellman outputs plus one KEM secret.
-X-Wing's combiner is `SHA3-256(ss_M || ss_X || ct_X || pk_X || label)` and
-has none of those extra Diffie-Hellman outputs.
+The example KEM in the specification is CRYSTALS-Kyber-1024. This
+profile runs ML-KEM-1024 (FIPS 203), which `pqcrypto` implements. The
+HKDF info therefore names `ML-KEM-1024`, not `CRYSTALS-KYBER-1024`.
+Replacing the KEM with X-Wing does not happen here. X-Wing's combiner is
+`SHA3-256(ss_M || ss_X || ct_X || pk_X || label)` and has none of the
+extra Diffie-Hellman outputs.
 
-The first message is authenticated encryption under `SK`. The associated
-data binds the identity keys and the post-quantum public key. That binding
-is how PQXDH stops a re-encapsulation from being silent. It is not the
-X-Wing label.
+`EncodeEC` is the raw 32-byte key. `EncodeKEM` is the raw 1568-byte
+encapsulation key. The ranges are disjoint by length. That is also the
+byte string libsignal signs for a curve prekey. The specification's
+recommended type byte is not used.
 
-Authentication in this revision is classical. The post-quantum contribution
-is confidentiality of `SK` against a later break of X25519. A future
-`Pqxdh` type does not claim post-quantum authentication.
+The first message is AES-256-GCM, or ChaCha20-Poly1305 when FIPS mode is
+off, under `SK`, with a 12-byte zero nonce. The associated data is
+`IK_A || IK_B || PQPK_B`, plus any extra bytes both sides pass. ML-KEM
+does not bind `PQPK_B` into the ciphertext, so losing it fails the tag.
+A [Double Ratchet](DOUBLE_RATCHET.md) is started from `SK`. Its next
+message is not this initial ciphertext.
+
+Authentication in this revision is classical. The post-quantum
+contribution is confidentiality of `SK` against a later break of X25519.
+`Pqxdh` does not claim post-quantum authentication, and it is not a FIPS
+handshake. `PqFipsMode` only refuses ChaCha.
+
+The pure-Dart ML-KEM call runs on a worker isolate when `dart:isolate`
+exists, so a UI isolate stays responsive. A registered `PqLattice`
+backend stays on the caller. There is no SIMD field multiply in this
+handshake. The 16-bit limb product still does not fit in signed
+`Int32x4`.
 
 ## API
 
-The symbols are exported. `initiate` and `accept` throw.
-`signedPrekeyAuthentic` does not. It calls `PqXeddsa.verify` on the
-32-byte signed prekey.
-
 ```dart
-// Throws. Does not encapsulate and does not return SK.
-final secret = await Pqxdh.initiate(
-  identityKey: aliceIdentity,          // X25519 key, XEdDSA-capable
-  bundle: bobBundle,                    // already fetched
-  kem: PqxdhKem.kyber1024,              // the spec example, not X-Wing
+final bob = await Pqxdh.publish();
+final aliceKey = await RatchetKeyPair.generate();
+final alice = await Pqxdh.initiate(
+  identityKey: aliceKey,
+  bundle: bob.bundle,          // already fetched; there is no server
+  plaintext: utf8.encode('hello'),
 );
-final session = secret.ratchet;        // DoubleRatchet, once the handshake exists
-final message = secret.initialMessage; // header, ciphertext, Alice's ephemeral key
+final opened = await Pqxdh.accept(
+  identityKey: bob.identityKey,
+  signedPrekey: bob.signedPrekey,
+  kemSecretKey: bob.kemSecretKey,
+  initialMessage: alice.initialMessage!,
+);
+final session = opened.ratchet; // DoubleRatchet, already started from SK
 ```
+
+`info` defaults to `pqforge01`. The HKDF info is
+`pqforge01_CURVE25519_SHA-512_ML-KEM-1024`. Pass the same string to both
+sides. It is printable ASCII, at least 8 characters, with no `_`.
 
 `PqxdhKem.xWing` is not a value. A caller who wants X-Wing uses
 [XWING.md](XWING.md) and passes the 32-byte result to
 `DoubleRatchet.initiate`. The type is not named `Pqxdh`.
 
-`bobBundle` is a typed object: identity public key, signed prekey, the
-XEdDSA signature, optional one-time prekey, post-quantum public key, and
-the KEM id. A raw 1216-byte buffer does not satisfy it. That length is
-also an X-Wing public key and an `X25519MLKEM768` share.
+`bob.bundle` is a typed object. A raw 1216-byte buffer does not satisfy
+it. That length is also an X-Wing public key and an `X25519MLKEM768`
+share.
 
 ## Tests that gate it
 
 - XEdDSA vectors live in `test/pq_xeddsa_test.dart`. They are not PQXDH.
-- A bundle with a bad signed-prekey signature is rejected and no `SK` is
-  returned.
-- With a fixed identity, prekeys, ephemeral key, and KEM coins, `SK`
-  matches a vector computed from the formula above.
-- The same inputs with the KEM swapped do not match.
+- A bundle with a bad signed-prekey or KEM signature is rejected and no
+  `SK` is returned.
+- With fixed seeds and KEM coins, `SK` matches an HKDF computed in the
+  test from `F || DH1 || DH2 || DH3 || SS`, not from `Pqxdh`'s private
+  function. A one-time prekey changes that value.
+- The same curve keys with different KEM coins do not match.
 - An X-Wing public key is rejected by the bundle parser.
 - The initial message opens under the responder's `SK` and fails if the
   associated data loses the post-quantum public key.
+- The next Double Ratchet message opens. Feeding the PQXDH message to
+  the ratchet does not.

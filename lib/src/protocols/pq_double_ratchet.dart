@@ -97,10 +97,13 @@ final class DoubleRatchet {
     required this.suite,
     required this._info,
     required this.maxSkip,
+    required this._ratchetKeys,
   }) : _root = rootKey,
        _sending = sendingChain;
 
   /// Alice. Mixes one X25519 into [sharedSecret] and can [seal] immediately.
+  /// [ratchetKey] fixes the first X25519 pair. [ratchetKeys] fixes each
+  /// later pair. Tests pass both. A production caller omits them.
   static Future<DoubleRatchet> initiate({
     required SharedSecret32 sharedSecret,
     required RatchetPublicKey remoteRatchetKey,
@@ -108,22 +111,29 @@ final class DoubleRatchet {
     PqForgeCipherSuite suite = PqForgeCipherSuite.aes256Gcm,
     Uint8List? info,
     int maxSkip = defaultMaxSkip,
+    RatchetKeyPair? ratchetKey,
+    Future<RatchetKeyPair> Function(int step)? ratchetKeys,
   }) async {
     _requireSession(suite, maxSkip);
-    final ours = await RatchetKeyPair.generate();
+    final generated = ratchetKey == null;
+    final ours = ratchetKey ?? await RatchetKeyPair.generate();
+    final secret = Uint8List.fromList(ours.secretKey);
+    final public = RatchetPublicKey(ours.publicKey.bytes);
+    if (generated) ours.wipe();
     final root = Uint8List.fromList(sharedSecret.bytes);
     final session = DoubleRatchet._(
       rootKey: root,
-      dhSecret: ours.secretKey,
-      dhPublic: ours.publicKey,
+      dhSecret: secret,
+      dhPublic: public,
       remoteRatchetKey: RatchetPublicKey(remoteRatchetKey.bytes),
       sendingChain: null,
       hash: hash,
       suite: suite,
       info: _infoBytes(info),
       maxSkip: maxSkip,
+      ratchetKeys: ratchetKeys,
     );
-    final dh = await session._exchange(ours.secretKey, remoteRatchetKey.bytes);
+    final dh = await session._exchange(secret, remoteRatchetKey.bytes);
     try {
       session._sending = session._mix(dh);
     } finally {
@@ -141,6 +151,7 @@ final class DoubleRatchet {
     PqForgeCipherSuite suite = PqForgeCipherSuite.aes256Gcm,
     Uint8List? info,
     int maxSkip = defaultMaxSkip,
+    Future<RatchetKeyPair> Function(int step)? ratchetKeys,
   }) {
     _requireSession(suite, maxSkip);
     return DoubleRatchet._(
@@ -153,6 +164,7 @@ final class DoubleRatchet {
       suite: suite,
       info: _infoBytes(info),
       maxSkip: maxSkip,
+      ratchetKeys: ratchetKeys,
     );
   }
 
@@ -206,6 +218,7 @@ final class DoubleRatchet {
             suite: suite,
             info: Uint8List.fromList(info),
             maxSkip: maxSkip,
+            ratchetKeys: null,
           )
           .._ns = ns
           .._nr = nr
@@ -246,6 +259,8 @@ final class DoubleRatchet {
   final PqForgeCipherSuite suite;
   final int maxSkip;
   final Uint8List _info;
+  final Future<RatchetKeyPair> Function(int step)? _ratchetKeys;
+  int _ratchetStep = 0;
 
   final Uint8List _root;
   Uint8List _dhSecret;
@@ -272,8 +287,29 @@ final class DoubleRatchet {
   }
 
   /// Encrypts one message. The message key is wiped before this returns.
-  /// Does not return the message key.
+  /// Does not return the message key. [takeSendingMessageKey] is the same
+  /// chain step for a caller that encrypts elsewhere.
   DoubleRatchetMessage seal(Uint8List plaintext, {Uint8List? aad}) {
+    final taken = takeSendingMessageKey();
+    try {
+      final body = _encrypt(
+        taken.messageKey,
+        plaintext,
+        _aad(aad, _headerBytes(taken.dh.bytes, taken.pn, taken.n)),
+      );
+      final out = Uint8List(DoubleRatchetMessage.headerBytes + body.length);
+      _writeHeader(out, taken.dh.bytes, taken.pn, taken.n);
+      out.setRange(DoubleRatchetMessage.headerBytes, out.length, body);
+      return DoubleRatchetMessage._(out);
+    } finally {
+      secureZero(taken.messageKey);
+    }
+  }
+
+  /// Next sending message key. The caller wipes [messageKey].
+  /// Does not encrypt. The header fields are the ones [seal] would write.
+  ({Uint8List messageKey, int pn, int n, RatchetPublicKey dh})
+  takeSendingMessageKey() {
     _live();
     final chain = _sending;
     if (chain == null) {
@@ -288,39 +324,39 @@ final class DoubleRatchet {
     final pn = _pn;
     final n = _ns;
     _ns++;
-    try {
-      final body = _encrypt(
-        messageKey,
-        plaintext,
-        _aad(aad, _headerBytes(_dhPublic.bytes, pn, n)),
-      );
-      final out = Uint8List(DoubleRatchetMessage.headerBytes + body.length);
-      _writeHeader(out, _dhPublic.bytes, pn, n);
-      out.setRange(DoubleRatchetMessage.headerBytes, out.length, body);
-      return DoubleRatchetMessage._(out);
-    } finally {
-      secureZero(messageKey);
-    }
+    return (messageKey: messageKey, pn: pn, n: n, dh: _dhPublic);
   }
 
   /// Decrypts one message. Out-of-order messages inside [maxSkip] open.
   /// A header past [maxSkip] throws and does not grow the skipped-key map.
   Future<Uint8List> open(DoubleRatchetMessage message, {Uint8List? aad}) async {
+    final messageKey = await takeReceivingMessageKey(
+      dh: message.dh.bytes,
+      pn: message.pn,
+      n: message.n,
+    );
+    try {
+      return _decrypt(messageKey, message, aad);
+    } finally {
+      secureZero(messageKey);
+    }
+  }
+
+  /// Next receiving message key for a header. The caller wipes it.
+  /// Does not decrypt. Same chain rules as [open].
+  Future<Uint8List> takeReceivingMessageKey({
+    required Uint8List dh,
+    required int pn,
+    required int n,
+  }) async {
     _live();
-    final cached = _takeSkipped(message.dh.bytes, message.n);
-    if (cached != null) {
-      try {
-        return _decrypt(cached, message, aad);
-      } finally {
-        secureZero(cached);
-      }
+    final cached = _takeSkipped(dh, n);
+    if (cached != null) return cached;
+    if (remoteRatchetKey == null || !_same(remoteRatchetKey!.bytes, dh)) {
+      _skip(pn);
+      await _dhRatchet(dh);
     }
-    if (remoteRatchetKey == null ||
-        !_same(remoteRatchetKey!.bytes, message.dh.bytes)) {
-      _skip(message.pn);
-      await _dhRatchet(message.dh.bytes);
-    }
-    _skip(message.n);
+    _skip(n);
     final receiving = _receiving;
     if (receiving == null) {
       throw const PqForgeException('Receiving chain is not initialized');
@@ -330,11 +366,7 @@ final class DoubleRatchet {
     }
     final messageKey = _advance(receiving);
     _nr++;
-    try {
-      return _decrypt(messageKey, message, aad);
-    } finally {
-      secureZero(messageKey);
-    }
+    return messageKey;
   }
 
   /// [open] for a raw message buffer.
@@ -396,6 +428,14 @@ final class DoubleRatchet {
     _skipped.clear();
   }
 
+  Future<RatchetKeyPair> _freshRatchetKey() {
+    final keys = _ratchetKeys;
+    if (keys == null) return RatchetKeyPair.generate();
+    final step = _ratchetStep;
+    _ratchetStep += 1;
+    return keys(step);
+  }
+
   Future<void> _dhRatchet(Uint8List remoteDh) async {
     _pn = _ns;
     _ns = 0;
@@ -409,7 +449,7 @@ final class DoubleRatchet {
     } finally {
       secureZero(first);
     }
-    final next = await RatchetKeyPair.generate();
+    final next = await _freshRatchetKey();
     secureZero(_dhSecret);
     _dhSecret = next.secretKey;
     _dhPublic = next.publicKey;

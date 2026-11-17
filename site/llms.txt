@@ -39,7 +39,7 @@ pqforge is the application layer built on top of pqcrypto. pqcrypto provides the
   - BoringSSL HPKE for X448, P-521, PSK, or HKDF-SHA512
   - An OpenSSL HPKE claim for X25519, P-256, or P-384
   - X-Wing as a FIPS construction, an authenticated HPKE KEM, a .pqf or .pqfs algorithm, or a BoringSSL or OpenSSL interop claim
-  - The PQXDH handshake and the Sparse Post-Quantum Ratchet (exported scaffolds that throw). VXEdDSA, XEd448, and the ML-KEM Braid incremental interface. A libsignal byte match or a FIPS-validated Double Ratchet. PqXeddsa is not a FIPS signature and not a CLI command
+  - Signal Messenger, libsignal protobuf bytes, or a FIPS handshake for PQXDH, the ML-KEM Braid, or the Triple Ratchet. The braid FO hash is SHA3-256(rho || t), not FIPS H(pk), so PqcKem.kyber768.decapsulate does not open a braid ciphertext. A full encapsulate is not a braid epoch. The expanded ML-KEM decapsulation key is not serialized. SIMD is the GF(2^16) parity, not a second NTT. The braid does not call PqLattice.provider. VXEdDSA, XEd448. PqXeddsa is not a FIPS signature and not a CLI command. PQXDH is not Signal Messenger
   - A WebPKI trust store, AIA, OCSP fetching, or certificate transparency
   - ECDSA-P521 as a TLS group or as the HPKE P-521 KEM. PqEcdsaP521 only signs
   - SHA-1 as a signature or as the hash for a new protocol. PqBytes.sha1 is only the RFC 3174 digest

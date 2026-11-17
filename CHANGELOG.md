@@ -5,14 +5,28 @@
 `PqXeddsa` signs a 32-byte X25519 key. The 64-byte signature matches
 libsignal `PrivateKey::calculate_signature` for the same secret, message,
 and 64-byte `Z`. `signAll` and `verifyAll` batch that work on isolates
-when `dart:isolate` exists. `Pqxdh.signedPrekeyAuthentic` checks the
-signed prekey. The handshake still throws.
+when `dart:isolate` exists.
+
+`Pqxdh.publish`, `initiate`, and `accept` run PQXDH revision 3 on
+Curve25519. The KEM is ML-KEM-1024 through pqcrypto, not round-3 Kyber.
+`SK` is HKDF-SHA-512 over `F || DH1 || DH2 || DH3 ||` optional `DH4 || SS`.
+The initial ciphertext is AES-256-GCM under `SK` (ChaCha when FIPS mode
+is off). The associated data binds both identity keys and the ML-KEM
+public key. A Double Ratchet starts from `SK`. The pure-Dart KEM runs on
+an isolate when `dart:isolate` exists. Not Signal Messenger, not a FIPS
+handshake, and not a CLI command.
 
 Ed25519 inversion uses the ref10 addition chain. Scalar multiplication
 uses a 4-bit window. Canonical compares use `rangeEquals`. The SDK
 constraint is `^3.14.0`. A 16-bit limb product does not fit in signed
 `Int32x4`, so the field multiply is unchanged. Not VXEdDSA, not XEd448,
-not a FIPS signature, and not a CLI command. No `.pqf` / `.pqfs` change.
+not a FIPS signature. `TripleRatchet` runs the public ML-KEM Braid
+beside the Double Ratchet. The KEM is ML-KEM-768. Encaps1 and Encaps2
+are in this package; the NTT stays in pqcrypto. The braid hash is
+SHA3-256(rho || t), not FIPS H(pk). Chunks are 32 bytes. Parity is
+GF(2^16) on `Int32x4`. Wire magic is `TR01`. Not Signal, not libsignal
+bytes, not a FIPS handshake, and not a CLI command. No `.pqf` /
+`.pqfs` change. The docs site resolves on Dart 3.14 (Jaspr 0.24.0-beta.1).
 
 ## 0.4.14
 

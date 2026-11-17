@@ -35,8 +35,8 @@ dart2wasm. One item always runs inline.
 
 `Pqxdh.signedPrekeyAuthentic` verifies a signed prekey. The message is
 the 32-byte prekey public key, which is what libsignal signs.
-`Pqxdh.initiate` and `Pqxdh.accept` still throw. That handshake is not
-this signature.
+`Pqxdh.kemPrekeyAuthentic` verifies the ML-KEM encapsulation key. The
+handshake that uses both is [PQXDH.md](PQXDH.md), not this signature.
 
 Not VXEdDSA. Not XEd448. Not Ed25519. Not a FIPS signature. The field is
 sixteen 16-bit limbs. A limb product does not fit in a signed `Int32x4`

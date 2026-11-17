@@ -3,9 +3,9 @@
 These pages separate constructions that share ingredients and do not share
 outputs. A matching length is not a matching protocol.
 
-X-Wing, the Double Ratchet, and XEdDSA are exported. PQXDH and the Sparse
-Post-Quantum Ratchet are exported as fail-closed scaffolds: the types
-check lengths, then throw. They do not run a handshake or a braid.
+X-Wing, the Double Ratchet, XEdDSA, PQXDH, and the Sparse Post-Quantum
+Ratchet are exported. The Triple Ratchet is the last of those beside the
+Double Ratchet. It is not a fourth KEM.
 
 | Document | Shipped | When it can land |
 | --- | --- | --- |
@@ -13,8 +13,8 @@ check lengths, then throw. They do not run a handshake or a braid.
 | [XWING.md](XWING.md) | Yes. `PqXWing` | Draft-11 Appendix C matches. Not a `.pqf` algorithm |
 | [DOUBLE_RATCHET.md](DOUBLE_RATCHET.md) | Yes. `DoubleRatchet` | A session, not a KEM. Not libsignal bytes |
 | [XEDDSA.md](XEDDSA.md) | Yes. `PqXeddsa` | Curve25519. libsignal signature bytes. Not the handshake |
-| [PQXDH.md](PQXDH.md) | Scaffold. `Pqxdh` throws | XEdDSA is `PqXeddsa`. The handshake is not built |
-| [SPARSE_POST_QUANTUM_RATCHET.md](SPARSE_POST_QUANTUM_RATCHET.md) | Scaffold. `TripleRatchet` throws | Last. The ML-KEM Braid needs an incremental ML-KEM interface this package does not have |
+| [PQXDH.md](PQXDH.md) | Yes. `Pqxdh` | Revision 3, Curve25519, ML-KEM-1024. Not libsignal bytes |
+| [SPARSE_POST_QUANTUM_RATCHET.md](SPARSE_POST_QUANTUM_RATCHET.md) | Yes. `TripleRatchet` | ML-KEM Braid, ML-KEM-768. Not libsignal bytes |
 
 `PqForgeHybridKeyAgreement` is not one of these. It stays the default
 hybrid. Implementing any page below must not change its `initiate` /
