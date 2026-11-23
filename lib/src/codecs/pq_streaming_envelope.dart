@@ -28,6 +28,7 @@ class PqStreamingHeader {
     required this.profile,
     required this.kemAlgorithm,
     this.signatureAlgorithm,
+    this.slhDsa,
     required Uint8List kemCiphertext,
     required Uint8List nonceSalt,
     required this.frameSize,
@@ -49,6 +50,11 @@ class PqStreamingHeader {
       PqStreamingEnvelope.nonceSaltBytes,
     );
     if (this.aadHash != null) requireLength('aadHash', this.aadHash!, 32);
+    if (signatureAlgorithm != null && slhDsa != null) {
+      throw const PqForgeException(
+        'Pass only one of signatureAlgorithm or slhDsa',
+      );
+    }
     if (frameSize <= 0 || frameSize > PqStreamingEnvelope.maxFrameSize) {
       throw ArgumentError.value(
         frameSize,
@@ -61,6 +67,9 @@ class PqStreamingHeader {
   final PqForgeProfile profile;
   final PqKemAlgorithm kemAlgorithm;
   final PqSignatureAlgorithm? signatureAlgorithm;
+
+  /// Set when the header signature is SLH-DSA. Once per container.
+  final PqSlhDsaAlgorithm? slhDsa;
   final Uint8List kemCiphertext;
   final Uint8List nonceSalt;
   final int frameSize;
@@ -68,7 +77,14 @@ class PqStreamingHeader {
   final Map<String, Object?> metadata;
   final String? signerKeyId;
 
-  bool get isSigned => signatureAlgorithm != null;
+  bool get isSigned => signatureAlgorithm != null || slhDsa != null;
+
+  /// `ml-dsa-65` or `slh-dsa-shake-128f`, when a signature algorithm is set.
+  String? get signatureAlgorithmId => slhDsa?.id ?? signatureAlgorithm?.id;
+
+  /// Display name of [signatureAlgorithmId].
+  String? get signatureAlgorithmName =>
+      slhDsa?.name ?? signatureAlgorithm?.name;
 }
 
 /// Pure framing for the `.pqfs` streaming envelope.
@@ -134,7 +150,9 @@ abstract final class PqStreamingEnvelope {
     return PqBytes.lengthPrefixed([
       PqBytes.utf8Bytes(header.profile.name),
       PqBytes.utf8Bytes(header.kemAlgorithm.id),
-      PqBytes.utf8Bytes(header.signatureAlgorithm?.id ?? ''),
+      PqBytes.utf8Bytes(
+        header.slhDsa?.id ?? header.signatureAlgorithm?.id ?? '',
+      ),
       header.kemCiphertext,
       header.nonceSalt,
       PqBytes.uint32(header.frameSize),
@@ -159,12 +177,17 @@ abstract final class PqStreamingEnvelope {
       }
       final kem = PqKemAlgorithm.byId(utf8.decode(fields[1]));
       final sigId = utf8.decode(fields[2]);
-      final sig = sigId.isEmpty ? null : PqSignatureAlgorithm.byId(sigId);
+      final algorithms = splitHeaderSignatureId(sigId);
       final signerKeyIdText = utf8.decode(fields[8]);
       return PqStreamingHeader(
-        profile: PqForgeProfile.resolve(utf8.decode(fields[0]), kem, sig),
+        profile: PqForgeProfile.resolve(
+          utf8.decode(fields[0]),
+          kem,
+          algorithms.mlDsa,
+        ),
         kemAlgorithm: kem,
-        signatureAlgorithm: sig,
+        signatureAlgorithm: algorithms.mlDsa,
+        slhDsa: algorithms.slhDsa,
         kemCiphertext: fields[3],
         nonceSalt: fields[4],
         frameSize: _readUint32(fields[5]),

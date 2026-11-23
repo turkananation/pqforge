@@ -14,10 +14,11 @@ post-quantum primitives.
 - **`pqforge` is the application toolkit.** It turns ML-KEM, ML-DSA, and SLH-DSA into
   encrypted files, folders, text, media, signed documents, webhooks, tokens,
   hybrid sessions, wrapped key custody, streaming, multi-recipient envelopes,
-  and a CLI. SLH-DSA is composed into `keygen` and detached `sign`/`verify`,
-  including tokens, signed logs, and identity bindings; envelopes and
-  `hybrid-sign` remain ML-DSA-only. `compose-sign` can take one SLH-DSA leg
-  when that key is passed.
+  and a CLI. SLH-DSA is composed into `keygen`, custody, detached
+  `sign`/`verify`, conversation bundle trust, one HashSLH-DSA header
+  signature per envelope or `.pqfs` container, and `hybrid-sign` version 2.
+  X.509 stays ML-DSA. An ML-DSA key still signs with ML-DSA. `compose-sign`
+  can take one SLH-DSA leg when that key is passed.
 
 ## Which one do I want?
 
@@ -50,8 +51,10 @@ the rest of the stack a real application needs:
   with ML-KEM/ML-DSA so security holds if *either* the post-quantum or the
   classical assumption survives. X448 and P-521 ECDH are HPKE shares, not TLS
   groups. ECDSA-P384 and ECDSA-P521 are signature opt-ins. `PqEcdsaP521` is
-  not the P-521 HPKE share. SLH-DSA is a composed detached-signature family,
-  not a `hybrid-sign` leg. It can be one opted-in leg of `compose-sign`.
+  not the P-521 HPKE share. SLH-DSA signs detached recipes, a conversation
+  bundle, one HashSLH-DSA header per envelope or `.pqfs` file, and the
+  post-quantum leg of `hybrid-sign` version 2. It can also be one opted-in
+  leg of `compose-sign`. X.509 stays ML-DSA.
 - **Key custody** — Argon2id + AES-256-GCM wrapped keys (PBKDF2 under FIPS mode)
   and pluggable stores.
 - **Streaming and packing** — bounded-memory gigabyte files and one-archive

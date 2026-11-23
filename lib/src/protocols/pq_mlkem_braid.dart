@@ -9,6 +9,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pqcrypto/pqcrypto.dart' show hmacSha256, sha3256;
@@ -138,9 +139,21 @@ final class BraidOutput {
 
 /// What [MlKemBraid.send] returns.
 final class BraidSend {
-  BraidSend(this.message, this.sendingEpoch, this.output);
+  BraidSend(BraidMessage message, this.sendingEpoch, this.output)
+    : messages = [message];
 
-  final BraidMessage message;
+  BraidSend.many(this.messages, this.sendingEpoch, this.output) {
+    if (messages.isEmpty) {
+      throw ArgumentError('A braid send needs a message');
+    }
+  }
+
+  /// Every codeword attached to this chain step. One, unless the caller
+  /// asked for more.
+  final List<BraidMessage> messages;
+
+  BraidMessage get message => messages.first;
+
   final int sendingEpoch;
   final BraidOutput? output;
 }
@@ -170,23 +183,31 @@ enum _Phase {
 /// One direction of the braid. [alice] sends the first header.
 final class MlKemBraid {
   MlKemBraid._({
-    required this._epoch,
-    required this._phase,
-    required this._auth,
-    required this._randomBytes,
-    this._headerDecoder,
-  });
+    required int epoch,
+    required _Phase phase,
+    required _Auth auth,
+    required Uint8List Function(int length)? randomBytes,
+    required bool offload,
+    BraidDecoder? headerDecoder,
+  }) : _epoch = epoch,
+       _phase = phase,
+       _auth = auth,
+       _randomBytes = randomBytes,
+       _offload = offload,
+       _headerDecoder = headerDecoder;
 
   /// Alice, epoch 1, ready to sample a key on the first [send].
   factory MlKemBraid.alice(
     Uint8List sharedSecret, {
     Uint8List Function(int length)? randomBytes,
+    bool offload = true,
   }) {
     return MlKemBraid._(
       epoch: 1,
       phase: _Phase.keysUnsampled,
       auth: _Auth.init(sharedSecret),
       randomBytes: randomBytes,
+      offload: offload,
     );
   }
 
@@ -194,23 +215,27 @@ final class MlKemBraid {
   factory MlKemBraid.bob(
     Uint8List sharedSecret, {
     Uint8List Function(int length)? randomBytes,
+    bool offload = true,
   }) {
     return MlKemBraid._(
       epoch: 1,
       phase: _Phase.noHeaderReceived,
       auth: _Auth.init(sharedSecret),
       randomBytes: randomBytes,
+      offload: offload,
       headerDecoder: BraidErasure.decoder(_headerBytes),
     );
   }
 
   final Uint8List Function(int length)? _randomBytes;
+  final bool _offload;
   int _epoch;
   _Phase _phase;
   final _Auth _auth;
   bool _dead = false;
   bool _busy = false;
 
+  Uint8List? _seed;
   Uint8List? _dk;
   Uint8List? _ekSeed;
   Uint8List? _ekVector;
@@ -231,7 +256,7 @@ final class MlKemBraid {
 
   bool get isClosed => _dead;
 
-  Future<BraidSend> send() => _guard(_send);
+  Future<BraidSend> send({int chunks = 1}) => _guard(() => _sendMany(chunks));
 
   Future<BraidReceive> receive(BraidMessage message) =>
       _guard(() => _receive(message));
@@ -240,6 +265,201 @@ final class MlKemBraid {
   void wipe() {
     _dead = true;
     _wipeSecrets();
+  }
+
+  /// Local session record. The expanded decapsulation key is not written.
+  /// A live epoch stores the 64-byte seed and is re-expanded by [fromBytes].
+  Uint8List toBytes() {
+    if (_dead) throw StateError('The braid session is closed.');
+    final builder = BytesBuilder();
+    builder.add(const [0x42, 0x52, 0x44, 0x31]);
+    builder.addByte(1);
+    final epoch = Uint8List(8);
+    var value = _epoch;
+    for (var i = 7; i >= 0; i--) {
+      epoch[i] = value & 0xff;
+      value >>= 8;
+    }
+    builder.add(epoch);
+    builder.addByte(_phase.index);
+    builder.add(Uint8List.fromList(_auth.root));
+    builder.add(Uint8List.fromList(_auth.mac));
+    var flags = 0;
+    if (_seed != null) flags |= 1;
+    if (_ekSeed != null) flags |= 2;
+    if (_ekVector != null) flags |= 4;
+    if (_hek != null) flags |= 8;
+    if (_ct1 != null) flags |= 16;
+    if (_encaps != null) flags |= 32;
+    builder.addByte(flags);
+    if (_seed != null) _addBlob(builder, _seed!);
+    if (_ekSeed != null) _addBlob(builder, _ekSeed!);
+    if (_ekVector != null) _addBlob(builder, _ekVector!);
+    if (_hek != null) _addBlob(builder, _hek!);
+    if (_ct1 != null) _addBlob(builder, _ct1!);
+    if (_encaps != null) _addBlob(builder, _encaps!);
+    final encoders = <(int, BraidEncoder)>[
+      if (_headerEncoder != null) (1, _headerEncoder!),
+      if (_ekEncoder != null) (2, _ekEncoder!),
+      if (_ct1Encoder != null) (3, _ct1Encoder!),
+      if (_ct2Encoder != null) (4, _ct2Encoder!),
+    ];
+    builder.addByte(encoders.length);
+    for (final entry in encoders) {
+      builder.addByte(entry.$1);
+      builder.add(_u32(entry.$2.nextIndex));
+      _addBlob(builder, entry.$2.message);
+    }
+    final decoders = <(int, BraidDecoder)>[
+      if (_headerDecoder != null) (1, _headerDecoder!),
+      if (_ekDecoder != null) (2, _ekDecoder!),
+      if (_ct1Decoder != null) (3, _ct1Decoder!),
+      if (_ct2Decoder != null) (4, _ct2Decoder!),
+    ];
+    builder.addByte(decoders.length);
+    for (final entry in decoders) {
+      builder.addByte(entry.$1);
+      final stored = entry.$2.stored;
+      builder.add(_u32(stored.length));
+      for (final chunk in stored) {
+        builder.add(_u32(chunk.index));
+        builder.add(chunk.bytes);
+      }
+    }
+    final bytes = builder.takeBytes();
+    return bytes;
+  }
+
+  /// Restores [toBytes]. Re-expands a stored seed. Does not accept an
+  /// expanded decapsulation key.
+  static Future<MlKemBraid> fromBytes(
+    Uint8List bytes, {
+    bool offload = true,
+    Uint8List Function(int length)? randomBytes,
+  }) async {
+    final reader = _BraidReader(bytes);
+    final magic = reader.take(4);
+    if (magic[0] != 0x42 ||
+        magic[1] != 0x52 ||
+        magic[2] != 0x44 ||
+        magic[3] != 0x31 ||
+        reader.u8() != 1) {
+      throw const PqForgeException('Not an ML-KEM Braid session');
+    }
+    final epoch = reader.u64();
+    final phase = _Phase.values[reader.u8()];
+    final auth = _Auth(reader.secret32(), reader.secret32());
+    final flags = reader.u8();
+    final seed = (flags & 1) == 0 ? null : reader.blob();
+    final ekSeed = (flags & 2) == 0 ? null : reader.blob();
+    final ekVector = (flags & 4) == 0 ? null : reader.blob();
+    final hek = (flags & 8) == 0 ? null : reader.blob();
+    final ct1 = (flags & 16) == 0 ? null : reader.blob();
+    final encaps = (flags & 32) == 0 ? null : reader.blob();
+    if (seed != null && seed.length != 64) {
+      throw const PqForgeException('ML-KEM Braid seed is not 64 bytes');
+    }
+    final session = MlKemBraid._(
+      epoch: epoch,
+      phase: phase,
+      auth: auth,
+      randomBytes: randomBytes,
+      offload: offload,
+    );
+    session._seed = seed == null ? null : Uint8List.fromList(seed);
+    session._ekSeed = _copy(ekSeed);
+    session._ekVector = _copy(ekVector);
+    session._hek = _copy(hek);
+    session._ct1 = _copy(ct1);
+    session._encaps = _copy(encaps);
+    final encoderCount = reader.u8();
+    for (var i = 0; i < encoderCount; i++) {
+      final tag = reader.u8();
+      final index = reader.u32();
+      final message = reader.blob();
+      final encoder = BraidEncoder.resume(message, index);
+      switch (tag) {
+        case 1:
+          session._headerEncoder = encoder;
+        case 2:
+          session._ekEncoder = encoder;
+        case 3:
+          session._ct1Encoder = encoder;
+        case 4:
+          session._ct2Encoder = encoder;
+        default:
+          throw const PqForgeException('Unknown braid encoder');
+      }
+    }
+    final decoderCount = reader.u8();
+    for (var i = 0; i < decoderCount; i++) {
+      final tag = reader.u8();
+      final count = reader.u32();
+      final first = count == 0 ? null : _chunk(reader);
+      final messageBytes = _decoderLength(tag);
+      final decoder = BraidErasure.decoder(messageBytes);
+      if (first != null) decoder.add(first);
+      for (var n = 1; n < count; n++) {
+        decoder.add(_chunk(reader));
+      }
+      switch (tag) {
+        case 1:
+          session._headerDecoder = decoder;
+        case 2:
+          session._ekDecoder = decoder;
+        case 3:
+          session._ct1Decoder = decoder;
+        case 4:
+          session._ct2Decoder = decoder;
+        default:
+          throw const PqForgeException('Unknown braid decoder');
+      }
+    }
+    if (!reader.done) {
+      throw const PqForgeException('Trailing bytes on an ML-KEM Braid session');
+    }
+    if (seed != null) {
+      final keys = await MlKemIncremental.keyGen(seed: seed, offload: offload);
+      session._dk = Uint8List.fromList(keys.decapsulationKey);
+      keys.wipe();
+    }
+    return session;
+  }
+
+  static int _decoderLength(int tag) => switch (tag) {
+    1 => _headerBytes,
+    2 => MlKemIncremental.ekVectorBytes,
+    3 => MlKemIncremental.ct1Bytes,
+    4 => _ct2Bytes,
+    _ => throw const PqForgeException('Unknown braid decoder'),
+  };
+
+  static BraidChunk _chunk(_BraidReader reader) {
+    final index = reader.u32();
+    return BraidChunk(index, reader.take(BraidErasure.chunkBytes));
+  }
+
+  static Uint8List? _copy(Uint8List? bytes) =>
+      bytes == null ? null : Uint8List.fromList(bytes);
+
+  static void _addBlob(BytesBuilder builder, Uint8List bytes) {
+    _rejectExpanded(bytes);
+    builder.add(_u32(bytes.length));
+    builder.add(bytes);
+  }
+
+  static void _rejectExpanded(Uint8List bytes) {
+    if (bytes.length == 1632 || bytes.length == 2400 || bytes.length == 3168) {
+      throw const PqForgeException(
+        'An expanded ML-KEM private key cannot be a braid session field',
+      );
+    }
+  }
+
+  static Uint8List _u32(int value) {
+    final bytes = Uint8List(4);
+    ByteData.sublistView(bytes).setUint32(0, value);
+    return bytes;
   }
 
   Future<T> _guard<T>(Future<T> Function() body) async {
@@ -254,6 +474,29 @@ final class MlKemBraid {
       _busy = false;
     }
   }
+
+  Future<BraidSend> _sendMany(int chunks) async {
+    if (chunks < 1 || chunks > 64) {
+      throw ArgumentError.value(chunks, 'chunks', '1 to 64');
+    }
+    final first = await _send();
+    if (chunks == 1) return first;
+    final messages = <BraidMessage>[first.message];
+    for (var i = 1; i < chunks && _pullsChunk; i++) {
+      messages.add((await _send()).message);
+    }
+    return BraidSend.many(messages, first.sendingEpoch, first.output);
+  }
+
+  bool get _pullsChunk => switch (_phase) {
+    _Phase.keysSampled ||
+    _Phase.headerSent ||
+    _Phase.ct1Received ||
+    _Phase.ct1Sampled ||
+    _Phase.ekReceivedCt1Sampled ||
+    _Phase.ct2Sampled => true,
+    _ => false,
+  };
 
   Future<BraidSend> _send() async {
     switch (_phase) {
@@ -280,9 +523,14 @@ final class MlKemBraid {
   }
 
   Future<BraidSend> _sendFreshKey() async {
-    final drawn = _draw(64);
-    final keys = await MlKemIncremental.keyGen(seed: drawn);
-    if (drawn != null) secureZero(drawn);
+    final material = _seed64();
+    _wipe(_seed);
+    _seed = Uint8List.fromList(material);
+    final keys = await MlKemIncremental.keyGen(
+      seed: material,
+      offload: _offload,
+    );
+    secureZero(material);
     _dk = Uint8List.fromList(keys.decapsulationKey);
     _ekSeed = Uint8List.fromList(keys.ekSeed);
     _ekVector = Uint8List.fromList(keys.ekVector);
@@ -307,6 +555,7 @@ final class MlKemBraid {
       ekSeed: _ekSeed!,
       hek: _hek!,
       coins: drawn,
+      offload: _offload,
     );
     if (drawn != null) secureZero(drawn);
     final output = _acceptSecret(encapsulated.sharedSecret);
@@ -407,6 +656,7 @@ final class MlKemBraid {
       decapsulationKey: _dk!,
       ct1: _ct1!,
       ct2: ct2,
+      offload: _offload,
     );
     final output = _acceptSecret(raw);
     secureZero(raw);
@@ -419,8 +669,7 @@ final class MlKemBraid {
       _fail();
     }
     secureZero(expected);
-    _wipe(_dk);
-    _dk = null;
+    _dropDecapsulation();
     _ct1 = null;
     _ct2Decoder = null;
     _epoch += 1;
@@ -508,6 +757,7 @@ final class MlKemBraid {
       encapsSecret: _encaps!,
       ekSeed: _ekSeed!,
       ekVector: vector,
+      offload: _offload,
     );
     _wipe(_encaps);
     _encaps = null;
@@ -576,11 +826,28 @@ final class MlKemBraid {
   }
 
   void _wipeSecrets() {
-    _wipe(_dk);
+    _dropDecapsulation();
     _wipe(_encaps);
-    _dk = null;
     _encaps = null;
     _auth.wipe();
+  }
+
+  void _dropDecapsulation() {
+    _wipe(_dk);
+    _wipe(_seed);
+    _dk = null;
+    _seed = null;
+  }
+
+  Uint8List _seed64() {
+    final drawn = _draw(64);
+    if (drawn != null) return drawn;
+    final out = Uint8List(64);
+    final random = Random.secure();
+    for (var i = 0; i < out.length; i++) {
+      out[i] = random.nextInt(256);
+    }
+    return out;
   }
 
   static void _wipe(Uint8List? bytes) {
@@ -693,3 +960,54 @@ final class _Auth {
 }
 
 Uint8List _ascii(String value) => Uint8List.fromList(utf8.encode(value));
+
+final class _BraidReader {
+  _BraidReader(this.bytes);
+
+  final Uint8List bytes;
+  int _offset = 0;
+
+  bool get done => _offset == bytes.length;
+
+  Uint8List take(int length) {
+    if (_offset + length > bytes.length) {
+      throw const PqForgeException('Truncated ML-KEM Braid session');
+    }
+    final out = Uint8List.sublistView(bytes, _offset, _offset + length);
+    _offset += length;
+    return Uint8List.fromList(out);
+  }
+
+  int u8() => take(1)[0];
+
+  int u32() => ByteData.sublistView(take(4)).getUint32(0);
+
+  int u64() {
+    final raw = take(8);
+    var value = 0;
+    for (final byte in raw) {
+      value = (value << 8) | byte;
+    }
+    return value;
+  }
+
+  Uint8List secret32() {
+    final bytes = take(32);
+    if (bytes.length == 2400) {
+      throw const PqForgeException(
+        'An expanded ML-KEM private key cannot be a braid session field',
+      );
+    }
+    return bytes;
+  }
+
+  Uint8List blob() {
+    final length = u32();
+    if (length == 1632 || length == 2400 || length == 3168) {
+      throw const PqForgeException(
+        'An expanded ML-KEM private key cannot be a braid session field',
+      );
+    }
+    return take(length);
+  }
+}

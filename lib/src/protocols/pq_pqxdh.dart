@@ -11,12 +11,15 @@
 ///   That is the message [Pqxdh.signedPrekeyAuthentic] already verified, and
 ///   the message libsignal passes to `PrivateKey::calculate_signature`.
 /// * hash: SHA-512. HKDF salt is 64 zero bytes. Output is 32 bytes.
-/// * KEM: ML-KEM-1024 (FIPS 203) through `pqcrypto`. The spec's example
+/// * KEM: ML-KEM through `pqcrypto`, default ML-KEM-1024. The spec's example
 ///   string names CRYSTALS-Kyber-1024. These bytes are ML-KEM, so the HKDF
-///   info names `ML-KEM-1024`. Round-3 Kyber is not implemented.
-/// * `EncodeKEM` is the raw 1568-byte encapsulation key. It is disjoint
-///   from `EncodeEC` by length. ML-KEM does not bind that key into the
-///   ciphertext, so it is appended to the AEAD associated data.
+///   info names the parameter set. Round-3 Kyber is not implemented.
+/// * `EncodeKEM` is the raw encapsulation key. ML-KEM-1024 is 1568 bytes.
+///   ML-KEM-768 is 1184. ML-KEM-512 is 800. Version 1 of `PQX1` is the
+///   1568-byte ciphertext only. A different KEM is version 2, and both
+///   sides pass that KEM. It is not read off the wire. The ranges are
+///   disjoint from `EncodeEC` by length. ML-KEM does not bind that key
+///   into the ciphertext, so it is appended to the AEAD associated data.
 /// * AEAD: AES-256-GCM, or ChaCha20-Poly1305 when [PqFipsMode] is off.
 ///   The key is SK. The nonce is 12 zero bytes. SK encrypts this one
 ///   message and is not reused.
@@ -44,15 +47,26 @@ import '../cipher/pq_cipher_suite.dart';
 import '../exceptions/pqforge_exception.dart';
 import '../hybrid/pq_ed25519.dart';
 import '../hybrid/pqforge_hybrid_key_agreement.dart';
+import '../keys/pq_keys.dart';
 import '../primitives/pq_primitives.dart';
 import 'pq_double_ratchet.dart';
 import 'pq_pqxdh_kem.dart';
 import 'pq_ratchet_types.dart';
 
 /// The KEM this profile runs. Not X-Wing, and not round-3 Kyber.
+///
+/// [kyber1024] is the name this package already shipped for ML-KEM-1024.
+/// Version 1 messages are that KEM only. [mlKem512] and [mlKem768] require
+/// a version 2 message (`signedPrekeyId` set). The caller on each side
+/// passes the same value. The wire does not negotiate it.
 enum PqxdhKem {
-  /// ML-KEM-1024. Public key 1568 bytes, ciphertext 1568, secret 3168.
-  /// The enum name is the name this scaffold already shipped.
+  /// ML-KEM-512. Public key 800, ciphertext 768, secret 1632.
+  mlKem512(publicKeyBytes: 800, ciphertextBytes: 768, secretKeyBytes: 1632),
+
+  /// ML-KEM-768. Public key 1184, ciphertext 1088, secret 2400.
+  mlKem768(publicKeyBytes: 1184, ciphertextBytes: 1088, secretKeyBytes: 2400),
+
+  /// ML-KEM-1024. Public key 1568, ciphertext 1568, secret 3168.
   kyber1024(publicKeyBytes: 1568, ciphertextBytes: 1568, secretKeyBytes: 3168);
 
   const PqxdhKem({
@@ -64,6 +78,82 @@ enum PqxdhKem {
   final int publicKeyBytes;
   final int ciphertextBytes;
   final int secretKeyBytes;
+
+  /// The [PqKemAlgorithm] this profile runs.
+  PqKemAlgorithm get algorithm => switch (this) {
+    PqxdhKem.mlKem512 => PqKemAlgorithm.mlKem512,
+    PqxdhKem.mlKem768 => PqKemAlgorithm.mlKem768,
+    PqxdhKem.kyber1024 => PqKemAlgorithm.mlKem1024,
+  };
+
+  /// Where FIPS 203 stores the encapsulation key inside the secret key.
+  int get encapsulationKeyOffset => secretKeyBytes - 64 - publicKeyBytes;
+
+  /// HKDF info suffix. The 1024 string is the historical constant.
+  String get hkdfParameters => switch (this) {
+    PqxdhKem.kyber1024 => Pqxdh.hkdfParameters,
+    PqxdhKem.mlKem768 => 'CURVE25519_SHA-512_ML-KEM-768',
+    PqxdhKem.mlKem512 => 'CURVE25519_SHA-512_ML-KEM-512',
+  };
+}
+
+/// Who signed a prekey bundle. Lattice or hash-based. Not an input to SK.
+///
+/// One signature, once, over [Pqxdh.bundleSigningBytes]. It is not attached
+/// to later messages. An `s` set is a valid choice. It is slow. An `f` set
+/// is the fast hash-based choice.
+final class PqxdhTrust {
+  /// ML-DSA-44, ML-DSA-65, or ML-DSA-87.
+  const PqxdhTrust.mlDsa(this.mlDsa) : slhDsa = null;
+
+  /// One of the twelve SLH-DSA parameter sets.
+  const PqxdhTrust.slhDsa(this.slhDsa) : mlDsa = null;
+
+  /// ML-DSA-44.
+  static const mlDsa44 = PqxdhTrust.mlDsa(PqSignatureAlgorithm.mlDsa44);
+
+  /// ML-DSA-65. The conversation default.
+  static const mlDsa65 = PqxdhTrust.mlDsa(PqSignatureAlgorithm.mlDsa65);
+
+  /// ML-DSA-87.
+  static const mlDsa87 = PqxdhTrust.mlDsa(PqSignatureAlgorithm.mlDsa87);
+
+  /// SLH-DSA-SHAKE-128f. The fast hash-based identity.
+  static const shake128f = PqxdhTrust.slhDsa(PqSlhDsaAlgorithm.shake128f);
+
+  /// SLH-DSA-SHAKE-192f. Matches [PqForgeProfile.balanced].
+  static const shake192f = PqxdhTrust.slhDsa(PqSlhDsaAlgorithm.shake192f);
+
+  /// SLH-DSA-SHAKE-256f. Matches [PqForgeProfile.maximum]. Larger and slower.
+  static const shake256f = PqxdhTrust.slhDsa(PqSlhDsaAlgorithm.shake256f);
+
+  /// Set when this identity is ML-DSA.
+  final PqSignatureAlgorithm? mlDsa;
+
+  /// Set when this identity is SLH-DSA.
+  final PqSlhDsaAlgorithm? slhDsa;
+
+  /// `ml-dsa-65`, `slh-dsa-shake-128f`, and the other ids.
+  String get id => mlDsa?.id ?? slhDsa!.id;
+
+  /// Public key length.
+  int get publicKeyBytes => mlDsa?.publicKeyBytes ?? slhDsa!.publicKeyBytes;
+
+  /// Signature length.
+  int get signatureBytes => mlDsa?.signatureBytes ?? slhDsa!.signatureBytes;
+
+  /// Secret key length.
+  int get secretKeyBytes => mlDsa?.secretKeyBytes ?? slhDsa!.secretKeyBytes;
+
+  /// True for an SLH-DSA `s` set.
+  bool get isSlow => slhDsa != null && !slhDsa!.isFast;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PqxdhTrust && other.mlDsa == mlDsa && other.slhDsa == slhDsa;
+
+  @override
+  int get hashCode => Object.hash(mlDsa, slhDsa);
 }
 
 /// Bob's prekey bundle. The caller fetched it. There is no server here.
@@ -76,6 +166,11 @@ final class PqxdhBundle {
     RatchetPublicKey? oneTimePrekey,
     required Uint8List kemPublicKey,
     this.kem = PqxdhKem.kyber1024,
+    this.signedPrekeyId,
+    this.oneTimePrekeyId,
+    this.trust,
+    Uint8List? trustPublicKey,
+    Uint8List? trustSignature,
   }) : identityKey = RatchetPublicKey(identityKey.bytes),
        signedPrekey = RatchetPublicKey(signedPrekey.bytes),
        signedPrekeySignature = _signature(signedPrekeySignature),
@@ -86,7 +181,23 @@ final class PqxdhBundle {
        oneTimePrekey = oneTimePrekey == null
            ? null
            : RatchetPublicKey(oneTimePrekey.bytes),
-       kemPublicKey = _kemKey(kem, kemPublicKey);
+       kemPublicKey = _kemKey(kem, kemPublicKey),
+       trustPublicKey = _trustPublic(trust, trustPublicKey),
+       trustSignature = _trustSignature(trust, trustPublicKey, trustSignature) {
+    _requireId('signedPrekeyId', signedPrekeyId);
+    _requireId('oneTimePrekeyId', oneTimePrekeyId);
+    if (oneTimePrekeyId != null && signedPrekeyId == null) {
+      throw ArgumentError('oneTimePrekeyId requires signedPrekeyId');
+    }
+    if (oneTimePrekeyId != null && oneTimePrekey == null) {
+      throw ArgumentError('oneTimePrekeyId requires a one-time prekey');
+    }
+    if (signedPrekeyId != null &&
+        oneTimePrekey != null &&
+        oneTimePrekeyId == null) {
+      throw ArgumentError('version 2 one-time prekey needs an id');
+    }
+  }
 
   /// X25519 identity public key.
   final RatchetPublicKey identityKey;
@@ -103,10 +214,29 @@ final class PqxdhBundle {
   /// Optional one-time curve prekey.
   final RatchetPublicKey? oneTimePrekey;
 
-  /// ML-KEM-1024 encapsulation key. 1568 bytes.
+  /// Encapsulation key for [kem].
   final Uint8List kemPublicKey;
 
   final PqxdhKem kem;
+
+  /// Present on a version 2 bundle. Absent means the version 1 message.
+  final int? signedPrekeyId;
+
+  /// Present only beside a one-time prekey on a version 2 bundle.
+  final int? oneTimePrekeyId;
+
+  /// Lattice or hash-based identity that signs [Pqxdh.bundleSigningBytes].
+  /// Not the X25519 identity. Null when the publisher did not attach one.
+  final PqxdhTrust? trust;
+
+  /// Public key for [trust].
+  final Uint8List? trustPublicKey;
+
+  /// Signature over [Pqxdh.bundleSigningBytes].
+  final Uint8List? trustSignature;
+
+  /// Version 2 initial message. Version 1 stays the historical layout.
+  bool get identifiesPrekeys => signedPrekeyId != null;
 }
 
 /// Secrets Bob keeps. The bundle is what he publishes.
@@ -143,61 +273,105 @@ final class PqxdhPrekeys {
   }
 }
 
-/// Alice's first message. Version 1 is ML-KEM-1024 on Curve25519.
+/// Alice's first message. Version 1 is the original layout. Version 2
+/// adds the prekey ids. The AEAD is still under SK.
 ///
 /// ```text
-/// "PQX1" || version=1 || flags || IK_A(32) || EK_A(32) || CT(1568) || AEAD
+/// "PQX1" || version || flags || IK_A(32) || EK_A(32)
+///        || [signedPrekeyId(u32) || oneTimePrekeyId(u32)]  // version 2
+///        || CT || AEAD
 /// ```
 ///
-/// `flags` bit 0 means a one-time curve prekey was used. The AEAD nonce is
-/// not on the wire. It is 12 zero bytes.
+/// Version 1 `CT` is 1568 bytes (ML-KEM-1024). Version 2 `CT` is the
+/// ciphertext length of the KEM both sides passed. `flags` bit 0 means a
+/// one-time curve prekey was used. The AEAD nonce is not on the wire. It
+/// is 12 zero bytes. A version 2 id of 0 is only legal for the one-time
+/// slot when that flag is clear.
 final class PqxdhMessage {
-  PqxdhMessage._(this.bytes)
-    : aliceIdentity = Uint8List.sublistView(bytes, 6, 38),
-      ephemeralKey = Uint8List.sublistView(bytes, 38, 70),
-      kemCiphertext = Uint8List.sublistView(bytes, 70, _kemCiphertextEnd),
-      sealed = Uint8List.sublistView(bytes, _kemCiphertextEnd);
+  PqxdhMessage._(this.bytes, this.kem);
 
   /// Parses [bytes]. The fields are views.
-  factory PqxdhMessage.parse(Uint8List bytes) {
-    if (bytes.length < _kemCiphertextEnd + 16) {
-      throw const PqForgeException('PQXDH initial message is truncated');
-    }
-    if (bytes[0] != 0x50 ||
+  ///
+  /// [kem] is the KEM the caller agreed. Version 1 accepts only
+  /// [PqxdhKem.kyber1024]. The split between ciphertext and AEAD is that
+  /// length. A different guess does not open.
+  factory PqxdhMessage.parse(
+    Uint8List bytes, {
+    PqxdhKem kem = PqxdhKem.kyber1024,
+  }) {
+    if (bytes.length < 6 ||
+        bytes[0] != 0x50 ||
         bytes[1] != 0x51 ||
         bytes[2] != 0x58 ||
         bytes[3] != 0x31) {
       throw const PqForgeException('Not a PQXDH initial message');
     }
-    if (bytes[4] != 1) {
+    final version = bytes[4];
+    if (version != 1 && version != 2) {
       throw const PqForgeException('Unknown PQXDH message version');
+    }
+    if (version == 1 && kem != PqxdhKem.kyber1024) {
+      throw const PqForgeException('PQXDH version 1 is ML-KEM-1024');
     }
     if (bytes[5] > 1) {
       throw const PqForgeException('Unknown PQXDH message flags');
     }
-    return PqxdhMessage._(bytes);
+    final start = version == 1 ? 70 : 78;
+    if (bytes.length < start + kem.ciphertextBytes + 16) {
+      throw const PqForgeException('PQXDH initial message is truncated');
+    }
+    if (version == 2 && bytes[5] == 0) {
+      final opk = ByteData.sublistView(bytes, 74, 78).getUint32(0);
+      if (opk != 0) {
+        throw const PqForgeException(
+          'PQXDH one-time prekey id does not match the flag',
+        );
+      }
+    }
+    if (version == 2 && bytes[5] == 1) {
+      final opk = ByteData.sublistView(bytes, 74, 78).getUint32(0);
+      if (opk == 0) {
+        throw const PqForgeException('PQXDH one-time prekey id is missing');
+      }
+    }
+    return PqxdhMessage._(bytes, kem);
   }
-
-  static const _header = 70;
-  static const _kemCiphertextEnd = _header + 1568;
 
   /// Owned by [Pqxdh.initiate]. Viewed by [parse].
   final Uint8List bytes;
 
+  /// KEM that splits [kemCiphertext] from [sealed].
+  final PqxdhKem kem;
+
+  /// 1 or 2.
+  int get version => bytes[4];
+
+  int get _kemStart => version == 1 ? 70 : 78;
+
   /// Alice's identity public key. A view.
-  final Uint8List aliceIdentity;
+  Uint8List get aliceIdentity => Uint8List.sublistView(bytes, 6, 38);
 
   /// Alice's handshake ephemeral public key. A view. Not her ratchet key.
-  final Uint8List ephemeralKey;
+  Uint8List get ephemeralKey => Uint8List.sublistView(bytes, 38, 70);
 
-  /// ML-KEM-1024 ciphertext. A view.
-  final Uint8List kemCiphertext;
+  /// ML-KEM ciphertext. A view. The length is [PqxdhKem.ciphertextBytes].
+  Uint8List get kemCiphertext =>
+      Uint8List.sublistView(bytes, _kemStart, _kemStart + kem.ciphertextBytes);
 
   /// `ciphertext || tag` under SK. A view.
-  final Uint8List sealed;
+  Uint8List get sealed =>
+      Uint8List.sublistView(bytes, _kemStart + kem.ciphertextBytes);
 
   /// Whether Alice used Bob's one-time curve prekey.
   bool get usedOneTimePrekey => bytes[5] == 1;
+
+  /// Version 2 signed-prekey id. Null on version 1.
+  int? get signedPrekeyId =>
+      version == 1 ? null : ByteData.sublistView(bytes, 70, 74).getUint32(0);
+
+  /// Version 2 one-time prekey id. Null on version 1. Zero when unused.
+  int? get oneTimePrekeyId =>
+      version == 1 ? null : ByteData.sublistView(bytes, 74, 78).getUint32(0);
 }
 
 /// A finished handshake.
@@ -246,7 +420,94 @@ abstract final class Pqxdh {
     );
   }
 
-  /// Whether [bundle]'s ML-KEM key was signed by its identity key.
+  /// Whether [bundle]'s ML-DSA-65 identity signed [bundleSigningBytes].
+  ///
+  /// False for any other trust algorithm, and when the bundle has no
+  /// identity. [trustAuthentic] is the check for every algorithm.
+  /// XEdDSA is a separate check. This is not mixed into SK.
+  static bool mlDsaAuthentic(PqxdhBundle bundle) {
+    if (bundle.trust != PqxdhTrust.mlDsa65) return false;
+    final publicKey = bundle.trustPublicKey;
+    final signature = bundle.trustSignature;
+    if (publicKey == null || signature == null) return false;
+    return PqSignaturePrimitives.verify(
+      PqSignatureAlgorithm.mlDsa65,
+      publicKey,
+      bundleSigningBytes(bundle),
+      signature,
+    );
+  }
+
+  /// Whether [bundle.trust] signed [bundleSigningBytes].
+  ///
+  /// False when the bundle has no trust identity. The result is not an
+  /// input to SK. [offload] runs SLH-DSA, and pure-Dart ML-DSA, on a
+  /// worker when the runtime has one.
+  static Future<bool> trustAuthentic(
+    PqxdhBundle bundle, {
+    bool offload = true,
+  }) {
+    final trust = bundle.trust;
+    final publicKey = bundle.trustPublicKey;
+    final signature = bundle.trustSignature;
+    if (trust == null || publicKey == null || signature == null) {
+      return Future.value(false);
+    }
+    return pqxdhTrustVerify(
+      publicKey,
+      bundleSigningBytes(bundle),
+      signature,
+      mlDsa: trust.mlDsa,
+      slhDsa: trust.slhDsa,
+      offload: offload,
+    );
+  }
+
+  /// Canonical bundle bytes. Domain, both curve prekeys, their ids, and
+  /// the ML-KEM encapsulation key. Not the XEdDSA signatures.
+  ///
+  /// When [bundle] carries a trust identity, the algorithm id is appended
+  /// on its own line. The public key is not in this message. The caller
+  /// pins that key separately.
+  static Uint8List bundleSigningBytes(PqxdhBundle bundle) {
+    final domain = utf8.encode('pqforge/pqxdh-bundle/v1\n');
+    final opk = bundle.oneTimePrekey?.bytes ?? Uint8List(32);
+    final algorithm = bundle.trust == null
+        ? Uint8List(0)
+        : utf8.encode('\n${bundle.trust!.id}');
+    final out = Uint8List(
+      domain.length +
+          32 +
+          32 +
+          4 +
+          bundle.kemPublicKey.length +
+          32 +
+          4 +
+          algorithm.length,
+    );
+    var offset = 0;
+    out.setRange(0, domain.length, domain);
+    offset = domain.length;
+    out.setRange(offset, offset + 32, bundle.identityKey.bytes);
+    offset += 32;
+    out.setRange(offset, offset + 32, bundle.signedPrekey.bytes);
+    offset += 32;
+    ByteData.sublistView(out).setUint32(offset, bundle.signedPrekeyId ?? 0);
+    offset += 4;
+    out.setRange(
+      offset,
+      offset + bundle.kemPublicKey.length,
+      bundle.kemPublicKey,
+    );
+    offset += bundle.kemPublicKey.length;
+    out.setRange(offset, offset + 32, opk);
+    offset += 32;
+    ByteData.sublistView(out).setUint32(offset, bundle.oneTimePrekeyId ?? 0);
+    offset += 4;
+    out.setRange(offset, offset + algorithm.length, algorithm);
+    return out;
+  }
+
   ///
   /// The message is the raw encapsulation key.
   static bool kemPrekeyAuthentic(PqxdhBundle bundle) {
@@ -276,11 +537,15 @@ abstract final class Pqxdh {
         'an X-Wing public key is not a PQXDH KEM key',
       );
     }
-    requireLength(
-      'kemPublicKey',
-      kemPublicKey,
-      PqxdhKem.kyber1024.publicKeyBytes,
-    );
+    if (kemPublicKey.length != 800 &&
+        kemPublicKey.length != 1184 &&
+        kemPublicKey.length != 1568) {
+      throw ArgumentError.value(
+        kemPublicKey.length,
+        'kemPublicKey',
+        'expected an ML-KEM-512, ML-KEM-768, or ML-KEM-1024 public key',
+      );
+    }
     final tail = extra ?? Uint8List(0);
     final out = Uint8List(64 + kemPublicKey.length + tail.length);
     out.setRange(0, 32, aliceIdentity);
@@ -304,9 +569,16 @@ abstract final class Pqxdh {
     Uint8List? kemSeed,
     Uint8List? signatureRandomness,
     PqxdhKem kem = PqxdhKem.kyber1024,
+    int? signedPrekeyId,
+    int? oneTimePrekeyId,
+    PqKeyPair? trustKey,
+    PqxdhTrust trust = PqxdhTrust.mlDsa65,
+    bool offload = true,
   }) async {
-    if (kem != PqxdhKem.kyber1024) {
-      throw ArgumentError.value(kem, 'kem', 'PQXDH here is ML-KEM-1024');
+    if (kem != PqxdhKem.kyber1024 && signedPrekeyId == null) {
+      throw ArgumentError(
+        'PQXDH version 1 is ML-KEM-1024. Pass signedPrekeyId.',
+      );
     }
     if (identityKey != null && identitySeed != null) {
       throw ArgumentError('Pass identityKey or identitySeed, not both');
@@ -321,7 +593,7 @@ abstract final class Pqxdh {
         ? null
         : _copyRandomness(signatureRandomness);
     final (kemPublic, kemSecret) = PqLattice.provider.kemGenerateKeyPair(
-      PqKemAlgorithm.mlKem1024,
+      kem.algorithm,
       seed: kemSeed,
     );
     try {
@@ -335,20 +607,28 @@ abstract final class Pqxdh {
         message: kemPublic,
         randomness: randomness ?? PqBytes.randomBytes(PqXeddsa.randomnessBytes),
       );
+      final unsigned = PqxdhBundle(
+        identityKey: identity.publicKey,
+        signedPrekey: signedPrekey.publicKey,
+        signedPrekeySignature: spkSignature,
+        kemPublicKeySignature: kemSignature,
+        oneTimePrekey: oneTime?.publicKey,
+        kemPublicKey: kemPublic,
+        kem: kem,
+        signedPrekeyId: signedPrekeyId,
+        oneTimePrekeyId: oneTimePrekeyId,
+        trust: trustKey == null ? null : trust,
+        trustPublicKey: trustKey?.publicKey,
+      );
+      final bundle = trustKey == null
+          ? unsigned
+          : await _signBundle(unsigned, trustKey, offload: offload);
       return PqxdhPrekeys(
         identityKey: identity,
         signedPrekey: signedPrekey,
         oneTimePrekey: oneTime,
         kemSecretKey: kemSecret,
-        bundle: PqxdhBundle(
-          identityKey: identity.publicKey,
-          signedPrekey: signedPrekey.publicKey,
-          signedPrekeySignature: spkSignature,
-          kemPublicKeySignature: kemSignature,
-          oneTimePrekey: oneTime?.publicKey,
-          kemPublicKey: kemPublic,
-          kem: kem,
-        ),
+        bundle: bundle,
       );
     } finally {
       secureZero(kemSecret);
@@ -372,10 +652,16 @@ abstract final class Pqxdh {
     Uint8List? kemCoins,
     PqForgeCipherSuite suite = PqForgeCipherSuite.aes256Gcm,
     PqxdhKem kem = PqxdhKem.kyber1024,
+    bool offload = true,
   }) async {
     PqFipsMode.requireApprovedSuite(suite);
-    if (kem != bundle.kem || kem != PqxdhKem.kyber1024) {
+    if (kem != bundle.kem) {
       throw ArgumentError.value(kem, 'kem', 'does not match the bundle');
+    }
+    if (kem != PqxdhKem.kyber1024 && !bundle.identifiesPrekeys) {
+      throw ArgumentError(
+        'PQXDH version 1 is ML-KEM-1024. The bundle needs signedPrekeyId.',
+      );
     }
     if (identityKey.publicKey.bytes.length != RatchetPublicKey.length) {
       throw ArgumentError.value(
@@ -384,7 +670,7 @@ abstract final class Pqxdh {
         'expected 32 bytes',
       );
     }
-    final infoBytes = _hkdfInfo(info);
+    final infoBytes = _hkdfInfo(info, kem);
     if (!signedPrekeyAuthentic(bundle) || !kemPrekeyAuthentic(bundle)) {
       throw const PqForgeException(
         'PQXDH prekey signature is not valid. No secret was derived.',
@@ -400,6 +686,8 @@ abstract final class Pqxdh {
       final encapsulated = await pqxdhKemEncapsulate(
         bundle.kemPublicKey,
         coins,
+        algorithm: kem.algorithm,
+        offload: offload,
       );
       final ciphertext = encapsulated.$1;
       ss = encapsulated.$2;
@@ -430,6 +718,9 @@ abstract final class Pqxdh {
         kemCiphertext: ciphertext,
         sealed: sealed,
         oneTime: oneTime != null,
+        kem: kem,
+        signedPrekeyId: bundle.signedPrekeyId,
+        oneTimePrekeyId: bundle.oneTimePrekeyId,
       );
       final secret = SharedSecret32(sk);
       final ratchet = await DoubleRatchet.initiate(
@@ -463,10 +754,14 @@ abstract final class Pqxdh {
     Uint8List? extraAssociatedData,
     PqForgeCipherSuite suite = PqForgeCipherSuite.aes256Gcm,
     PqxdhKem kem = PqxdhKem.kyber1024,
+    bool offload = true,
   }) async {
     PqFipsMode.requireApprovedSuite(suite);
-    if (kem != PqxdhKem.kyber1024) {
-      throw ArgumentError.value(kem, 'kem', 'PQXDH here is ML-KEM-1024');
+    if (kem != PqxdhKem.kyber1024 && initialMessage.version == 1) {
+      throw const PqForgeException('PQXDH version 1 is ML-KEM-1024');
+    }
+    if (initialMessage.kem != kem) {
+      throw ArgumentError.value(kem, 'kem', 'does not match the message');
     }
     if (identityKey.secretKey.length != 32 ||
         signedPrekey.secretKey.length != 32) {
@@ -489,17 +784,19 @@ abstract final class Pqxdh {
         'PQXDH one-time prekey does not match the initial message',
       );
     }
-    final infoBytes = _hkdfInfo(info);
+    final infoBytes = _hkdfInfo(info, kem);
     final kemPublic = Uint8List.sublistView(
       kemSecretKey,
-      1536,
-      1536 + kem.publicKeyBytes,
+      kem.encapsulationKeyOffset,
+      kem.encapsulationKeyOffset + kem.publicKeyBytes,
     );
     Uint8List? dh1, dh2, dh3, dh4, ss, ikm, sk;
     try {
       ss = await pqxdhKemDecapsulate(
         kemSecretKey,
         initialMessage.kemCiphertext,
+        algorithm: kem.algorithm,
+        offload: offload,
       );
       if (ss.length != 32) {
         throw const PqForgeException(
@@ -584,7 +881,7 @@ Uint8List _copyRandomness(Uint8List bytes) {
   return Uint8List.fromList(bytes);
 }
 
-Uint8List _hkdfInfo(String info) {
+Uint8List _hkdfInfo(String info, PqxdhKem kem) {
   if (info.length < 8) {
     throw ArgumentError.value(
       info.length,
@@ -603,7 +900,7 @@ Uint8List _hkdfInfo(String info) {
       );
     }
   }
-  return Uint8List.fromList(utf8.encode('${info}_${Pqxdh.hkdfParameters}'));
+  return Uint8List.fromList(utf8.encode('${info}_${kem.hkdfParameters}'));
 }
 
 Future<Uint8List> _dh(Uint8List secret, Uint8List remote) {
@@ -709,19 +1006,91 @@ PqxdhMessage _encodeMessage({
   required Uint8List kemCiphertext,
   required Uint8List sealed,
   required bool oneTime,
+  required PqxdhKem kem,
+  int? signedPrekeyId,
+  int? oneTimePrekeyId,
 }) {
-  final bytes = Uint8List(70 + kemCiphertext.length + sealed.length);
+  final version2 = signedPrekeyId != null;
+  final header = version2 ? 78 : 70;
+  final bytes = Uint8List(header + kemCiphertext.length + sealed.length);
   bytes[0] = 0x50;
   bytes[1] = 0x51;
   bytes[2] = 0x58;
   bytes[3] = 0x31;
-  bytes[4] = 1;
+  bytes[4] = version2 ? 2 : 1;
   bytes[5] = oneTime ? 1 : 0;
   bytes.setRange(6, 38, aliceIdentity);
   bytes.setRange(38, 70, ephemeralKey);
-  bytes.setRange(70, 70 + kemCiphertext.length, kemCiphertext);
-  bytes.setRange(70 + kemCiphertext.length, bytes.length, sealed);
-  return PqxdhMessage._(bytes);
+  if (version2) {
+    ByteData.sublistView(bytes).setUint32(70, signedPrekeyId);
+    ByteData.sublistView(bytes).setUint32(74, oneTime ? oneTimePrekeyId! : 0);
+  }
+  bytes.setRange(header, header + kemCiphertext.length, kemCiphertext);
+  bytes.setRange(header + kemCiphertext.length, bytes.length, sealed);
+  return PqxdhMessage._(bytes, kem);
+}
+
+Future<PqxdhBundle> _signBundle(
+  PqxdhBundle unsigned,
+  PqKeyPair identity, {
+  required bool offload,
+}) async {
+  final trust = unsigned.trust;
+  if (trust == null || unsigned.signedPrekeyId == null) {
+    throw ArgumentError('A trust identity requires signedPrekeyId');
+  }
+  requireLength('trustSecretKey', identity.secretKey, trust.secretKeyBytes);
+  requireLength('trustPublicKey', identity.publicKey, trust.publicKeyBytes);
+  final signature = await pqxdhTrustSign(
+    identity.secretKey,
+    Pqxdh.bundleSigningBytes(unsigned),
+    mlDsa: trust.mlDsa,
+    slhDsa: trust.slhDsa,
+    offload: offload,
+  );
+  return PqxdhBundle(
+    identityKey: unsigned.identityKey,
+    signedPrekey: unsigned.signedPrekey,
+    signedPrekeySignature: unsigned.signedPrekeySignature,
+    kemPublicKeySignature: unsigned.kemPublicKeySignature,
+    oneTimePrekey: unsigned.oneTimePrekey,
+    kemPublicKey: unsigned.kemPublicKey,
+    kem: unsigned.kem,
+    signedPrekeyId: unsigned.signedPrekeyId,
+    oneTimePrekeyId: unsigned.oneTimePrekeyId,
+    trust: trust,
+    trustPublicKey: identity.publicKey,
+    trustSignature: signature,
+  );
+}
+
+Uint8List? _trustPublic(PqxdhTrust? trust, Uint8List? publicKey) {
+  if (trust == null && publicKey == null) return null;
+  if (trust == null || publicKey == null) {
+    throw ArgumentError('Trust algorithm and public key are a pair');
+  }
+  requireLength('trustPublicKey', publicKey, trust.publicKeyBytes);
+  return Uint8List.fromList(publicKey);
+}
+
+Uint8List? _trustSignature(
+  PqxdhTrust? trust,
+  Uint8List? publicKey,
+  Uint8List? signature,
+) {
+  if (signature == null) return null;
+  if (trust == null || publicKey == null) {
+    throw ArgumentError('Trust signature requires an algorithm and a key');
+  }
+  requireLength('trustSignature', signature, trust.signatureBytes);
+  return Uint8List.fromList(signature);
+}
+
+void _requireId(String name, int? id) {
+  if (id == null) return;
+  if (id < 0 || id > 0xFFFFFFFF) {
+    throw ArgumentError.value(id, name, 'uint32');
+  }
 }
 
 void _wipeAll(List<Uint8List?> parts) {

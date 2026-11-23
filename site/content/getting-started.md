@@ -5,7 +5,7 @@ description: Install pqforge and seal one HPKE message.
 
 ```yaml
 dependencies:
-  pqforge: ^0.4.13
+  pqforge: ^0.4.15
 ```
 
 ```dart

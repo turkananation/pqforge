@@ -74,14 +74,21 @@ abstract final class MlKemIncremental {
   static const decapsulationKeyBytes = mlKem768SecretKeyBytes;
 
   /// [seed] is 64 bytes, `d || z`. Omitted seeds are drawn here.
-  static Future<MlKemIncrementalKeys> keyGen({Uint8List? seed}) async {
+  /// [offload] runs the NTT on a worker isolate when the runtime has one.
+  /// Pass false when this isolate is already a worker.
+  static Future<MlKemIncrementalKeys> keyGen({
+    Uint8List? seed,
+    bool offload = true,
+  }) async {
     final owned = seed == null;
     if (seed != null && seed.length != 64) {
       throw ArgumentError.value(seed.length, 'seed', '64 bytes, d || z');
     }
     final material = seed ?? _random(64);
     try {
-      final parts = await off.mlKem768KeyGenOff(material);
+      final parts = offload
+          ? await off.mlKem768KeyGenOff(material)
+          : mlKem768KeyGenSync(material);
       return MlKemIncrementalKeys._(parts[0], parts[1], parts[2], parts[3]);
     } finally {
       if (owned) secureZero(material);
@@ -94,6 +101,7 @@ abstract final class MlKemIncremental {
     required Uint8List ekSeed,
     required Uint8List hek,
     Uint8List? coins,
+    bool offload = true,
   }) async {
     final owned = coins == null;
     if (coins != null && coins.length != 32) {
@@ -101,7 +109,9 @@ abstract final class MlKemIncremental {
     }
     final message = coins ?? _random(32);
     try {
-      final parts = await off.mlKem768Encaps1Off(ekSeed, hek, message);
+      final parts = offload
+          ? await off.mlKem768Encaps1Off(ekSeed, hek, message)
+          : mlKem768Encaps1Sync(ekSeed, hek, message);
       return MlKemEncaps1Result._(parts[0], parts[1], parts[2]);
     } finally {
       if (owned) secureZero(message);
@@ -113,14 +123,20 @@ abstract final class MlKemIncremental {
     required Uint8List encapsSecret,
     required Uint8List ekSeed,
     required Uint8List ekVector,
-  }) => off.mlKem768Encaps2Off(encapsSecret, ekSeed, ekVector);
+    bool offload = true,
+  }) => offload
+      ? off.mlKem768Encaps2Off(encapsSecret, ekSeed, ekVector)
+      : Future.value(mlKem768Encaps2Sync(encapsSecret, ekSeed, ekVector));
 
   /// Decapsulates with SHA3-256(rho || t). Not [PqcKem.kyber768.decapsulate].
   static Future<Uint8List> decaps({
     required Uint8List decapsulationKey,
     required Uint8List ct1,
     required Uint8List ct2,
-  }) => off.mlKem768DecapsOff(decapsulationKey, ct1, ct2);
+    bool offload = true,
+  }) => offload
+      ? off.mlKem768DecapsOff(decapsulationKey, ct1, ct2)
+      : Future.value(mlKem768DecapsSync(decapsulationKey, ct1, ct2));
 
   static Uint8List _random(int n) {
     final out = Uint8List(n);

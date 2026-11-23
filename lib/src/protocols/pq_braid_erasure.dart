@@ -42,6 +42,20 @@ final class BraidEncoder {
   late final int _chunks;
   int _index = 0;
 
+  /// Next codeword index. The session record stores this, not the parity.
+  int get nextIndex => _index;
+
+  /// The message this encoder is walking. A copy.
+  Uint8List get message => Uint8List.fromList(_message);
+
+  /// Restores an encoder that has already emitted [index] codewords.
+  factory BraidEncoder.resume(Uint8List message, int index) {
+    if (index < 0) {
+      throw ArgumentError.value(index, 'index', 'negative');
+    }
+    return BraidEncoder(message).._index = index;
+  }
+
   /// The next codeword. [BraidChunk.bytes] is 32 bytes.
   BraidChunk next() {
     if (_index >= BraidErasure.maxCodewords) {
@@ -113,6 +127,11 @@ final class BraidDecoder {
 
   /// Enough codewords to rebuild the message.
   bool get isComplete => _have.length >= _chunks;
+
+  /// Stored codewords. Each value is a copy.
+  List<BraidChunk> get stored => [
+    for (final entry in _have.entries) BraidChunk(entry.key, entry.value),
+  ];
 
   /// Ignores an identical repeat. A different payload for the same index throws.
   void add(BraidChunk chunk) {

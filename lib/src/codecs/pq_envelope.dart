@@ -15,6 +15,7 @@ class PqEnvelope {
     required this.profile,
     required this.kemAlgorithm,
     this.signatureAlgorithm,
+    this.slhDsa,
     required Uint8List kemCiphertext,
     required Uint8List nonce,
     required Uint8List payload,
@@ -38,16 +39,23 @@ class PqEnvelope {
     );
     requireLength('nonce', this.nonce, pqForgeDefaultAeadNonceBytes);
     if (this.aadHash != null) requireLength('aadHash', this.aadHash!, 32);
-    if (this.signature != null && signatureAlgorithm == null) {
+    if (signatureAlgorithm != null && slhDsa != null) {
       throw const PqForgeException(
-        'signatureAlgorithm is required with signature',
+        'Pass only one of signatureAlgorithm or slhDsa',
+      );
+    }
+    if (this.signature != null &&
+        signatureAlgorithm == null &&
+        slhDsa == null) {
+      throw const PqForgeException(
+        'signatureAlgorithm or slhDsa is required with signature',
       );
     }
     if (this.signature != null) {
       requireLength(
         'signature',
         this.signature!,
-        signatureAlgorithm!.signatureBytes,
+        slhDsa?.signatureBytes ?? signatureAlgorithm!.signatureBytes,
       );
     }
   }
@@ -56,6 +64,10 @@ class PqEnvelope {
   final PqForgeProfile profile;
   final PqKemAlgorithm kemAlgorithm;
   final PqSignatureAlgorithm? signatureAlgorithm;
+
+  /// Set when the header signature is SLH-DSA. Mutually exclusive with
+  /// [signatureAlgorithm]. HashSLH-DSA over the envelope digest, once.
+  final PqSlhDsaAlgorithm? slhDsa;
   final Uint8List kemCiphertext;
   final Uint8List nonce;
   final Uint8List payload;
@@ -66,6 +78,13 @@ class PqEnvelope {
 
   bool get isSigned => signature != null;
 
+  /// `ml-dsa-65` or `slh-dsa-shake-128f`, when a signature algorithm is set.
+  String? get signatureAlgorithmId => slhDsa?.id ?? signatureAlgorithm?.id;
+
+  /// Display name of [signatureAlgorithmId].
+  String? get signatureAlgorithmName =>
+      slhDsa?.name ?? signatureAlgorithm?.name;
+
   Uint8List toBinary() {
     final metadataJson = jsonEncode(metadata);
     return PqBytes.lengthPrefixed([
@@ -73,7 +92,7 @@ class PqEnvelope {
       PqBytes.uint32(version),
       PqBytes.utf8Bytes(profile.name),
       PqBytes.utf8Bytes(kemAlgorithm.id),
-      PqBytes.utf8Bytes(signatureAlgorithm?.id ?? ''),
+      PqBytes.utf8Bytes(slhDsa?.id ?? signatureAlgorithm?.id ?? ''),
       nonce,
       kemCiphertext,
       payload,
@@ -99,8 +118,8 @@ class PqEnvelope {
     final profileName = utf8.decode(fields[2]);
     final kem = PqKemAlgorithm.byId(utf8.decode(fields[3]));
     final sigId = utf8.decode(fields[4]);
-    final sigAlg = sigId.isEmpty ? null : PqSignatureAlgorithm.byId(sigId);
-    final profile = PqForgeProfile.resolve(profileName, kem, sigAlg);
+    final algorithms = splitHeaderSignatureId(sigId);
+    final profile = PqForgeProfile.resolve(profileName, kem, algorithms.mlDsa);
     final aadHash = fields[8].isEmpty ? null : fields[8];
     final signerKeyIdText = utf8.decode(fields[9]);
     final signerKeyId = signerKeyIdText.isEmpty ? null : signerKeyIdText;
@@ -113,7 +132,8 @@ class PqEnvelope {
       version: version,
       profile: profile,
       kemAlgorithm: kem,
-      signatureAlgorithm: sigAlg,
+      signatureAlgorithm: algorithms.mlDsa,
+      slhDsa: algorithms.slhDsa,
       nonce: fields[5],
       kemCiphertext: fields[6],
       payload: fields[7],
@@ -129,8 +149,8 @@ class PqEnvelope {
     'version': version,
     'profile': profile.name,
     'kemAlgorithm': kemAlgorithm.id,
-    if (signatureAlgorithm != null)
-      'signatureAlgorithm': signatureAlgorithm!.id,
+    if (signatureAlgorithm != null || slhDsa != null)
+      'signatureAlgorithm': slhDsa?.id ?? signatureAlgorithm!.id,
     'nonce': base64Encode(nonce),
     'kemCiphertext': base64Encode(kemCiphertext),
     'payload': base64Encode(payload),
@@ -147,17 +167,18 @@ class PqEnvelope {
     }
     final sigId = json['signatureAlgorithm'] as String?;
     final kem = PqKemAlgorithm.byId(json['kemAlgorithm'] as String);
-    final sigAlg = sigId == null ? null : PqSignatureAlgorithm.byId(sigId);
+    final algorithms = splitHeaderSignatureId(sigId ?? '');
     final profile = PqForgeProfile.resolve(
       json['profile'] as String,
       kem,
-      sigAlg,
+      algorithms.mlDsa,
     );
     return PqEnvelope(
       version: json['version'] as int? ?? pqForgeEnvelopeVersion,
       profile: profile,
       kemAlgorithm: kem,
-      signatureAlgorithm: sigAlg,
+      signatureAlgorithm: algorithms.mlDsa,
+      slhDsa: algorithms.slhDsa,
       nonce: base64Decode(json['nonce'] as String),
       kemCiphertext: base64Decode(json['kemCiphertext'] as String),
       payload: base64Decode(json['payload'] as String),

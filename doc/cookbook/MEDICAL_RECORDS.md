@@ -7,9 +7,10 @@ is ML-KEM. It is not a signature.
 
 Audit the access with `appendSignedLogEntry`. That log accepts ML-DSA or
 SLH-DSA (`slhDsa:`). Enroll a clinician key with `createIdentityBinding` over
-the same choice. Neither call belongs inside the `.pqf` header. Envelope
-signatures stay ML-DSA, and SLH-DSA signatures are large enough that they
-should sit beside the record, not inside it.
+the same choice. Neither call belongs inside the `.pqf` header. A header
+signature, if you add one, may be ML-DSA or HashSLH-DSA. The hash-based
+signature is 8–50 KiB, so a small record usually keeps ML-DSA in the header
+and puts SLH-DSA on the log and the identity binding.
 
 You supply access control, audit logging policy, patient identity, retention
 rules, and storage.

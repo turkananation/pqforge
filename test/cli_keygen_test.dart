@@ -501,19 +501,20 @@ void main() {
     ]);
   });
 
-  test('envelope signer-secret rejects an SLH-DSA key', () {
+  test('an ML-DSA-only leg still rejects an SLH-DSA key', () {
     final key = PqExportedKey(
       kind: PqKeyKind.signatureSecret,
       algorithmId: PqSlhDsaAlgorithm.shake128f.id,
       bytes: Uint8List(PqSlhDsaAlgorithm.shake128f.secretKeyBytes),
     );
+    expect(() => requireHeaderSignatureKey(key), returnsNormally);
     expect(
       () => requireMlDsaSignatureKey(key),
       throwsA(
         isA<PqForgeException>().having(
           (error) => error.message,
           'message',
-          contains('SLH-DSA keys cannot sign envelopes'),
+          contains('This command wants an ML-DSA key'),
         ),
       ),
     );

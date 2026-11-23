@@ -62,6 +62,7 @@ export 'src/certificates/x509.dart';
 export 'src/hpke/pq_hpke.dart';
 export 'src/hpke/pq_xwing_message.dart';
 
+export 'src/protocols/pq_conversation.dart';
 export 'src/protocols/pq_double_ratchet.dart';
 export 'src/protocols/pq_mlkem_braid.dart';
 export 'src/protocols/pq_mlkem_incremental.dart';

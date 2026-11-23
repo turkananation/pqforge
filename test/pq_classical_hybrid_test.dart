@@ -201,6 +201,35 @@ void main() {
       );
     });
 
+    test('SLH-DSA-SHAKE-128f is a version-2 post-quantum leg', () async {
+      const profile = PqForgeProfile.compact;
+      final hash = PqSlhDsaPrimitives.generateKeyPair(
+        PqSlhDsaAlgorithm.shake128f,
+      );
+      const signer = PqForgeHybridSigner(profile: profile);
+      final classical = await signer.generateClassicalKeyPair();
+      final message = _bytes('hash root');
+      final signature = await signer.sign(
+        pqcSecretKey: hash.secretKey,
+        classicalKeyPair: classical,
+        message: message,
+        slhDsa: PqSlhDsaAlgorithm.shake128f,
+      );
+      expect(signature.toJson()['version'], 2);
+      expect(signature.pqcAlgorithmId, PqSlhDsaAlgorithm.shake128f.id);
+      final restored = PqHybridSignature.fromJson(signature.toJson());
+      expect(
+        await signer.verify(
+          pqcPublicKey: hash.publicKey,
+          classicalPublicKey: classical.publicKey,
+          message: message,
+          signature: restored,
+        ),
+        isTrue,
+      );
+      expect(restored.pqcAlgorithm, isNull);
+    });
+
     test(
       'rejects a key pair whose algorithm differs from the signer',
       () async {

@@ -8,7 +8,12 @@ Modes: base, PSK, auth, authPSK.
 
 KEMs: DHKEM(X25519, HKDF-SHA256), DHKEM(X448, HKDF-SHA512),
 DHKEM(P-256, HKDF-SHA256), DHKEM(P-384, HKDF-SHA384),
-DHKEM(P-521, HKDF-SHA512).
+DHKEM(P-521, HKDF-SHA512). X-Wing (`HpkeKem.xWing`, id `0x647A`,
+draft-connolly-cfrg-xwing-kem-11) is an additional KEM. Base and PSK
+work. Auth and authPSK throw. It is not a FIPS construction and not a
+`.pqf` algorithm. There is no BoringSSL or OpenSSL evidence for
+`0x647A`. `PqXWing` is the same KEM without the HPKE wrapper. Lengths
+are 32 / 1216 / 1120 / 32.
 
 AEADs: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305, and export-only.
 

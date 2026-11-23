@@ -124,3 +124,47 @@ share.
   associated data loses the post-quantum public key.
 - The next Double Ratchet message opens. Feeding the PQXDH message to
   the ratchet does not.
+
+## Version 2, the KEM, and the trust signature
+
+Version 1 is the layout above. The ciphertext starts at byte 70 and is
+1568 bytes, ML-KEM-1024. Version 2 inserts two big-endian uint32 ids
+after `EK_A`, so the ciphertext starts at byte 78. Its length is the
+KEM both sides passed: 768, 1088, or 1568. A KEM other than ML-KEM-1024
+requires `signedPrekeyId`. The wire does not carry a KEM id. A peer who
+passes a different KEM does not open.
+
+```text
+"PQX1" || version=2 || flags || IK_A(32) || EK_A(32)
+       || signedPrekeyId(u32) || oneTimePrekeyId(u32)
+       || CT || AEAD
+```
+
+The one-time id is 0 when the flag is clear, and must be non-zero when
+the flag is set. `Pqxdh.publish` writes version 2 only when
+`signedPrekeyId` is set. Omitting that id keeps the version 1 layout,
+and that layout is ML-KEM-1024 only.
+
+`trustKey` adds one signature over `Pqxdh.bundleSigningBytes`. `trust`
+is `PqxdhTrust.mlDsa44`, `mlDsa65`, `mlDsa87`, or
+`PqxdhTrust.slhDsa` for any of the twelve SLH-DSA sets. The default is
+ML-DSA-65. The signed message is the domain
+`pqforge/pqxdh-bundle/v1`, the identity key, the signed prekey and its
+id, the ML-KEM encapsulation key, the one-time prekey and its id, then
+a line with the trust algorithm id. XEdDSA signatures are not in that
+message. The trust public key is not in it either. The caller pins that
+key. `Pqxdh.trustAuthentic` checks the signature. `Pqxdh.mlDsaAuthentic`
+is the same check limited to ML-DSA-65. XEdDSA still checks the prekeys.
+The result is not an input to SK. `ConversationSession.start` requires
+a pin. `Pqxdh.initiate` does not.
+
+HKDF info for ML-KEM-1024 stays `CURVE25519_SHA-512_ML-KEM-1024`. The
+other sets use `ML-KEM-768` or `ML-KEM-512` in that same position.
+
+`offload: false` runs the KEM, and a trust signature, on the caller
+isolate. The default still uses a worker when `dart:isolate` exists.
+SLH-DSA offloads even when a custom lattice provider is installed,
+because it does not use that provider. An `s` set is signed because
+the caller named it. It is slow. An `f` set is the fast hash-based
+choice. The signature is on the bundle, once.
+

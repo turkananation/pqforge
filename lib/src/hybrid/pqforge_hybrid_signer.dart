@@ -114,13 +114,20 @@ class PqForgeHybridSigner {
     }
   }
 
-  /// Signs [message] with ML-DSA and the classical algorithm, binding [context].
+  /// Signs [message] with ML-DSA or SLH-DSA, and the classical algorithm.
+  ///
+  /// Pass [slhDsa] for the hash-based post-quantum leg. That writes hybrid
+  /// signature version 2. Omit it and the post-quantum leg stays ML-DSA
+  /// (version 1). An `s` set is valid and slow. The fast sets are the `f`
+  /// sets. Large inputs should already be a digest (`hybrid-sign --digest`):
+  /// this method signs the bytes it is given.
   Future<PqHybridSignature> sign({
     required Uint8List pqcSecretKey,
     required PqClassicalSignatureKeyPair classicalKeyPair,
     required Uint8List message,
     Uint8List? context,
     PqSignatureAlgorithm? pqcAlgorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     PqDualSignaturePolicy policy = PqDualSignaturePolicy.requireBoth,
   }) async {
     if (classicalKeyPair.algorithm != classicalAlgorithm) {
@@ -129,12 +136,33 @@ class PqForgeHybridSigner {
         'not match signer algorithm ${classicalAlgorithm.id}',
       );
     }
-    final selectedPqc = pqcAlgorithm ?? profile.signature;
+    if (pqcAlgorithm != null && slhDsa != null) {
+      throw const PqForgeException(
+        'Pass only one of pqcAlgorithm (ML-DSA) or slhDsa (SLH-DSA)',
+      );
+    }
     final boundMessage = _hybridSignatureMessage(message, context);
     final classicalSignature = await _signClassical(
       classicalKeyPair,
       boundMessage,
     );
+    if (slhDsa != null) {
+      final pqcSignature = PqSlhDsaPrimitives.sign(
+        slhDsa,
+        pqcSecretKey,
+        boundMessage,
+        context: PqBytes.utf8Bytes('pqforge/dual-signature/v1'),
+        allowSlowSigning: !slhDsa.isFast,
+      );
+      return PqHybridSignature(
+        pqcSignature: pqcSignature,
+        classicalSignature: classicalSignature,
+        slhDsa: slhDsa,
+        classicalAlgorithm: classicalAlgorithm,
+        policy: policy,
+      );
+    }
+    final selectedPqc = pqcAlgorithm ?? profile.signature;
     final dual = PqForge(profile: profile).dualSign(
       secretKey: pqcSecretKey,
       message: boundMessage,
@@ -170,13 +198,21 @@ class PqForgeHybridSigner {
     if (signature.classicalAlgorithm != classicalAlgorithm) return false;
     if (signature.policy != policy) return false;
     final boundMessage = _hybridSignatureMessage(message, context);
-    final pqcValid = PqForge(profile: profile).verify(
-      pqcPublicKey,
-      boundMessage,
-      signature.pqcSignature,
-      algorithm: signature.pqcAlgorithm,
-      context: PqBytes.utf8Bytes('pqforge/dual-signature/v1'),
-    );
+    final pqcValid = signature.slhDsa != null
+        ? PqSlhDsaPrimitives.verify(
+            signature.slhDsa!,
+            pqcPublicKey,
+            boundMessage,
+            signature.pqcSignature,
+            context: PqBytes.utf8Bytes('pqforge/dual-signature/v1'),
+          )
+        : PqForge(profile: profile).verify(
+            pqcPublicKey,
+            boundMessage,
+            signature.pqcSignature,
+            algorithm: signature.pqcAlgorithm,
+            context: PqBytes.utf8Bytes('pqforge/dual-signature/v1'),
+          );
     final classicalValid = await _verifyClassical(
       classicalAlgorithm,
       classicalPublicKey,

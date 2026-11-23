@@ -24,6 +24,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pqcrypto/pqcrypto.dart' as pqc;
@@ -46,18 +47,40 @@ enum DoubleRatchetHash {
   sha512,
 }
 
-/// One Double Ratchet message: a 40-byte header and `ciphertext || tag`.
+/// One Double Ratchet message.
 ///
-/// Header layout, big-endian: `dh (32) || pn (uint32) || n (uint32)`.
-/// [parse] views [bytes]. It does not copy.
+/// A clear header is 40 bytes: `dh (32) || pn (uint32) || n (uint32)`,
+/// then `ciphertext || tag`. [parse] views [bytes]. It does not copy.
+///
+/// An encrypted header is `DRH1 || version=1 || nonce(12) || AEAD(header)`.
+/// The body AEAD follows. [headerEncrypted] is true for that layout.
+/// The nonce is random because the header key is reused for the chain.
+/// It is 12 bytes, not 128 bits. A header key lasts one sending chain.
 final class DoubleRatchetMessage {
-  DoubleRatchetMessage._(this.bytes)
-    : dh = RatchetPublicKey.view(Uint8List.sublistView(bytes, 0, 32)),
-      pn = ByteData.sublistView(bytes, 32, 36).getUint32(0),
-      n = ByteData.sublistView(bytes, 36, 40).getUint32(0);
+  DoubleRatchetMessage._(this.bytes, {this.headerEncrypted = false});
 
-  /// Parses a message. The header is a view of [bytes].
+  /// Parses a clear-header message. The header is a view of [bytes].
   factory DoubleRatchetMessage.parse(Uint8List bytes) {
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x44 &&
+        bytes[1] == 0x52 &&
+        bytes[2] == 0x48 &&
+        bytes[3] == 0x31) {
+      if (bytes.length < 4 + 1 + 12 + headerBytes + 16 + 16) {
+        throw const PqForgeException('Double Ratchet message is truncated');
+      }
+      if (bytes[4] != 1) {
+        throw const PqForgeException('Unknown Double Ratchet header version');
+      }
+      if (bytes.length < 21) {
+        throw const PqForgeException('Double Ratchet message is truncated');
+      }
+      final length = ByteData.sublistView(bytes, 17, 21).getUint32(0);
+      if (length < headerBytes + 16 || bytes.length < 21 + length + 16) {
+        throw const PqForgeException('Double Ratchet message is truncated');
+      }
+      return DoubleRatchetMessage._(bytes, headerEncrypted: true);
+    }
     if (bytes.length < headerBytes + 16) {
       throw const PqForgeException('Double Ratchet message is truncated');
     }
@@ -69,20 +92,54 @@ final class DoubleRatchetMessage {
   /// Header and ciphertext. Owned by [seal], viewed by [parse].
   final Uint8List bytes;
 
+  /// True when the 40-byte header is AEAD'd under the header key.
+  final bool headerEncrypted;
+
   /// Sender ratchet public key. A view of the first 32 bytes.
-  final RatchetPublicKey dh;
+  /// Throws when [headerEncrypted] is true.
+  RatchetPublicKey get dh {
+    if (headerEncrypted) {
+      throw StateError('Double Ratchet header is encrypted');
+    }
+    return RatchetPublicKey.view(Uint8List.sublistView(bytes, 0, 32));
+  }
 
   /// Previous sending-chain length.
-  final int pn;
+  int get pn {
+    if (headerEncrypted) {
+      throw StateError('Double Ratchet header is encrypted');
+    }
+    return ByteData.sublistView(bytes, 32, 36).getUint32(0);
+  }
 
   /// Message number in the sending chain.
-  final int n;
+  int get n {
+    if (headerEncrypted) {
+      throw StateError('Double Ratchet header is encrypted');
+    }
+    return ByteData.sublistView(bytes, 36, 40).getUint32(0);
+  }
 
-  /// Header bytes. A view.
-  Uint8List get header => Uint8List.sublistView(bytes, 0, headerBytes);
+  /// Header bytes. A view. The encrypted header includes its tag.
+  Uint8List get header {
+    if (!headerEncrypted) {
+      return Uint8List.sublistView(bytes, 0, headerBytes);
+    }
+    final length = ByteData.sublistView(bytes, 17, 21).getUint32(0);
+    return Uint8List.sublistView(bytes, 21, 21 + length);
+  }
 
   /// `ciphertext || tag`. A view.
-  Uint8List get ciphertext => Uint8List.sublistView(bytes, headerBytes);
+  Uint8List get ciphertext {
+    if (!headerEncrypted) {
+      return Uint8List.sublistView(bytes, headerBytes);
+    }
+    return Uint8List.sublistView(bytes, 21 + header.length);
+  }
+
+  /// 12-byte header nonce. Empty when the header is clear.
+  Uint8List get headerNonce =>
+      headerEncrypted ? Uint8List.sublistView(bytes, 5, 17) : Uint8List(0);
 }
 
 /// Signal Double Ratchet over X25519 and one pqforge AEAD.
@@ -98,8 +155,17 @@ final class DoubleRatchet {
     required this._info,
     required this.maxSkip,
     required this._ratchetKeys,
+    this.encryptHeaders = false,
+    Uint8List? sendingHeaderKey,
+    Uint8List? receivingHeaderKey,
+    Uint8List? nextSendingHeaderKey,
+    Uint8List? nextReceivingHeaderKey,
   }) : _root = rootKey,
-       _sending = sendingChain;
+       _sending = sendingChain,
+       _hks = sendingHeaderKey,
+       _hkr = receivingHeaderKey,
+       _nhks = nextSendingHeaderKey,
+       _nhkr = nextReceivingHeaderKey;
 
   /// Alice. Mixes one X25519 into [sharedSecret] and can [seal] immediately.
   /// [ratchetKey] fixes the first X25519 pair. [ratchetKeys] fixes each
@@ -113,6 +179,7 @@ final class DoubleRatchet {
     int maxSkip = defaultMaxSkip,
     RatchetKeyPair? ratchetKey,
     Future<RatchetKeyPair> Function(int step)? ratchetKeys,
+    bool encryptHeaders = false,
   }) async {
     _requireSession(suite, maxSkip);
     final generated = ratchetKey == null;
@@ -132,10 +199,20 @@ final class DoubleRatchet {
       info: _infoBytes(info),
       maxSkip: maxSkip,
       ratchetKeys: ratchetKeys,
+      encryptHeaders: encryptHeaders,
     );
     final dh = await session._exchange(secret, remoteRatchetKey.bytes);
     try {
-      session._sending = session._mix(dh);
+      if (!encryptHeaders) {
+        session._sending = session._mix(dh);
+      } else {
+        final shared = session._sharedHeaderKeys(sharedSecret.bytes);
+        session._hks = shared.$1;
+        session._nhkr = shared.$2;
+        final mixed = session._mixHe(dh);
+        session._sending = mixed.$1;
+        session._nhks = mixed.$2;
+      }
     } finally {
       secureZero(dh);
     }
@@ -152,9 +229,10 @@ final class DoubleRatchet {
     Uint8List? info,
     int maxSkip = defaultMaxSkip,
     Future<RatchetKeyPair> Function(int step)? ratchetKeys,
+    bool encryptHeaders = false,
   }) {
     _requireSession(suite, maxSkip);
-    return DoubleRatchet._(
+    final session = DoubleRatchet._(
       rootKey: Uint8List.fromList(sharedSecret.bytes),
       dhSecret: Uint8List.fromList(ratchetKey.secretKey),
       dhPublic: RatchetPublicKey(ratchetKey.publicKey.bytes),
@@ -165,7 +243,14 @@ final class DoubleRatchet {
       info: _infoBytes(info),
       maxSkip: maxSkip,
       ratchetKeys: ratchetKeys,
+      encryptHeaders: encryptHeaders,
     );
+    if (encryptHeaders) {
+      final shared = session._sharedHeaderKeys(sharedSecret.bytes);
+      session._nhks = shared.$2;
+      session._nhkr = shared.$1;
+    }
+    return session;
   }
 
   /// Restores a session from [toBytes]. Refuses anything that is not a
@@ -178,7 +263,8 @@ final class DoubleRatchet {
         throw const PqForgeException('Not a Double Ratchet session');
       }
     }
-    if (reader.u8() != 1) {
+    final version = reader.u8();
+    if (version != 1 && version != 2) {
       throw const PqForgeException('Unknown Double Ratchet session version');
     }
     final hash = switch (reader.u8()) {
@@ -219,6 +305,7 @@ final class DoubleRatchet {
             info: Uint8List.fromList(info),
             maxSkip: maxSkip,
             ratchetKeys: null,
+            encryptHeaders: version == 2,
           )
           .._ns = ns
           .._nr = nr
@@ -230,6 +317,21 @@ final class DoubleRatchet {
         final n = reader.u32();
         final mk = reader.secret('skippedMessageKey');
         session._skipped[_SkipId.own(dh, n)] = mk;
+      }
+      if (version == 2) {
+        final headerFlags = reader.u8();
+        if ((headerFlags & 1) != 0) {
+          session._hks = reader.secret('sendingHeaderKey');
+        }
+        if ((headerFlags & 2) != 0) {
+          session._hkr = reader.secret('receivingHeaderKey');
+        }
+        if ((headerFlags & 4) != 0) {
+          session._nhks = reader.secret('nextSendingHeaderKey');
+        }
+        if ((headerFlags & 8) != 0) {
+          session._nhkr = reader.secret('nextReceivingHeaderKey');
+        }
       }
       if (!reader.done) {
         throw const PqForgeException(
@@ -258,6 +360,7 @@ final class DoubleRatchet {
   final DoubleRatchetHash hash;
   final PqForgeCipherSuite suite;
   final int maxSkip;
+  final bool encryptHeaders;
   final Uint8List _info;
   final Future<RatchetKeyPair> Function(int step)? _ratchetKeys;
   int _ratchetStep = 0;
@@ -272,6 +375,10 @@ final class DoubleRatchet {
   int _nr = 0;
   int _pn = 0;
   final Map<_SkipId, Uint8List> _skipped = {};
+  Uint8List? _hks;
+  Uint8List? _hkr;
+  Uint8List? _nhks;
+  Uint8List? _nhkr;
   bool _disposed = false;
 
   /// How many skipped message keys are stored.
@@ -292,15 +399,32 @@ final class DoubleRatchet {
   DoubleRatchetMessage seal(Uint8List plaintext, {Uint8List? aad}) {
     final taken = takeSendingMessageKey();
     try {
-      final body = _encrypt(
-        taken.messageKey,
-        plaintext,
-        _aad(aad, _headerBytes(taken.dh.bytes, taken.pn, taken.n)),
-      );
-      final out = Uint8List(DoubleRatchetMessage.headerBytes + body.length);
-      _writeHeader(out, taken.dh.bytes, taken.pn, taken.n);
-      out.setRange(DoubleRatchetMessage.headerBytes, out.length, body);
-      return DoubleRatchetMessage._(out);
+      final clear = _headerBytes(taken.dh.bytes, taken.pn, taken.n);
+      if (!encryptHeaders) {
+        final body = _encrypt(taken.messageKey, plaintext, _aad(aad, clear));
+        final out = Uint8List(DoubleRatchetMessage.headerBytes + body.length);
+        out.setRange(0, clear.length, clear);
+        out.setRange(clear.length, out.length, body);
+        return DoubleRatchetMessage._(out);
+      }
+      final headerKey = _hks;
+      if (headerKey == null) {
+        throw const PqForgeException('Sending header key is not initialized');
+      }
+      final sealedHeader = _sealHeader(headerKey, clear);
+      try {
+        final body = _encrypt(
+          taken.messageKey,
+          plaintext,
+          _aad(aad, sealedHeader.$2),
+        );
+        return DoubleRatchetMessage._(
+          _packEncrypted(sealedHeader.$1, sealedHeader.$2, body),
+          headerEncrypted: true,
+        );
+      } finally {
+        secureZero(sealedHeader.$2);
+      }
     } finally {
       secureZero(taken.messageKey);
     }
@@ -330,6 +454,15 @@ final class DoubleRatchet {
   /// Decrypts one message. Out-of-order messages inside [maxSkip] open.
   /// A header past [maxSkip] throws and does not grow the skipped-key map.
   Future<Uint8List> open(DoubleRatchetMessage message, {Uint8List? aad}) async {
+    if (message.headerEncrypted) {
+      if (!encryptHeaders) {
+        throw const PqForgeException('Double Ratchet header is encrypted');
+      }
+      return _openEncrypted(message, aad);
+    }
+    if (encryptHeaders) {
+      throw const PqForgeException('Double Ratchet header is not encrypted');
+    }
     final messageKey = await takeReceivingMessageKey(
       dh: message.dh.bytes,
       pn: message.pn,
@@ -349,6 +482,9 @@ final class DoubleRatchet {
     required int pn,
     required int n,
   }) async {
+    if (encryptHeaders) {
+      throw StateError('An encrypted header is opened with open');
+    }
     _live();
     final cached = _takeSkipped(dh, n);
     if (cached != null) return cached;
@@ -380,7 +516,7 @@ final class DoubleRatchet {
     final info = _info;
     final builder = BytesBuilder(copy: false);
     builder.add(_stateMagic);
-    builder.addByte(1);
+    builder.addByte(encryptHeaders ? 2 : 1);
     builder.addByte(hash == DoubleRatchetHash.sha256 ? 1 : 2);
     builder.addByte(suite == PqForgeCipherSuite.aes256Gcm ? 1 : 2);
     builder.add(_u32(maxSkip));
@@ -409,6 +545,18 @@ final class DoubleRatchet {
       builder.add(_u32(entry.key.n));
       _addSecret(builder, entry.value);
     }
+    if (encryptHeaders) {
+      var flags = 0;
+      if (_hks != null) flags |= 1;
+      if (_hkr != null) flags |= 2;
+      if (_nhks != null) flags |= 4;
+      if (_nhkr != null) flags |= 8;
+      builder.addByte(flags);
+      if (_hks != null) _addSecret(builder, _hks!);
+      if (_hkr != null) _addSecret(builder, _hkr!);
+      if (_nhks != null) _addSecret(builder, _nhks!);
+      if (_nhkr != null) _addSecret(builder, _nhkr!);
+    }
     return builder.takeBytes();
   }
 
@@ -426,6 +574,14 @@ final class DoubleRatchet {
       secureZero(key);
     }
     _skipped.clear();
+    _wipeHeader(_hks);
+    _wipeHeader(_hkr);
+    _wipeHeader(_nhks);
+    _wipeHeader(_nhkr);
+    _hks = null;
+    _hkr = null;
+    _nhks = null;
+    _nhkr = null;
   }
 
   Future<RatchetKeyPair> _freshRatchetKey() {
@@ -437,6 +593,10 @@ final class DoubleRatchet {
   }
 
   Future<void> _dhRatchet(Uint8List remoteDh) async {
+    if (encryptHeaders) {
+      await _dhRatchetHe(remoteDh);
+      return;
+    }
     _pn = _ns;
     _ns = 0;
     _nr = 0;
@@ -492,6 +652,15 @@ final class DoubleRatchet {
     }
     final chain = _receiving;
     if (chain == null) return;
+    if (encryptHeaders) {
+      final headerKey = _hkr;
+      if (headerKey == null) return;
+      while (_nr < until) {
+        _skipped[_SkipId(headerKey, _nr)] = _advance(chain);
+        _nr++;
+      }
+      return;
+    }
     while (_nr < until) {
       _skipped[_SkipId(remoteRatchetKey!.bytes, _nr)] = _advance(chain);
       _nr++;
@@ -519,6 +688,7 @@ final class DoubleRatchet {
     required Uint8List salt,
     required Uint8List ikm,
     required Uint8List info,
+    int output = 64,
   }) {
     final prk = switch (hash) {
       DoubleRatchetHash.sha256 => pqc.hmacSha256(salt, ikm),
@@ -526,7 +696,6 @@ final class DoubleRatchet {
     };
     try {
       final hashLen = prk.length;
-      const output = 64;
       final blocks = (output + hashLen - 1) ~/ hashLen;
       final okm = Uint8List(blocks * hashLen);
       var previous = Uint8List(0);
@@ -605,6 +774,276 @@ final class DoubleRatchet {
     if (_disposed) {
       throw StateError('DoubleRatchet has been disposed');
     }
+  }
+
+  /// Encrypts [clear] under the current sending header key.
+  /// The caller wipes [encrypted] if it copies it into a larger buffer
+  /// that it will not keep. The nonce is 12 random bytes.
+  ({Uint8List nonce, Uint8List encrypted}) encryptSendingHeader(
+    Uint8List clear,
+  ) {
+    _live();
+    if (!encryptHeaders) {
+      throw StateError('This session does not encrypt headers');
+    }
+    final key = _hks;
+    if (key == null) {
+      throw const PqForgeException('Sending header key is not initialized');
+    }
+    final sealed = _sealHeader(key, clear);
+    return (nonce: sealed.$1, encrypted: sealed.$2);
+  }
+
+  /// Decrypts a header that is not the 40-byte Double Ratchet header.
+  /// [read] pulls `dh`, `pn`, and `n` out of the clear header. The message
+  /// key is the caller's to wipe. [clearHeader] is too.
+  Future<({Uint8List messageKey, Uint8List clearHeader})> openExternalHeader({
+    required Uint8List nonce,
+    required Uint8List encrypted,
+    required ({Uint8List dh, int pn, int n}) Function(Uint8List clear) read,
+  }) async {
+    _live();
+    if (!encryptHeaders) {
+      throw StateError('This session does not encrypt headers');
+    }
+    final skipped = _takeSkippedHeader(nonce, encrypted, read);
+    if (skipped != null) return skipped;
+    final current = _tryHeader(_hkr, nonce, encrypted);
+    final next = current == null ? _tryHeader(_nhkr, nonce, encrypted) : null;
+    final clear = current ?? next;
+    if (clear == null) {
+      throw const PqForgeException('Double Ratchet header did not decrypt');
+    }
+    final fields = read(clear);
+    if (next != null) {
+      _skip(fields.pn);
+      await _dhRatchetHe(fields.dh);
+    }
+    _skip(fields.n);
+    final receiving = _receiving;
+    if (receiving == null) {
+      secureZero(clear);
+      throw const PqForgeException('Receiving chain is not initialized');
+    }
+    if (_nr == 0xFFFFFFFF) {
+      secureZero(clear);
+      throw const PqForgeException('Receiving chain counter exhausted');
+    }
+    final messageKey = _advance(receiving);
+    _nr++;
+    return (messageKey: messageKey, clearHeader: clear);
+  }
+
+  Future<Uint8List> _openEncrypted(
+    DoubleRatchetMessage message,
+    Uint8List? aad,
+  ) async {
+    final opened = await openExternalHeader(
+      nonce: message.headerNonce,
+      encrypted: message.header,
+      read: (clear) {
+        if (clear.length != DoubleRatchetMessage.headerBytes) {
+          throw const PqForgeException('Double Ratchet header is truncated');
+        }
+        return (
+          dh: Uint8List.fromList(Uint8List.sublistView(clear, 0, 32)),
+          pn: ByteData.sublistView(clear, 32, 36).getUint32(0),
+          n: ByteData.sublistView(clear, 36, 40).getUint32(0),
+        );
+      },
+    );
+    try {
+      return _encryptLike(
+        opened.messageKey,
+        message.ciphertext,
+        _aad(aad, message.header),
+        decrypt: true,
+      );
+    } finally {
+      secureZero(opened.messageKey);
+      secureZero(opened.clearHeader);
+    }
+  }
+
+  ({Uint8List messageKey, Uint8List clearHeader})? _takeSkippedHeader(
+    Uint8List nonce,
+    Uint8List encrypted,
+    ({Uint8List dh, int pn, int n}) Function(Uint8List clear) read,
+  ) {
+    for (final entry in _skipped.entries.toList()) {
+      final clear = _tryHeader(entry.key.dh, nonce, encrypted);
+      if (clear == null) continue;
+      final fields = read(clear);
+      if (fields.n != entry.key.n) {
+        secureZero(clear);
+        continue;
+      }
+      final messageKey = _skipped.remove(entry.key);
+      if (messageKey == null) {
+        secureZero(clear);
+        continue;
+      }
+      return (messageKey: messageKey, clearHeader: clear);
+    }
+    return null;
+  }
+
+  Uint8List? _tryHeader(Uint8List? key, Uint8List nonce, Uint8List encrypted) {
+    if (key == null) return null;
+    try {
+      return _encryptLike(key, encrypted, nonce, decrypt: true);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  (Uint8List, Uint8List) _sealHeader(Uint8List key, Uint8List clear) {
+    final nonce = _randomNonce();
+    final encrypted = _encryptLike(key, clear, nonce, decrypt: false);
+    return (nonce, encrypted);
+  }
+
+  Uint8List _packEncrypted(
+    Uint8List nonce,
+    Uint8List encrypted,
+    Uint8List body,
+  ) {
+    final out = Uint8List(21 + encrypted.length + body.length);
+    out[0] = 0x44;
+    out[1] = 0x52;
+    out[2] = 0x48;
+    out[3] = 0x31;
+    out[4] = 1;
+    out.setRange(5, 17, nonce);
+    ByteData.sublistView(out).setUint32(17, encrypted.length);
+    out.setRange(21, 21 + encrypted.length, encrypted);
+    out.setRange(21 + encrypted.length, out.length, body);
+    return out;
+  }
+
+  (Uint8List, Uint8List) _sharedHeaderKeys(Uint8List sharedSecret) {
+    final salt = Uint8List(hash == DoubleRatchetHash.sha256 ? 32 : 64);
+    final info = Uint8List.fromList(utf8.encode('pqforge-header-keys-v1'));
+    final okm = _hkdf(salt: salt, ikm: sharedSecret, info: info);
+    secureZero(salt);
+    try {
+      return (
+        Uint8List(32)..setRange(0, 32, okm),
+        Uint8List(32)..setRange(0, 32, okm, 32),
+      );
+    } finally {
+      secureZero(okm);
+    }
+  }
+
+  (Uint8List, Uint8List) _mixHe(Uint8List dhOut) {
+    final okm = _hkdf(salt: _root, ikm: dhOut, info: _info, output: 96);
+    try {
+      _root.setRange(0, 32, okm);
+      return (
+        Uint8List(32)..setRange(0, 32, okm, 32),
+        Uint8List(32)..setRange(0, 32, okm, 64),
+      );
+    } finally {
+      secureZero(okm);
+    }
+  }
+
+  Future<void> _dhRatchetHe(Uint8List remoteDh) async {
+    _pn = _ns;
+    _ns = 0;
+    _nr = 0;
+    final previousSending = _hks;
+    _hks = _nhks;
+    _nhks = null;
+    if (previousSending != null && !identical(previousSending, _hks)) {
+      secureZero(previousSending);
+    }
+    final previousReceiving = _hkr;
+    _hkr = _nhkr;
+    _nhkr = null;
+    if (previousReceiving != null && !identical(previousReceiving, _hkr)) {
+      secureZero(previousReceiving);
+    }
+    remoteRatchetKey = RatchetPublicKey(remoteDh);
+    final first = await _exchange(_dhSecret, remoteDh);
+    try {
+      final oldReceiving = _receiving;
+      final mixed = _mixHe(first);
+      _receiving = mixed.$1;
+      _nhkr = mixed.$2;
+      if (oldReceiving != null) secureZero(oldReceiving);
+    } finally {
+      secureZero(first);
+    }
+    final next = await _freshRatchetKey();
+    secureZero(_dhSecret);
+    _dhSecret = next.secretKey;
+    _dhPublic = next.publicKey;
+    final second = await _exchange(_dhSecret, remoteDh);
+    try {
+      final oldSending = _sending;
+      final mixed = _mixHe(second);
+      _sending = mixed.$1;
+      _nhks = mixed.$2;
+      if (oldSending != null) secureZero(oldSending);
+    } finally {
+      secureZero(second);
+    }
+  }
+
+  Uint8List _encryptLike(
+    Uint8List key,
+    Uint8List data,
+    Uint8List aad, {
+    required bool decrypt,
+  }) {
+    if (!decrypt) {
+      return switch (suite) {
+        PqForgeCipherSuite.aes256Gcm => PqSymmetricPrimitives.aesGcmEncrypt(
+          key: key,
+          nonce: aad.length == 12 ? aad : _zeroNonce,
+          plaintext: data,
+          aad: aad.length == 12 ? aad : aad,
+        ),
+        PqForgeCipherSuite.chaCha20Poly1305 =>
+          PqSymmetricPrimitives.chacha20Poly1305Encrypt(
+            key: key,
+            nonce: aad.length == 12 ? aad : _zeroNonce,
+            plaintext: data,
+            aad: aad,
+          ),
+      };
+    }
+    final nonce = aad.length == 12 ? aad : _zeroNonce;
+    return switch (suite) {
+      PqForgeCipherSuite.aes256Gcm => PqSymmetricPrimitives.aesGcmDecrypt(
+        key: key,
+        nonce: nonce,
+        ciphertext: data,
+        aad: aad,
+      ),
+      PqForgeCipherSuite.chaCha20Poly1305 =>
+        PqSymmetricPrimitives.chacha20Poly1305Decrypt(
+          key: key,
+          nonce: nonce,
+          ciphertext: data,
+          aad: aad,
+        ),
+    };
+  }
+
+  Uint8List _randomNonce() {
+    final out = Uint8List(12);
+    final random = Random.secure();
+    for (var i = 0; i < out.length; i++) {
+      out[i] = random.nextInt(256);
+    }
+    return out;
+  }
+
+  static void _wipeHeader(Uint8List? key) {
+    if (key != null) secureZero(key);
   }
 
   static void _requireSession(PqForgeCipherSuite suite, int maxSkip) {

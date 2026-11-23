@@ -274,6 +274,7 @@ extension PqForgeAsync on PqForge {
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
     PqSignatureAlgorithm? signatureAlgorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     String? signerKeyId,
   }) async {
     final selected = profile ?? this.profile;
@@ -334,6 +335,7 @@ extension PqForgeAsync on PqForge {
       metadata: effectiveMetadata,
       signerSecretKey: signerSecretKey,
       signatureAlgorithm: signatureAlgorithm,
+      slhDsa: slhDsa,
       signerKeyId: signerKeyId,
     );
   }

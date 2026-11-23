@@ -20,3 +20,4 @@
   - Government And Medical Records: encryptRecord, appendSignedLogEntry
   - Software Artifacts: signArtifact, verifyArtifact
   - Hybrid Server Sessions: PqForgeHybridKeyAgreement, PqForgeSecureSession
+  - Direct Conversations: ConversationSession, Pqxdh, DoubleRatchet, TripleRatchet

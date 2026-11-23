@@ -23,7 +23,8 @@ final class HybridSignCommand extends Command<void> {
         mandatory: true,
         valueHelp: 'file',
         help:
-            'Raw or wrapped ML-DSA secret key JSON (the post-quantum signer).',
+            'Raw or wrapped ML-DSA or SLH-DSA secret key JSON '
+            '(the post-quantum signer).',
       )
       ..addOption(
         'classical-secret',
@@ -76,9 +77,9 @@ final class HybridSignCommand extends Command<void> {
 
   @override
   String get description =>
-      'Create an ML-DSA + Ed25519/ECDSA hybrid (dual) signature. '
-      'ECDSA may be P-256, P-384, or P-521. For SLH-DSA or three legs, '
-      'use compose-sign.';
+      'Create an ML-DSA or SLH-DSA plus Ed25519/ECDSA hybrid signature. '
+      'SLH-DSA is version 2. Use --digest on a large file. '
+      'Three legs are compose-sign.';
 
   @override
   String get usageFooter => usageExamples([
@@ -101,19 +102,24 @@ final class HybridSignCommand extends Command<void> {
       passphrase: passphrase,
     );
     requireKind(pqcSecret, PqKeyKind.signatureSecret);
-    requireMlDsaSignatureKey(pqcSecret);
+    requireHeaderSignatureKey(pqcSecret);
     final classicalSecret = await readKey(
       results['classical-secret'] as String,
       passphrase: passphrase,
     );
     requireKind(classicalSecret, classicalSignatureSecretKind);
 
-    final pqcAlgorithm = PqSignatureAlgorithm.byId(pqcSecret.algorithmId);
+    final slhDsa = PqSlhDsaAlgorithm.tryById(pqcSecret.algorithmId);
+    final pqcAlgorithm = slhDsa == null
+        ? PqSignatureAlgorithm.byId(pqcSecret.algorithmId)
+        : null;
     final classicalAlgorithm = PqClassicalSignatureAlgorithm.byId(
       classicalSecret.algorithmId,
     );
     final signer = PqForgeHybridSigner(
-      profile: profileForSignature(pqcAlgorithm),
+      profile: pqcAlgorithm == null
+          ? profileForSlhDsa(slhDsa!)
+          : profileForSignature(pqcAlgorithm),
       classicalAlgorithm: classicalAlgorithm,
     );
     final classicalKeyPair = await signer.classicalKeyPairFromSecret(
@@ -152,6 +158,7 @@ final class HybridSignCommand extends Command<void> {
           message: message,
           context: context,
           pqcAlgorithm: pqcAlgorithm,
+          slhDsa: slhDsa,
           policy: policy,
         );
         await writeJson(output, {
@@ -164,7 +171,8 @@ final class HybridSignCommand extends Command<void> {
     if (!quiet) {
       console.detail(
         'algorithm',
-        '${pqcAlgorithm.name} + ${classicalAlgorithm.id}, ${policy.name}',
+        '${slhDsa?.name ?? pqcAlgorithm!.name} + ${classicalAlgorithm.id}, '
+            '${policy.name}',
       );
       console.created(output.path);
     }
@@ -179,7 +187,7 @@ final class HybridVerifyCommand extends Command<void> {
         'signer-public',
         mandatory: true,
         valueHelp: 'file',
-        help: 'ML-DSA public key JSON (the post-quantum signer).',
+        help: 'ML-DSA or SLH-DSA public key JSON (the post-quantum signer).',
       )
       ..addOption(
         'classical-public',
@@ -221,7 +229,7 @@ final class HybridVerifyCommand extends Command<void> {
 
   @override
   String get description =>
-      'Verify an ML-DSA + Ed25519/ECDSA-P256 hybrid (dual) signature.';
+      'Verify an ML-DSA or SLH-DSA + Ed25519/ECDSA hybrid signature.';
 
   @override
   String get usageFooter => usageExamples([
@@ -237,7 +245,7 @@ final class HybridVerifyCommand extends Command<void> {
     final quiet = quietFrom(results);
     final pqcPublic = await readKey(results['signer-public'] as String);
     requireKind(pqcPublic, PqKeyKind.signaturePublic);
-    requireMlDsaSignatureKey(pqcPublic);
+    requireHeaderSignatureKey(pqcPublic);
     final classicalPublic = await readKey(
       results['classical-public'] as String,
     );
@@ -245,6 +253,22 @@ final class HybridVerifyCommand extends Command<void> {
 
     final sigJson = await readJsonMap(File(results['signature'] as String));
     final signature = PqHybridSignature.fromJson(sigJson);
+    final keySlh = PqSlhDsaAlgorithm.tryById(pqcPublic.algorithmId);
+    if (signature.slhDsa != null) {
+      if (keySlh != signature.slhDsa) {
+        throw PqForgeException(
+          'Post-quantum key is ${pqcPublic.algorithmId} but the signature '
+          'uses ${signature.pqcAlgorithmId}.',
+        );
+      }
+    } else if (keySlh != null ||
+        PqSignatureAlgorithm.byId(pqcPublic.algorithmId) !=
+            signature.pqcAlgorithm) {
+      throw PqForgeException(
+        'Post-quantum key is ${pqcPublic.algorithmId} but the signature '
+        'uses ${signature.pqcAlgorithmId}.',
+      );
+    }
     final policy = _policyFrom(results['policy'] as String);
     if (signature.policy != policy) {
       throw PqForgeException(
@@ -265,7 +289,9 @@ final class HybridVerifyCommand extends Command<void> {
     }
 
     final signer = PqForgeHybridSigner(
-      profile: profileForSignature(signature.pqcAlgorithm),
+      profile: signature.slhDsa != null
+          ? profileForSlhDsa(signature.slhDsa!)
+          : profileForSignature(signature.pqcAlgorithm!),
       classicalAlgorithm: signature.classicalAlgorithm,
     );
     final input = File(results['in'] as String);
@@ -273,7 +299,7 @@ final class HybridVerifyCommand extends Command<void> {
     final digestMode = sigJson['digest'] == 'sha-256';
     final context = optionalContext(results) ?? _storedContext(sigJson);
     final label =
-        '${signature.pqcAlgorithm.name} + ${signature.classicalAlgorithm.id}, '
+        '${signature.pqcAlgorithmName} + ${signature.classicalAlgorithm.id}, '
         '${signature.policy.name}';
 
     final progress = ProgressReporter(

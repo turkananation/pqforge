@@ -488,17 +488,22 @@ Future<PqWrappedKey> _wrapKeyInIsolate(
 
 /// Prints the suite/engine/signature detail lines every encrypt/decrypt
 /// command emits, so the algorithm combination in effect is always visible.
+String? _signerName(PqExportedKey? signer, PqForgeProfile profile) {
+  if (signer == null) return null;
+  return slhDsaOf(signer)?.name ?? profile.signature.name;
+}
+
 void _printSuite({
   required PqForgeProfile profile,
   required bool hybrid,
   PqForgeCipherSuite suite = PqForgeCipherSuite.aes256Gcm,
   PqForgeEngineProvider? engine,
-  PqSignatureAlgorithm? signature,
+  String? signature,
   int additionalRecipients = 0,
 }) {
   console.detail('suite', suiteLabel(profile, hybrid: hybrid, suite: suite));
   if (engine != null) console.detail('engine', engineLabel(engine));
-  if (signature != null) console.detail('signature', signature.name);
+  if (signature != null) console.detail('signature', signature);
   if (additionalRecipients > 0) {
     console.detail(
       'recipients',
@@ -615,6 +620,7 @@ final class EncryptCommand extends Command<void> {
             aad: aad,
             metadata: metadata,
             signerSecretKey: signer?.bytes,
+            slhDsa: slhDsaOf(signer),
             signerKeyId: signerKeyId(results, signer),
             onProgress: (processed, total) =>
                 progress.updateBytes(processed: processed, totalBytes: total),
@@ -632,7 +638,7 @@ final class EncryptCommand extends Command<void> {
           hybrid: recipients.hybrid,
           suite: cipher,
           engine: engineProvider,
-          signature: signer == null ? null : profile.signature,
+          signature: _signerName(signer, profile),
           additionalRecipients: recipients.additional.length,
         );
         console.created(output.path);
@@ -662,6 +668,7 @@ final class EncryptCommand extends Command<void> {
           metadata: metadata,
           profile: profile,
           signerSecretKey: signer?.bytes,
+          slhDsa: slhDsaOf(signer),
           signerKeyId: signerKeyId(results, signer),
         );
         await writeEnvelope(output, envelope);
@@ -673,7 +680,7 @@ final class EncryptCommand extends Command<void> {
         hybrid: recipients.hybrid,
         suite: cipher,
         engine: engineProvider,
-        signature: signer == null ? null : profile.signature,
+        signature: _signerName(signer, profile),
         additionalRecipients: recipients.additional.length,
       );
       console.created(output.path);
@@ -792,7 +799,7 @@ final class DecryptCommand extends Command<void> {
           hybrid: hybrid,
           suite: PqAeadSuite.of(peek.metadata),
           engine: engineProvider,
-          signature: peek.isSigned ? peek.signatureAlgorithm : null,
+          signature: peek.isSigned ? peek.signatureAlgorithmName : null,
         );
         console.created(output.path);
       }
@@ -836,7 +843,7 @@ final class DecryptCommand extends Command<void> {
         hybrid: PqHybridKemDem.isHybrid(envelope.metadata),
         suite: PqAeadSuite.of(envelope.metadata),
         engine: engineProvider,
-        signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
+        signature: envelope.isSigned ? envelope.signatureAlgorithmName : null,
       );
       console.created(output.path);
     }
@@ -962,6 +969,7 @@ final class EncryptFolderCommand extends Command<void> {
               relativePath: relativePath,
               aad: aad,
               signerSecretKey: signer?.bytes,
+              slhDsa: slhDsaOf(signer),
               signerKeyId: keyId,
               engineProvider: engineProvider,
               cipherSuite: cipher,
@@ -994,7 +1002,7 @@ final class EncryptFolderCommand extends Command<void> {
         hybrid: recipients.hybrid,
         suite: cipher,
         engine: engineProvider,
-        signature: signer == null ? null : profile.signature,
+        signature: _signerName(signer, profile),
         additionalRecipients: recipients.additional.length,
       );
       console.detail('output', outputDir.path);
@@ -1017,6 +1025,7 @@ Future<void> _encryptFolderEntryInIsolate({
   required String relativePath,
   required Uint8List? aad,
   required Uint8List? signerSecretKey,
+  required PqSlhDsaAlgorithm? slhDsa,
   required String? signerKeyId,
   required PqForgeEngineProvider engineProvider,
   required PqForgeCipherSuite cipherSuite,
@@ -1057,6 +1066,7 @@ Future<void> _encryptFolderEntryInIsolate({
         aad: entryAad,
         metadata: metadata,
         signerSecretKey: signerSecretKey,
+        slhDsa: slhDsa,
         signerKeyId: signerKeyId,
         onProgress: report,
       );
@@ -1074,6 +1084,7 @@ Future<void> _encryptFolderEntryInIsolate({
       metadata: metadata,
       profile: profile,
       signerSecretKey: signerSecretKey,
+      slhDsa: slhDsa,
       signerKeyId: signerKeyId,
     );
     await output.parent.create(recursive: true);
@@ -1397,6 +1408,7 @@ final class EncryptTextCommand extends Command<void> {
           },
           profile: profile,
           signerSecretKey: signer?.bytes,
+          slhDsa: slhDsaOf(signer),
           signerKeyId: signerKeyId(results, signer),
         );
         await writeEnvelope(output, envelope);
@@ -1406,7 +1418,7 @@ final class EncryptTextCommand extends Command<void> {
       _printSuite(
         profile: profile,
         hybrid: recipients.hybrid,
-        signature: signer == null ? null : profile.signature,
+        signature: _signerName(signer, profile),
         additionalRecipients: recipients.additional.length,
       );
       console.created(output.path);
@@ -1647,6 +1659,7 @@ final class EncryptMediaCommand extends Command<void> {
             aad: aad,
             metadata: metadata,
             signerSecretKey: signer?.bytes,
+            slhDsa: slhDsaOf(signer),
             signerKeyId: signerKeyId(results, signer),
             onProgress: (processed, total) =>
                 progress.updateBytes(processed: processed, totalBytes: total),
@@ -1663,7 +1676,7 @@ final class EncryptMediaCommand extends Command<void> {
           hybrid: recipients.hybrid,
           suite: cipher,
           engine: engineProvider,
-          signature: signer == null ? null : profile.signature,
+          signature: _signerName(signer, profile),
           additionalRecipients: recipients.additional.length,
         );
         console.created(output.path);
@@ -1689,6 +1702,7 @@ final class EncryptMediaCommand extends Command<void> {
           metadata: metadata,
           profile: profile,
           signerSecretKey: signer?.bytes,
+          slhDsa: slhDsaOf(signer),
           signerKeyId: signerKeyId(results, signer),
         );
         await writeEnvelope(output, envelope);
@@ -1700,7 +1714,7 @@ final class EncryptMediaCommand extends Command<void> {
         hybrid: recipients.hybrid,
         suite: cipher,
         engine: engineProvider,
-        signature: signer == null ? null : profile.signature,
+        signature: _signerName(signer, profile),
         additionalRecipients: recipients.additional.length,
       );
       console.created(output.path);
@@ -1818,7 +1832,7 @@ final class DecryptMediaCommand extends Command<void> {
           hybrid: hybrid,
           suite: PqAeadSuite.of(peek.metadata),
           engine: engineProvider,
-          signature: peek.isSigned ? peek.signatureAlgorithm : null,
+          signature: peek.isSigned ? peek.signatureAlgorithmName : null,
         );
         console.created(output.path);
       }
@@ -1864,7 +1878,7 @@ final class DecryptMediaCommand extends Command<void> {
         hybrid: PqHybridKemDem.isHybrid(envelope.metadata),
         suite: PqAeadSuite.of(envelope.metadata),
         engine: engineProvider,
-        signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
+        signature: envelope.isSigned ? envelope.signatureAlgorithmName : null,
       );
       console.created(output.path);
     }
@@ -1988,6 +2002,7 @@ final class PackCommand extends Command<void> {
             aad: PqRecipeMessages.folderPackAad(aad: aad),
             metadata: {'recipe': 'folder-pack', 'entryCount': entries.length},
             signerSecretKey: signer?.bytes,
+            slhDsa: slhDsaOf(signer),
             signerKeyId: signerKeyId(results, signer),
           );
       if (current != null) {
@@ -2004,7 +2019,7 @@ final class PackCommand extends Command<void> {
           hybrid: recipients.hybrid,
           suite: cipher,
           engine: engineProvider,
-          signature: signer == null ? null : profile.signature,
+          signature: _signerName(signer, profile),
           additionalRecipients: recipients.additional.length,
         );
         console.created(output.path);
@@ -2151,7 +2166,7 @@ final class UnpackCommand extends Command<void> {
           hybrid: hybrid,
           suite: PqAeadSuite.of(peek.metadata),
           engine: engineProvider,
-          signature: peek.isSigned ? peek.signatureAlgorithm : null,
+          signature: peek.isSigned ? peek.signatureAlgorithmName : null,
         );
         console.detail('output', outputDir.path);
       }
@@ -2204,7 +2219,7 @@ final class InspectCommand extends Command<void> {
         profile: header.profile,
         hybrid: hybrid,
         suite: PqAeadSuite.of(header.metadata),
-        signature: header.isSigned ? header.signatureAlgorithm : null,
+        signature: header.isSigned ? header.signatureAlgorithmName : null,
         additionalRecipients: PqMultiRecipient.parseEntries(header.metadata)
             .length,
       );
@@ -2227,7 +2242,7 @@ final class InspectCommand extends Command<void> {
         profile: envelope.profile,
         hybrid: hybrid,
         suite: PqAeadSuite.of(envelope.metadata),
-        signature: envelope.isSigned ? envelope.signatureAlgorithm : null,
+        signature: envelope.isSigned ? envelope.signatureAlgorithmName : null,
         additionalRecipients: PqMultiRecipient.parseEntries(envelope.metadata)
             .length,
       );

@@ -23,14 +23,15 @@ breaks `dart doc` via pqcrypto's Cookbook category). Import
 `package:pqcrypto/pqcrypto.dart` for `SlhDsa` / `SlhDsaParams` /
 `SlhDsaPreHash`. pqforge **composes** ML-KEM and ML-DSA into envelopes,
 recipes, `keygen`, and hybrid signatures. It **composes** SLH-DSA into
-`keygen`, key custody, and detached `sign`/`verify`. It does **not**
-compose SLH-DSA into envelope headers, streaming signatures, or `hybrid-sign`.
+`keygen`, custody, detached `sign`/`verify`, conversation bundle trust,
+one HashSLH-DSA header signature, and `hybrid-sign` version 2. X.509
+stays ML-DSA.
 
 | Dimension | Current pqforge coverage |
 | --- | --- |
 | ML-KEM | 512, 768, 1024 through `PqKemAlgorithm` |
 | ML-DSA | 44, 65, 87 through `PqSignatureAlgorithm` |
-| SLH-DSA | All 12 FIPS 205 sets through `PqSlhDsaAlgorithm` / `PqSlhDsaPrimitives`. `keygen` and detached `sign`/`verify`. **Not** in envelopes, `.pqfs` headers, or `hybrid-sign`. One opted-in leg of `compose-sign` |
+| SLH-DSA | All 12 FIPS 205 sets through `PqSlhDsaAlgorithm` / `PqSlhDsaPrimitives`. `keygen`, detached `sign`/`verify`, conversation bundle trust, one HashSLH-DSA header signature, and `hybrid-sign` version 2. X.509 stays ML-DSA. One opted-in leg of `compose-sign` |
 | KEM-DEM encryption | `encrypt`, `decrypt`, `sealToKemPublicKey`, file/record/email/text/media/folder helpers |
 | Signatures | raw ML-DSA signatures, documents, text, media, webhooks, artifacts, logs, tokens, identity bindings. Detached recipes also accept SLH-DSA via `slhDsa:` |
 | Hybrid KDF | `PqForgeCombiner` (`combine` = classical\|\|PQ then HKDF); `concatenateSharedSecrets` (concat only, for RFC 10024) |
@@ -100,18 +101,21 @@ What 0.4.4 composes:
 - CLI `keygen` (profile-matched SHAKE-f by default; `--slh-dsa`, `--no-slh-dsa`,
   `--slh-dsa-only`).
 - CLI `sign` / `verify` when the key `algorithmId` is an SLH-DSA set.
+- Envelope and `.pqfs` header signatures via `slhDsa:` (HashSLH-DSA, once).
+- `hybrid-sign` version 2 / `PqForgeHybridSigner.sign(slhDsa:)`.
+- Conversation bundle trust via `PqxdhTrust.slhDsa` and `ConversationLevel.hash*`.
 
-What remains ML-DSA-only:
+What stays ML-DSA:
 
 - `PqSignatureAlgorithm` (still `mlDsa44` / `mlDsa65` / `mlDsa87`).
-- Envelope and `.pqfs` header signatures.
-- `hybrid-sign` / `PqForgeHybridSigner` stay one ML-DSA leg plus one classical
-  leg. That classical leg is Ed25519, ECDSA-P256, ECDSA-P384, or ECDSA-P521.
-- `dualSign` is the same ML-DSA-plus-callback shape.
+- The default envelope signer, when the key you pass is ML-DSA.
+- `hybrid-sign` version 1.
+- `dualSign` is still the ML-DSA-plus-callback shape.
+- X.509 certificates.
 
 `compose-sign` is separate. It is an opt-in 2-leg or 3-leg container. SLH-DSA
-is a leg only when the caller passes it. That does not put SLH-DSA on an
-envelope or on `hybrid-sign`.
+is a leg when the caller passes it. A header signature is one digest
+signature, not a per-frame signature.
 
 `issueToken`, signed logs, and identity bindings accepted only ML-DSA through
 0.4.9 because those containers stored a `PqSignatureAlgorithm`. 0.4.10 stores
@@ -120,8 +124,8 @@ tokens, logs, and bindings keep `preHash: false`. SLH-DSA uses the recipe
 pre-hash path.
 
 Slow `s` parameter sets require `allowSlowSigning` at the primitive layer,
-matching `pqcrypto`. Do not document SLH-DSA as an envelope or hybrid-signer
-algorithm.
+matching `pqcrypto`. Named `f` sets are the fast path. A header or
+`hybrid-sign` call that names an `s` set sets that flag.
 
 ## Building Blocks Mapping
 

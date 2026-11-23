@@ -77,12 +77,18 @@ for `KDF_SCKA_CK`. Those inputs do not depend on the chain key or the
 counter. This package follows section 5.2.
 
 The pure-Dart split runs on `Isolate.run` when `dart:isolate` exists.
-`PqLattice.provider` is not consulted: that provider only has a full
-encapsulate. The session is not serialized. The expanded decapsulation
-key is wiped when the epoch finishes or when `wipe` is called. A bad
-MAC or a bad encapsulation-key hash throws `PqForgeException` ("No
-secret was derived.") and closes the session. `PqFipsMode` only refuses
-ChaCha20-Poly1305. It does not turn this into a FIPS handshake.
+Pass `offload: false` to stay on the caller isolate. `PqLattice.provider`
+is not consulted: that provider only has a full encapsulate.
+`chunksPerMessage` pulls that many codewords inside one chain step. The
+default is 1, which is the `TR01` version 1 header. More than one chunk
+is `TR01` version 2. `encryptHeaders` wraps that header as `TRH1`.
+`toBytes` / `fromBytes` are the session record. A live epoch stores the
+64-byte seed (`d || z`) and re-expands it. The expanded decapsulation
+key is wiped when the epoch finishes or when `wipe` is called, and it
+is not written. A bad MAC or a bad encapsulation-key hash throws
+`PqForgeException` ("No secret was derived.") and closes the session.
+`PqFipsMode` only refuses ChaCha20-Poly1305. It does not turn this into
+a FIPS handshake.
 
 The state added beside the Diffie-Hellman ratchet is an epoch counter, a
 send chain and a receive chain per epoch, skipped message keys per epoch,
@@ -98,7 +104,9 @@ the attacker did not see has been mixed in. That takes a stretch of
 traffic, not one reply.
 
 SPQR does not authenticate the session. PQXDH already did that, and that
-authentication is classical.
+authentication is classical. `ConversationSession` also checks an
+ML-DSA-65 signature on the bundle. That check is not an input to this
+ratchet and not an input to SK.
 
 SPQR is not X-Wing. The braid uses ML-KEM-768 itself. There is no X25519
 share inside the braid secret, and there is no

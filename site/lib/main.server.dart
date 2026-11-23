@@ -38,6 +38,7 @@ void main() {
                   SidebarLink(text: 'Envelopes', href: 'envelopes'),
                   SidebarLink(text: 'Keys', href: 'keys'),
                   SidebarLink(text: 'HPKE', href: 'hpke'),
+                  SidebarLink(text: 'Conversations', href: 'conversations'),
                   SidebarLink(text: 'Certificates', href: 'certificates'),
                   SidebarLink(text: 'Symmetric', href: 'symmetric'),
                   SidebarLink(text: 'Bytes', href: 'bytes'),
@@ -60,7 +61,7 @@ void main() {
               a(href: 'https://yardenah.com', target: Target.blank, [
                 Component.text('A product of Yardenah PQ'),
               ]),
-              Component.text('. pqforge 0.4.13. Not a FIPS 140 module. '),
+              Component.text('. pqforge 0.4.15. Not a FIPS 140 module. '),
               a(
                 href: 'https://github.com/turkananation/pqforge',
                 target: Target.blank,

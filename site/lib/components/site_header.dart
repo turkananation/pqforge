@@ -21,6 +21,7 @@ class SiteHeader extends StatelessComponent {
         nav(classes: 'pqf-nav', [
           a(href: 'https://yardenah.com', [Component.text('Yardenah')]),
           a(href: 'hpke', [Component.text('HPKE')]),
+          a(href: 'conversations', [Component.text('Conversations')]),
           a(href: 'certificates', [Component.text('Certificates')]),
           a(href: 'symmetric', [Component.text('Symmetric')]),
           a(href: 'signatures', [Component.text('Signatures')]),

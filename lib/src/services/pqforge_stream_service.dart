@@ -37,6 +37,17 @@ void _requireSendableRandom() {
   );
 }
 
+int get _maxHeaderSignatureBytes {
+  var max = 0;
+  for (final algorithm in PqSignatureAlgorithm.values) {
+    if (algorithm.signatureBytes > max) max = algorithm.signatureBytes;
+  }
+  for (final algorithm in PqSlhDsaAlgorithm.values) {
+    if (algorithm.signatureBytes > max) max = algorithm.signatureBytes;
+  }
+  return max;
+}
+
 /// Encrypts and decrypts files in bounded memory using the `.pqfs` streaming
 /// envelope. Construct once and reuse; the [engine] is the hardware-acceleration
 /// lever.
@@ -119,6 +130,7 @@ class PqForgeStreamCipher {
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
     PqSignatureAlgorithm? signatureAlgorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
     PqForgeEngineProvider engineProvider =
@@ -144,6 +156,7 @@ class PqForgeStreamCipher {
         metadata: metadata,
         signerSecretKey: signerSecretKey,
         signatureAlgorithm: signatureAlgorithm,
+        slhDsa: slhDsa,
         signerKeyId: signerKeyId,
         frameSize: frameSize,
       );
@@ -203,6 +216,7 @@ class PqForgeStreamCipher {
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
     PqSignatureAlgorithm? signatureAlgorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
     void Function(int bytesProcessed, int? totalBytes)? onProgress,
@@ -217,6 +231,7 @@ class PqForgeStreamCipher {
       metadata: metadata,
       signerSecretKey: signerSecretKey,
       signatureAlgorithm: signatureAlgorithm,
+      slhDsa: slhDsa,
       signerKeyId: signerKeyId,
       frameSize: frameSize,
     );
@@ -288,6 +303,7 @@ class PqForgeStreamCipher {
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
     PqSignatureAlgorithm? signatureAlgorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     String? signerKeyId,
     int frameSize = PqStreamingEnvelope.defaultFrameSize,
   }) async {
@@ -301,6 +317,7 @@ class PqForgeStreamCipher {
       metadata: metadata,
       signerSecretKey: signerSecretKey,
       signatureAlgorithm: signatureAlgorithm,
+      slhDsa: slhDsa,
       signerKeyId: signerKeyId,
       frameSize: frameSize,
     );
@@ -364,12 +381,20 @@ class PqForgeStreamCipher {
     required Map<String, Object?> metadata,
     required Uint8List? signerSecretKey,
     required PqSignatureAlgorithm? signatureAlgorithm,
+    required PqSlhDsaAlgorithm? slhDsa,
     required String? signerKeyId,
     required int frameSize,
   }) async {
-    final signatureAlg = signerSecretKey == null
-        ? signatureAlgorithm
-        : (signatureAlgorithm ?? profile.signature);
+    if (signatureAlgorithm != null && slhDsa != null) {
+      throw const PqForgeException(
+        'Pass only one of signatureAlgorithm (ML-DSA) or slhDsa (SLH-DSA)',
+      );
+    }
+    final signatureAlg = slhDsa != null
+        ? null
+        : (signerSecretKey == null
+              ? signatureAlgorithm
+              : (signatureAlgorithm ?? profile.signature));
     requireWritableEnvelopeMetadata(metadata);
     final encapsulated = PqKemPrimitives.encapsulate(
       profile.kem,
@@ -411,6 +436,7 @@ class PqForgeStreamCipher {
       profile: profile,
       kemAlgorithm: profile.kem,
       signatureAlgorithm: signatureAlg,
+      slhDsa: slhDsa,
       kemCiphertext: encapsulated.ciphertext,
       nonceSalt: PqBytes.randomBytes(PqStreamingEnvelope.nonceSaltBytes),
       frameSize: frameSize,
@@ -421,6 +447,15 @@ class PqForgeStreamCipher {
     final headerCore = PqStreamingEnvelope.serializeHeaderCore(header);
     final signature = signerSecretKey == null
         ? Uint8List(0)
+        : slhDsa != null
+        ? PqSlhDsaPrimitives.sign(
+            slhDsa,
+            signerSecretKey,
+            headerCore,
+            context: PqStreamingEnvelope.signatureContext(),
+            preHash: true,
+            allowSlowSigning: !slhDsa.isFast,
+          )
         : PqSignaturePrimitives.sign(
             signatureAlg!,
             signerSecretKey,
@@ -574,17 +609,28 @@ class PqForgeStreamCipher {
             'signerPublicKey is required for a signed streaming envelope',
           );
         }
-        final ok = PqSignaturePrimitives.verify(
-          header.signatureAlgorithm!,
-          signerPublicKey,
-          container.headerCore,
-          container.signature!,
-          context: PqStreamingEnvelope.signatureContext(),
-          preHash: true,
-        );
+        final ok = header.slhDsa != null
+            ? PqSlhDsaPrimitives.verify(
+                header.slhDsa!,
+                signerPublicKey,
+                container.headerCore,
+                container.signature!,
+                context: PqStreamingEnvelope.signatureContext(),
+                preHash: true,
+              )
+            : PqSignaturePrimitives.verify(
+                header.signatureAlgorithm!,
+                signerPublicKey,
+                container.headerCore,
+                container.signature!,
+                context: PqStreamingEnvelope.signatureContext(),
+                preHash: true,
+              );
         if (!ok) {
-          throw const PqForgeException(
-            'ML-DSA streaming header signature verification failed',
+          throw PqForgeException(
+            header.slhDsa != null
+                ? 'SLH-DSA streaming header signature verification failed'
+                : 'ML-DSA streaming header signature verification failed',
           );
         }
       }
@@ -841,10 +887,7 @@ class PqForgeStreamCipher {
     }
     final headerCore = await _readExactly(source, headerCoreLen);
     final signatureLen = _readUint32(await _readExactly(source, 4));
-    final maxSignature = PqSignatureAlgorithm.values
-        .map((algorithm) => algorithm.signatureBytes)
-        .reduce((a, b) => a > b ? a : b);
-    if (signatureLen > maxSignature) {
+    if (signatureLen > _maxHeaderSignatureBytes) {
       throw PqForgeException(
         'Invalid streaming signature length: $signatureLen',
       );

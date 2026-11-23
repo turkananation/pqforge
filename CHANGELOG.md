@@ -16,6 +16,51 @@ public key. A Double Ratchet starts from `SK`. The pure-Dart KEM runs on
 an isolate when `dart:isolate` exists. Not Signal Messenger, not a FIPS
 handshake, and not a CLI command.
 
+`Pqxdh.signedPrekeyAuthentic` checks a signed prekey.
+`Pqxdh.kemPrekeyAuthentic` checks the ML-KEM key. Version 1 of `PQX1`
+is unchanged. Version 2 carries a signed-prekey id and a one-time
+prekey id. Version 1 stays ML-KEM-1024. A version 2 message may be
+ML-KEM-512, ML-KEM-768, or ML-KEM-1024. Both sides pass the KEM. It is
+not on the wire. `trustKey` signs `bundleSigningBytes` with ML-DSA-44,
+ML-DSA-65, ML-DSA-87, or any of the twelve SLH-DSA sets. The algorithm
+id is on the signed message. The signature is not mixed into SK.
+`Pqxdh.mlDsaAuthentic` is the ML-DSA-65 check. `Pqxdh.trustAuthentic`
+is the check for every set. An `s` set is allowed and slow. An `f` set
+is the fast hash-based choice. The signature is on the bundle, once.
+
+`DoubleRatchet` can encrypt headers (`encryptHeaders`). The layout is
+`DRH1`. The header nonce is 12 random bytes because the header key is
+reused for one sending chain. It is not a 128-bit nonce and not
+libsignal's header bytes. The body nonce stays 12 zero bytes.
+`TripleRatchet` grows the same option as `TRH1`. `chunksPerMessage`
+attaches more than one 32-byte braid chunk to one chain step. The
+default stays 1. `toBytes` stores the 64-byte ML-KEM seed and
+re-expands it. The expanded decapsulation key is not in the record.
+
+`ConversationSession` is the recipe. `start` and `accept` take a
+`ConversationLevel` (KEM, trust algorithm, AEAD) and a
+`ConversationRatchet`. `accept` requires the ratchet. A flipped `CV01`
+kind byte throws before SK is used. `trustPublicKey` is the pin. It is
+compared with `rangeEquals` and then verified. The pin is not whatever
+key arrived in the directory response. The default level is ML-KEM-1024,
+ML-DSA-65, and AES-256-GCM. `compact`, `balanced`, `maximum`, and
+`hashBased` are the other built-ins. Headers are encrypted. The triple
+recipe sends four chunks unless the caller changes it. `offload: false`
+runs the KEM and the trust signature on the caller isolate. Not Signal,
+not libsignal bytes, not a FIPS handshake, and not a CLI command. No
+`hashBased` is ML-KEM-1024 and SLH-DSA-SHAKE-128f. `hashCompact`,
+`hashBalanced`, and `hashMaximum` match the profile SHAKE-f sets.
+`ConversationLevel.fromProfile` takes the same choice.
+
+An SLH-DSA key can sign an envelope or a `.pqfs` header. That signature
+is HashSLH-DSA over the existing digest, once per container, not once
+per frame. The algorithm id rides in the signature-algorithm string
+that was already there. Old files still open. Passing an ML-DSA key
+still signs with ML-DSA. `hybrid-sign` version 2 is one SLH-DSA
+signature plus the same classical leg. Version 1 stays ML-DSA. Use
+`--digest` for a large file. X.509 stays ML-DSA. An `s` set is valid
+and slow. The fast sets are SHAKE-128f, SHAKE-192f, and SHAKE-256f.
+
 Ed25519 inversion uses the ref10 addition chain. Scalar multiplication
 uses a 4-bit window. Canonical compares use `rangeEquals`. The SDK
 constraint is `^3.14.0`. A 16-bit limb product does not fit in signed

@@ -43,7 +43,7 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | [protocols/XWING.md](protocols/XWING.md) | X-Wing KEM. `PqXWing` and `pqforge hpke`. Not `.pqf` |
 | [protocols/DOUBLE_RATCHET.md](protocols/DOUBLE_RATCHET.md) | Double Ratchet. Shipped. Not libsignal bytes |
 | [protocols/XEDDSA.md](protocols/XEDDSA.md) | XEdDSA. `PqXeddsa`. libsignal Curve25519 bytes |
-| [protocols/PQXDH.md](protocols/PQXDH.md) | PQXDH revision 3. Curve25519, ML-KEM-1024, not Signal Messenger |
+| [protocols/PQXDH.md](protocols/PQXDH.md) | PQXDH revision 3. Version 2 prekey ids. Optional ML-DSA-65 is not mixed into SK |
 | [protocols/SPARSE_POST_QUANTUM_RATCHET.md](protocols/SPARSE_POST_QUANTUM_RATCHET.md) | Sparse Post-Quantum Ratchet. `TripleRatchet`. Not libsignal bytes |
 
 ### Reference
@@ -66,6 +66,8 @@ surface, and [`wiki/`](../wiki/) for the GitHub Wiki source.
 | [cookbook/WEBHOOKS_AND_TOKENS.md](cookbook/WEBHOOKS_AND_TOKENS.md) | Webhook integrity and signed tokens |
 | [cookbook/GOVERNMENT_RECORDS.md](cookbook/GOVERNMENT_RECORDS.md) | Public-sector records |
 | [cookbook/MEDICAL_RECORDS.md](cookbook/MEDICAL_RECORDS.md) | Patient records |
+| [cookbook/CONVERSATIONS.md](cookbook/CONVERSATIONS.md) | PQXDH plus a Double or Triple Ratchet |
+| [cookbook/HPKE_AND_XWING.md](cookbook/HPKE_AND_XWING.md) | RFC 9180 HPKE and X-Wing, and what each is not |
 
 ### Architecture
 

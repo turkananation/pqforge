@@ -173,12 +173,25 @@ enum PqSignatureAlgorithm {
   }
 }
 
+/// Empty means no header signature. Otherwise exactly one family.
+({PqSignatureAlgorithm? mlDsa, PqSlhDsaAlgorithm? slhDsa})
+splitHeaderSignatureId(String id) {
+  if (id.isEmpty) return (mlDsa: null, slhDsa: null);
+  final slh = PqSlhDsaAlgorithm.tryById(id);
+  if (slh != null) return (mlDsa: null, slhDsa: slh);
+  return (mlDsa: PqSignatureAlgorithm.byId(id), slhDsa: null);
+}
+
 /// FIPS 205 SLH-DSA parameter sets composed by pqforge.
 ///
 /// All 12 standardized sets (SHA-2 and SHAKE × 128s/128f/192s/192f/256s/256f).
-/// Key generation, custody, and detached `sign`/`verify` are first-class.
-/// Envelope headers, streaming signatures, and `hybrid-sign` stay ML-DSA-only:
-/// SLH-DSA signatures are 8–50 KiB and the `s` sets are slow by design.
+/// Key generation, custody, detached `sign`/`verify`, conversation bundle
+/// trust, envelope and streaming header signatures, and the post-quantum
+/// leg of `hybrid-sign` are first-class. The fast sets are the `f` sets.
+/// An `s` set is valid and slow; the caller has to name it.
+/// A header signature is HashSLH-DSA over a digest, once per container,
+/// not once per frame and not once per chat message. The default envelope
+/// signer is still the profile's ML-DSA key when that is the key you pass.
 enum PqSlhDsaAlgorithm {
   sha2128s(
     id: 'slh-dsa-sha2-128s',

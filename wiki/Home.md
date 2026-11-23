@@ -16,11 +16,11 @@ for the boundary.
 ## Pages
 
 - [CLI Guide](CLI-Guide) — every command and flag
-- [Recipe Catalog](Recipe-Catalog) — pick the surface for your app
+- [HPKE](HPKE) — RFC 9180 seal, open, and export, plus X-Wing (`0x647A`)
+- [Recipe Catalog](Recipe-Catalog) — pick the surface for your app, including a direct conversation
 - [Streaming And Large Files](Streaming-And-Large-Files) — gigabyte files, `pack`/`unpack`
 - [Multi-Recipient And Hybrid](Multi-Recipient-And-Hybrid) — one ciphertext for many; PQC + X25519
 - [Hybrid Sessions](Hybrid-Sessions) — X25519 + ML-KEM agreement, dual signatures
-- [HPKE](HPKE) — RFC 9180 seal, open, and export
 - [Key Custody](Key-Custody) — wrapped secret keys and stores
 - [Performance](Performance) — engines, ciphers, measured throughput
 - [pqforge vs pqcrypto](pqforge-vs-pqcrypto) — which package to use
@@ -50,9 +50,11 @@ dart run pqforge decrypt-folder \
 
 - ML-KEM KEM-DEM envelopes (`.pqf` one-shot, `.pqfs` streaming).
 - ML-DSA signatures, plus hybrid ML-DSA + Ed25519/ECDSA-P256 and standalone ECDSA-P256. `hybrid-sign` also accepts opt-in ECDSA-P384 and ECDSA-P521. `compose-sign` is a separate 2-leg or 3-leg command.
-- SLH-DSA (FIPS 205, all 12 sets) composed into `keygen`, custody, and detached `sign`/`verify` (documents, text, media, webhooks, artifacts, tokens, logs, identity bindings). Not used for envelopes or `hybrid-sign`. It can be one opted-in leg of `compose-sign`.
+- SLH-DSA (FIPS 205, all 12 sets) is an equal signature family: `keygen`, custody, detached `sign`/`verify`, conversation bundle trust, one header signature per envelope or `.pqfs` container, and `hybrid-sign` version 2. Fast sets are SHAKE-f. X.509 stays ML-DSA. It can also be one leg of `compose-sign`.
 - AES-256-GCM and ChaCha20-Poly1305 AEAD on a pure-Dart or native engine.
 - X25519 + ML-KEM hybrid key agreement, X448, P-256/P-384 ECDH for TLS hybrid groups, and P-521 ECDH for HPKE (`PqNistEcdh`). P-521 ECDH is not a signature.
+- RFC 9180 HPKE, and X-Wing (`HpkeKem.xWing`) for base and PSK. Not a `.pqf` algorithm.
+- Direct conversations: `ConversationSession` runs PQXDH and then a Double Ratchet or a Triple Ratchet. Header encryption is `DRH1` / `TRH1`. Not Signal and not libsignal bytes.
 - Bounded-memory gigabyte streaming and whole-folder `pack`/`unpack`.
 - Multi-recipient envelopes — one sealed payload, key-wrapped per recipient.
 - Argon2id + AES-GCM wrapped key custody (PBKDF2 under FIPS mode).

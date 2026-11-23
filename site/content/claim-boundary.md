@@ -6,14 +6,28 @@ description: What pqforge is allowed to say about itself.
 Allowed:
 
 - FIPS 203-aligned ML-KEM, FIPS 204-aligned ML-DSA, and FIPS 205-aligned
-  SLH-DSA, through pqcrypto. SLH-DSA is keygen, custody, and detached
-  sign/verify. Envelopes and hybrid-sign stay ML-DSA.
+  SLH-DSA, through pqcrypto. SLH-DSA signs detached payloads, a
+  conversation bundle (once), an envelope or `.pqfs` header (HashSLH-DSA,
+  once), and `hybrid-sign` version 2. Fast sets are SHAKE-f. An ML-DSA
+  key still signs with ML-DSA. X.509 stays ML-DSA.
 - Application composition: KEM-DEM, AEAD sessions, hybrids, streaming,
   multi-recipient envelopes, wrapped keys, recipes, X.509, PKCS#10,
   RFC 9180 HPKE, and the CLI.
 - Opt-in signature legs in the same release: `slhDsa:` on detached recipes,
   `compose-sign` (2 or 3 legs), and ECDSA-P384 / ECDSA-P521. `hybrid-sign`
-  stays one ML-DSA leg plus one classical leg.
+  version 1 is one ML-DSA leg plus one classical leg. Version 2 is one
+  SLH-DSA leg plus that classical leg.
+- RFC 9180 HPKE, plus X-Wing (`PqXWing`, `HpkeKem.xWing`, `0x647A`)
+  for base and PSK. Auth throws. Not a FIPS construction. No BoringSSL
+  or OpenSSL evidence for that id. Not a `.pqf` algorithm.
+- A Double Ratchet and a Triple Ratchet. Header encryption is opt-in
+  `DRH1` / `TRH1`, with a 12-byte header nonce, not libsignal bytes.
+  `ConversationSession` chooses the ratchet and a `ConversationLevel`:
+  ML-KEM-512, ML-KEM-768, or ML-KEM-1024, plus ML-DSA-44/65/87 or any
+  SLH-DSA set. That signature is on the bundle, once. It is not mixed
+  into SK. The pin is the caller's public key, not the directory's copy.
+  The braid session record stores a 64-byte seed. The expanded
+  decapsulation key is not serialized.
 - Best-effort zeroization through `package:zeroize`.
 - Brainpool ECDH (RFC 5639, the three TLS groups) and RFC 7919 FFDHE as
   agreement. The byte contract matches OpenSSL. Not a TLS stack.
@@ -28,7 +42,11 @@ Not allowed:
 - "AES signs documents." AES encrypts. ML-DSA, SLH-DSA, ECDSA, Ed25519, or
   RSA signs.
 - RC4.
-- HPKE as a FIPS module or as TLS.
+- HPKE as a FIPS module or as TLS. X-Wing as a FIPS construction, an
+  authenticated HPKE KEM, or a BoringSSL or OpenSSL interop claim.
+- Signal Messenger, libsignal protobuf, or a FIPS handshake for PQXDH,
+  the braid, or `ConversationSession`. A session record is not a
+  protocol message.
 - An OpenSSL HPKE claim for X25519, P-256, or P-384.
 - A BoringSSL HPKE claim for X448, P-521, PSK, or HKDF-SHA512.
 - A certificate as a WebPKI CA or a trust store.
