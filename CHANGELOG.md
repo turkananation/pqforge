@@ -47,7 +47,7 @@ ML-DSA-65, and AES-256-GCM. `compact`, `balanced`, `maximum`, and
 `hashBased` are the other built-ins. Headers are encrypted. The triple
 recipe sends four chunks unless the caller changes it. `offload: false`
 runs the KEM and the trust signature on the caller isolate. Not Signal,
-not libsignal bytes, not a FIPS handshake, and not a CLI command. No
+not libsignal bytes, not a FIPS handshake, and not a CLI command.
 `hashBased` is ML-KEM-1024 and SLH-DSA-SHAKE-128f. `hashCompact`,
 `hashBalanced`, and `hashMaximum` match the profile SHAKE-f sets.
 `ConversationLevel.fromProfile` takes the same choice.
