@@ -4,9 +4,10 @@ Allowed claims:
 
 - FIPS 203-aligned ML-KEM through `pqcrypto`.
 - FIPS 204-aligned ML-DSA through `pqcrypto`.
-- FIPS 205-aligned SLH-DSA through `pqcrypto`. `pqforge` composes it into
-  `keygen`, key custody, and detached `sign`/`verify`. Envelope headers,
-  streaming signatures, and `hybrid-sign` remain ML-DSA-only.
+- FIPS 205-aligned SLH-DSA through `pqcrypto`. `pqforge` uses it for
+  `keygen`, custody, detached `sign`/`verify`, conversation bundle trust,
+  one header signature per envelope or `.pqfs` container, and `hybrid-sign`
+  version 2. X.509 stays ML-DSA. An ML-DSA key still signs with ML-DSA.
 - Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key
   custody, signatures, recipes, and CLI workflows.
 - X.509 certificates and PKCS#10 requests that `openssl req` can read. That

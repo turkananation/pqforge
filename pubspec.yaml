@@ -3,7 +3,7 @@ description: >-
   Pure-Dart post-quantum crypto for Dart, Flutter, and Serverpod: ML-KEM,
   ML-DSA, SLH-DSA, RFC 9180 HPKE, AES-GCM, ChaCha20-Poly1305, hybrids,
   streaming, and a CLI.
-version: 0.4.14
+version: 0.4.15
 repository: https://github.com/turkananation/pqforge/
 homepage: https://turkananation.github.io/pqforge/
 documentation: https://github.com/turkananation/pqforge/wiki/
@@ -15,7 +15,7 @@ topics:
   - flutter
 
 environment:
-  sdk: ^3.12.0
+  sdk: ^3.14.0
 
 dependencies:
   args: ^2.7.0

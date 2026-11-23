@@ -93,6 +93,29 @@ Future<void> main() async {
     info: info,
   );
   print('x448 open: ${utf8.decode(wideOpen.plaintext)}');
+
+  final xwing = await PqHpke.generateKeyPair(HpkeKem.xWing);
+  const xwingSuite = HpkeSuite(kem: HpkeKem.xWing, aead: HpkeAead.aes256Gcm);
+  final xwingSealed = await PqHpke.seal(
+    suite: xwingSuite,
+    mode: HpkeMode.base,
+    recipientPublicKey: xwing.publicKey,
+    info: info,
+    plaintext: plaintext,
+  );
+  final xwingOpen = await PqHpke.open(
+    suite: xwingSuite,
+    mode: HpkeMode.base,
+    enc: xwingSealed.enc,
+    ciphertext: xwingSealed.ciphertext,
+    recipientKey: xwing,
+    info: info,
+  );
+  print(
+    'xwing open: ${utf8.decode(xwingOpen.plaintext)} '
+    '(enc ${xwingSealed.enc.length})',
+  );
+
   setup.context.dispose();
   peer.dispose();
   sealed.context.dispose();

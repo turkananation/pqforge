@@ -144,6 +144,35 @@ void main() {
       );
     });
 
+    test('SLH-DSA-SHAKE-128f signs the header once', () async {
+      final original = payload(3000);
+      final src = input('h.bin', original);
+      final enc = File('${dir.path}/h.pqf');
+      final dec = File('${dir.path}/h.out');
+      final signer = PqSlhDsaPrimitives.generateKeyPair(
+        PqSlhDsaAlgorithm.shake128f,
+      );
+      await cipher.encryptFile(
+        recipientPublicKey: keys.kemKeyPair.publicKey,
+        input: src,
+        output: enc,
+        profile: PqForgeProfile.compact,
+        frameSize: frameSize,
+        signerSecretKey: signer.secretKey,
+        slhDsa: PqSlhDsaAlgorithm.shake128f,
+      );
+      final header = await cipher.readHeader(enc);
+      expect(header.slhDsa, PqSlhDsaAlgorithm.shake128f);
+      expect(header.signatureAlgorithm, isNull);
+      await cipher.decryptFile(
+        recipientSecretKey: keys.kemKeyPair.secretKey,
+        input: enc,
+        output: dec,
+        signerPublicKey: signer.publicKey,
+      );
+      expect(dec.readAsBytesSync(), original);
+    });
+
     test('AAD is bound and a mismatch is rejected', () async {
       final original = payload(3000);
       final src = input('a.bin', original);

@@ -7,8 +7,9 @@ one pqforge AEAD. It is not PQXDH, not the Sparse Post-Quantum Ratchet,
 not a libsignal byte match, and not a FIPS module.
 
 Specification: [The Double Ratchet Algorithm](https://signal.org/docs/specifications/doubleratchet/),
-revision 4, 2025-11-04. Sections 3 and 7.2 are the parts this session
-implements. Section 5 (the Sparse Post-Quantum Ratchet) is not.
+revision 4, 2025-11-04. Sections 3 and 7.2 are this session.
+Section 5 is [`TripleRatchet`](SPARSE_POST_QUANTUM_RATCHET.md), a
+separate type. It does not replace the X25519 step.
 
 The Double Ratchet starts from a 32-byte shared secret that some other
 protocol already agreed. [PQXDH](PQXDH.md) is one way to agree that
@@ -68,6 +69,24 @@ bytes. It is 40 bytes, big-endian: `dh (32) || pn (uint32) || n (uint32)`.
 The message is that header followed by `ciphertext || tag`. `parse` views
 the buffer. It does not copy it. Associated data is the caller's bytes
 concatenated with the header. An empty associated data is the header alone.
+
+## Header encryption
+
+`encryptHeaders: true` follows section 4. `KDF_RK_HE` returns 96 bytes:
+root, chain, next header key. The two shared header keys are
+HKDF(SK, info `pqforge-header-keys-v1`), not a second PQXDH output.
+
+The wire is `DRH1 || version || nonce(12) || length || AEAD(header) || body`.
+The body associated data is the caller's bytes in front of the encrypted
+header. The body nonce is still 12 zero bytes. The header nonce is 12
+random bytes carried beside the ciphertext. Section 4 asks for a
+non-repeating nonce because the header key is reused. AES-GCM's nonce is
+12 bytes, not 16, so this is not a 128-bit random nonce. A header key
+lasts one sending chain, then the Diffie-Hellman ratchet replaces it.
+
+Session version 2 is the record that contains those header keys. Version
+1 records stay clear-header sessions. This is not libsignal's header
+encryption.
 
 HMAC is `hmacSha256` or `hmacSha512` from `package:pqcrypto`. pqcrypto does
 not export HKDF, so `KDF_RK` is RFC 5869 over that HMAC. HMAC-SHA-256 is

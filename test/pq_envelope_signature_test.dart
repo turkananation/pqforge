@@ -43,6 +43,47 @@ void main() {
       );
     });
 
+    test('HashSLH-DSA-SHAKE-128f signs the digest once and round-trips', () {
+      final recipient = forge.generateKemKeyPair();
+      final signer = PqSlhDsaPrimitives.generateKeyPair(
+        PqSlhDsaAlgorithm.shake128f,
+      );
+      final envelope = forge.encrypt(
+        recipient.publicKey,
+        message,
+        signerSecretKey: signer.secretKey,
+        slhDsa: PqSlhDsaAlgorithm.shake128f,
+        signerKeyId: 'hash-signer',
+      );
+      expect(envelope.slhDsa, PqSlhDsaAlgorithm.shake128f);
+      expect(envelope.signatureAlgorithm, isNull);
+      expect(
+        envelope.signature,
+        hasLength(PqSlhDsaAlgorithm.shake128f.signatureBytes),
+      );
+      expect(envelope.signature!.length, greaterThan(message.length));
+
+      final restored = PqEnvelope.fromBinary(envelope.toBinary());
+      expect(restored.slhDsa, PqSlhDsaAlgorithm.shake128f);
+      final fromJson = PqEnvelope.fromJson(envelope.toJson());
+      expect(
+        forge.decrypt(
+          recipient.secretKey,
+          fromJson,
+          signerPublicKey: signer.publicKey,
+        ),
+        message,
+      );
+      expect(
+        () => forge.decrypt(
+          recipient.secretKey,
+          restored,
+          signerPublicKey: forge.generateSignatureKeyPair().publicKey,
+        ),
+        throwsA(isA<PqForgeException>()),
+      );
+    });
+
     test('unsigned envelopes carry no signature', () {
       final recipient = forge.generateKemKeyPair();
       final envelope = forge.encrypt(recipient.publicKey, message);

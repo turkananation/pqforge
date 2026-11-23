@@ -21,6 +21,7 @@ class SiteHeader extends StatelessComponent {
         nav(classes: 'pqf-nav', [
           a(href: 'https://yardenah.com', [Component.text('Yardenah')]),
           a(href: 'hpke', [Component.text('HPKE')]),
+          a(href: 'conversations', [Component.text('Conversations')]),
           a(href: 'certificates', [Component.text('Certificates')]),
           a(href: 'symmetric', [Component.text('Symmetric')]),
           a(href: 'signatures', [Component.text('Signatures')]),
@@ -45,9 +46,8 @@ class SiteHeader extends StatelessComponent {
           bottom: BorderSide(color: Color('#d6f25c33'), width: 1.px),
         ),
       ),
-      css(
-        '.pqf-title',
-      ).styles(fontWeight: FontWeight.w800, letterSpacing: Unit.zero),
+      css('.pqf-title')
+          .styles(fontWeight: FontWeight.w800, letterSpacing: Unit.zero),
       css('.pqf-nav', [
         css('&').styles(
           display: Display.flex,

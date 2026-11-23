@@ -15,7 +15,7 @@ That one entrypoint provides the whole stack:
 | Built-in classical hybrid | `PqForgeHybridKeyAgreement` (X25519 + ML-KEM), `PqForgeHybridSigner` (ML-DSA + Ed25519) |
 | Certificates | `PqX509` parse, mint, and path check. `PqEcdsaP384`, `PqRsa`, synchronous `PqEd25519`, and synchronous `PqEd448` sit beside `PqEcdsaP256`. Ed448 is not an X.509 algorithm. P-384 ECDSA is not `p384SharedSecret`. |
 | HPKE | `PqHpke` — RFC 9180 base, PSK, auth, and authPSK, plus X-Wing. See [HPKE.md](protocols/HPKE.md). |
-| Double Ratchet | `DoubleRatchet` — Signal revision 4 over X25519 and AES-256-GCM or ChaCha20-Poly1305. Not libsignal bytes. `Pqxdh` and `TripleRatchet` are exported and throw. See [DOUBLE_RATCHET.md](protocols/DOUBLE_RATCHET.md). |
+| Double Ratchet | `DoubleRatchet` — Signal revision 4 over X25519 and AES-256-GCM or ChaCha20-Poly1305. The clear 40-byte header is the default. `encryptHeaders` is opt-in `DRH1` (12-byte header nonce, not libsignal bytes). `Pqxdh` is PQXDH revision 3 on Curve25519. The default KEM is ML-KEM-1024. Version 2 also takes ML-KEM-512 and ML-KEM-768 when both sides pass that KEM. The trust signature is ML-DSA-44/65/87 or any SLH-DSA set, on the bundle, not mixed into SK. `TripleRatchet` is the ML-KEM-768 braid beside that ratchet. `ConversationSession` takes a `ConversationLevel` and either ratchet. `accept` requires the ratchet. `trustPublicKey` is the pin. Not a FIPS handshake. See [PQXDH.md](protocols/PQXDH.md), [DOUBLE_RATCHET.md](protocols/DOUBLE_RATCHET.md), [SPARSE_POST_QUANTUM_RATCHET.md](protocols/SPARSE_POST_QUANTUM_RATCHET.md), and [CONVERSATIONS.md](cookbook/CONVERSATIONS.md). |
 | AEAD wire packets | `PqForgeSecureSession` over AES-256-GCM / ChaCha20-Poly1305, pure-Dart or native backend |
 
 `package:cryptography` is a standard dependency (it powers the hybrid, native-AEAD,
@@ -233,6 +233,12 @@ deterministic nonces and canonical low-S signatures; the standalone `PqEcdsaP256
 primitive (keygen / sign / verify over raw bytes) is also exported for use
 without the hybrid wrapper.
 
+`PqXeddsa` signs and verifies with a 32-byte X25519 secret. `sign` takes
+an optional 64-byte `randomness` (`Z`). The signature is 64 bytes, and
+the high bit of `S` is the Edwards sign bit, matching libsignal
+`PrivateKey::calculate_signature`. `signAll` and `verifyAll` batch that
+work. It is not Ed25519. There is no CLI command.
+
 ---
 
 ## 3. HPKE
@@ -358,8 +364,10 @@ Import `package:pqcrypto/pqcrypto.dart` for `SlhDsa` / `SlhDsaParams` /
 recipe helpers (`signDocument`, `signText`, `signMedia`, `signWebhook`,
 `signArtifact`, `issueToken`, `appendSignedLogEntry`, `createIdentityBinding`)
 accept them via `slhDsa:`. Pass exactly one of the ML-DSA algorithm and
-`slhDsa`. Envelope headers, `.pqfs` signatures, and `PqForgeHybridSigner`
-stay ML-DSA-only. `compose-sign` is the 2-leg or 3-leg container
+`slhDsa`. The same parameter signs an envelope or a `.pqfs` header
+(HashSLH-DSA over the digest, once). `PqForgeHybridSigner.sign(slhDsa:)`
+writes hybrid signature version 2. Version 1 stays ML-DSA.
+`compose-sign` is the 2-leg or 3-leg container
 (`PqForgeSignatureComposer`): ML-DSA, SLH-DSA, Ed25519, and ECDSA
 P-256/P-384/P-521, each only when you pass that key. See
 [HYBRID_AUDIT.md](HYBRID_AUDIT.md).

@@ -1,11 +1,17 @@
 # Sparse Post-Quantum Ratchet
 
-Status: scaffold. `TripleRatchet` and `SpqrKem` are exported.
-`TripleRatchet.initiate` checks the 32-byte inputs, then throws. The braid
-is not implemented. `pqcrypto` exposes ML-KEM key generation,
-encapsulation, and decapsulation. It does not expose the incremental
-interface the braid requires. A 1216-byte X-Wing key is rejected by
-`RatchetPublicKey` before that throw. `SpqrKem.xWing` is not a value.
+Status: shipped. `TripleRatchet`, `MlKemBraid`, `MlKemIncremental`,
+`SpqrKdf`, `BraidErasure`, and `SpqrKem` are exported.
+`TripleRatchet.initiate` and `accept` run the public-domain ML-KEM Braid
+beside an X25519 Double Ratchet. This is not Signal Messenger, not
+libsignal bytes, and not a FIPS handshake. There is no CLI command.
+
+`pqcrypto` exposes ML-KEM key generation, encapsulation, and
+decapsulation. It does not expose Encaps1 or Encaps2. Those two steps,
+and the braid's Fujisaki-Okamoto hash, live in this package. The NTT
+stays in pqcrypto's `Indcpa`. A full `encapsulate` is a different
+protocol and is not a braid epoch. `SpqrKem.xWing` is not a value. A
+1216-byte X-Wing key is rejected by `RatchetPublicKey`.
 
 The Triple Ratchet is this protocol running beside the
 [Double Ratchet](DOUBLE_RATCHET.md). It is not a separate KEM, and it is
@@ -37,18 +43,52 @@ and a hash) and the remaining vector. Once the other side has the header
 it can start its half of the ciphertext, and the two large halves travel
 at the same time. The 2025-10-02 write-up erasure-codes those bytes into
 chunks of about 100 bytes and attaches the chunks to ordinary messages.
-The specification does not fix the chunk size. An implementation picks
-one and tests it. It does not invent a second braid.
+The specification does not fix the chunk size. This package uses 32-byte
+chunks: 16 little-endian GF(2^16) symbols. The index is a uint16 beside
+the chunk, not one of those bytes. Parity is a systematic Cauchy
+Reed-Solomon code over x^16 + x^5 + x^3 + x^2 + 1. The no-loss path
+copies the message. The parity multiply is `Int32x4`, four coefficients
+at a time. That is the only SIMD in this protocol. The NTT is not
+rewritten. An Ed25519 limb product still does not fit a signed lane.
 
-One finished epoch produces one 32-byte secret. The next epoch is already
-moving. The secret is mixed into the root key:
+One finished epoch produces one 32-byte secret, `KDF_OK` of the raw
+ML-KEM secret. The braid hash is SHA3-256(rho || t). FIPS 203 stores
+SHA3-256(t || rho). `PqcKem.kyber768.decapsulate` therefore does not
+open a braid ciphertext. The secret is mixed into the root key:
 
 ```text
 RK, CKs, CKr = KDF_SCKA_RK(RK, scka_output)
 ```
 
-Message keys for that epoch come from the new chains. The X25519 ratchet
-keeps advancing on its own. A message key depends on both.
+Every message key is `KDF_HYBRID` of the X25519 message key and the SPQR
+message key, including messages sent before the first epoch finishes.
+The X25519 header (`dh`, `pn`, `n`) still matches a `DoubleRatchet`
+started from the elliptic half of the split, with info
+`pqforge-triple-ratchet-v1-ec`. The ciphertext does not match that
+session. SPQR message numbers start at 1. Double Ratchet numbers still
+start at 0. Wire magic is `TR01`. The nonce is 12 zero bytes and is not
+on the wire. One AEAD. Not two encryptions.
+
+Labels are `pqforge-braid-v1_MLKEM768_SHA-256`,
+`pqforge-spqr-v1_MLKEM768_SHA-256`, and
+`pqforge-triple-ratchet-v1_X25519_MLKEM768_SHA-256`. They are not Signal
+strings. Section 7.2 of the Double Ratchet spec repeats the INIT inputs
+for `KDF_SCKA_CK`. Those inputs do not depend on the chain key or the
+counter. This package follows section 5.2.
+
+The pure-Dart split runs on `Isolate.run` when `dart:isolate` exists.
+Pass `offload: false` to stay on the caller isolate. `PqLattice.provider`
+is not consulted: that provider only has a full encapsulate.
+`chunksPerMessage` pulls that many codewords inside one chain step. The
+default is 1, which is the `TR01` version 1 header. More than one chunk
+is `TR01` version 2. `encryptHeaders` wraps that header as `TRH1`.
+`toBytes` / `fromBytes` are the session record. A live epoch stores the
+64-byte seed (`d || z`) and re-expands it. The expanded decapsulation
+key is wiped when the epoch finishes or when `wipe` is called, and it
+is not written. A bad MAC or a bad encapsulation-key hash throws
+`PqForgeException` ("No secret was derived.") and closes the session.
+`PqFipsMode` only refuses ChaCha20-Poly1305. It does not turn this into
+a FIPS handshake.
 
 The state added beside the Diffie-Hellman ratchet is an epoch counter, a
 send chain and a receive chain per epoch, skipped message keys per epoch,
@@ -64,7 +104,9 @@ the attacker did not see has been mixed in. That takes a stretch of
 traffic, not one reply.
 
 SPQR does not authenticate the session. PQXDH already did that, and that
-authentication is classical.
+authentication is classical. `ConversationSession` also checks an
+ML-DSA-65 signature on the bundle. That check is not an input to this
+ratchet and not an input to SK.
 
 SPQR is not X-Wing. The braid uses ML-KEM-768 itself. There is no X25519
 share inside the braid secret, and there is no
@@ -74,42 +116,39 @@ message, is a different protocol. It must not be named this one.
 
 ## API
 
-The symbols are exported. `initiate` throws. It does not encapsulate.
-
 ```dart
-// Throws. The braid's incremental interface is not in pqcrypto.
-final session = await TripleRatchet.initiate(
-  sharedSecret: secret,             // SharedSecret32, from PQXDH
-  remoteRatchetKey: bobRatchet.publicKey,
-  kem: SpqrKem.mlKem768,            // the braid's KEM, not X-Wing
+final bobKey = await RatchetKeyPair.generate();
+final secret = SharedSecret32(sharedSecretBytes); // 32 bytes, from PQXDH
+final alice = await TripleRatchet.initiate(
+  sharedSecret: secret,
+  remoteRatchetKey: bobKey.publicKey,
 );
+final bob = TripleRatchet.accept(
+  sharedSecret: secret,
+  ratchetKey: bobKey,
+);
+final sealed = await alice.seal(plaintext);
+final opened = await bob.open(sealed);
+alice.wipe();
 ```
 
-When the braid exists, `sealed` carries the Double Ratchet header and
-whatever braid chunk this message is responsible for. `open` advances
-either ratchet only when the bytes say it should. A chunk that fails its
-epoch check is rejected and does not move the root key. None of that
-runs today.
+`kem` defaults to `SpqrKem.mlKem768`. The suite defaults to AES-256-GCM.
+`ratchetKey`, `ratchetKeys`, and `randomBytes` exist so tests can pin
+the X25519 pairs and the braid coins. Production callers omit them.
 
 `SpqrKem.xWing` is not a value. X-Wing remains the one-shot KEM in
 [XWING.md](XWING.md).
 
-The session stores the braid's opaque state and 32-byte chain keys. It
-does not store an expanded ML-KEM private key that could be serialized
-and sent. The braid specification's binding properties do not hold for a
-transmitted expanded key. That rule is the same one X-Wing states for its
-own expanded key, and the two types do not share a serializer.
-
 ## Tests that gate it
 
-- A full epoch, with fixed seeds, produces the 32-byte secret the braid
-  test vector says, and `KDF_SCKA_RK` changes the root key.
-- A missing chunk does not advance the epoch.
-- After the epoch is mixed, the previous root key does not derive the new
-  message key.
-- The X25519 ratchet still heals on a reply that carries no completed
-  epoch. Those message keys differ from the keys of a pure Double Ratchet
-  only where a finished epoch has been mixed.
-- Constructing the session with a 1216-byte X-Wing public key fails.
-- No test calls ordinary ML-KEM `encapsulate` and treats the result as a
+- Fixed seeds: both sides and an independent Encaps1/Encaps2/Decaps
+  agree on `KDF_OK`. A dropped header chunk still finishes that epoch.
+- Passing FIPS `H(pk)` into Encaps1 matches `PqcKem.kyber768.encapsulate`
+  byte for byte. The braid's own hash does not, and
+  `decapsulate` of a braid ciphertext does not return the braid secret.
+- After a mix, the previous chain key does not derive the new message key.
+- X25519 headers track a Double Ratchet on the elliptic half. The
+  ciphertext differs on every message, because `KDF_HYBRID` always runs.
+  A fork that missed the epoch cannot open the post-epoch message.
+- A 1216-byte key is rejected. No test treats a full encapsulate as a
   braid epoch.

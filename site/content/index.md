@@ -1,6 +1,6 @@
 ---
 title: pqforge
-description: Post-quantum application crypto for Dart and Flutter. HPKE, envelopes, certificates, and a CLI, on pqcrypto.
+description: Post-quantum application crypto for Dart and Flutter. Conversations, HPKE, X-Wing, envelopes, certificates, and a CLI, on pqcrypto.
 ---
 
 pqforge is the application layer on
@@ -10,6 +10,12 @@ to seal a record, sign a release, wrap a key, mint a certificate, or run
 HPKE.
 
 <Info>
+  0.4.15 adds `ConversationSession`: PQXDH, then a Double Ratchet or a
+  Triple Ratchet, with header encryption, version 2 prekey ids, and an
+  ML-DSA-65 bundle signature that is not mixed into SK. The triple
+  session record stores a 64-byte seed, not the expanded decapsulation
+  key. 0.4.14 adds X-Wing (`PqXWing`, `HpkeKem.xWing`, id `0x647A`)
+  beside RFC 9180. Base and PSK only. Not a `.pqf` algorithm.
   0.4.13 makes `PqRsa.verifyPkcs1` and `verifyPss` accept a 1024-bit
   modulus, adds `PqRsaHash.sha1` and `PqRsaHash.sha224`, and adds
   `PqEd448` (RFC 8032, empty context for DNSSEC algorithm 16). Generation
@@ -35,6 +41,8 @@ runs on the Dart VM, Flutter, and the web. File streaming that needs
 
 | Release | You can call |
 | --- | --- |
+| 0.4.15 | `ConversationSession`. `Pqxdh` version 2 prekey ids. Optional ML-DSA-65 on the bundle, not in SK. `encryptHeaders` (`DRH1`, `TRH1`). `TripleRatchet.toBytes` stores the 64-byte seed. |
+| 0.4.14 | `PqXWing` and `HpkeKem.xWing` (`0x647A`). Base and PSK. `PqHybridAgreementMode.xWing` is opt-in and does not change the default handshake. |
 | 0.4.13 | `PqRsa` verifies 1024, 2048, 3072, and 4096 bit moduli. `PqRsaHash.sha1` and `PqRsaHash.sha224`. `PqEd448` for RFC 8032 and DNSSEC algorithm 16. |
 | 0.4.12 | `PqBrainpool` and `PqFfdhe`. brainpoolP256r1, P384r1, P512r1, and ffdhe2048 through ffdhe8192. |
 | 0.4.11 | `PqBytes.sha1` and `sha1OfStream`. RFC 3174, 20 bytes. Not for a new protocol. |
@@ -54,7 +62,8 @@ allowed to say.
 | [Agreement](agreement) | `PqBrainpool`, `PqFfdhe`, NIST ECDH, X25519, X448, and the combiner. |
 | [Envelopes](envelopes) | Profiles, `.pqf`, `.pqfs`, multi-recipient, hybrid KEM-DEM. |
 | [Keys](keys) | Keygen, Argon2id, PBKDF2, custody stores. |
-| [HPKE](hpke) | RFC 9180. Four modes, five KEMs. |
+| [HPKE](hpke) | RFC 9180, plus X-Wing (`0x647A`) for base and PSK. |
+| [Conversations](conversations) | PQXDH, then a Double Ratchet or a Triple Ratchet. |
 | [Certificates](certificates) | X.509 and PKCS#10. |
 | [Symmetric](symmetric) | AES-GCM, ChaCha20-Poly1305, the keystream, sessions. |
 | [Bytes](bytes) | SHA-1, SHA-2, HMAC, length prefixes. |
@@ -69,4 +78,4 @@ HPKE row above. [Signatures](signatures) has the new legs:
 and opt-in ECDSA-P384 / ECDSA-P521. P-521 ECDH on the [Classical](classical)
 page is still the HPKE share, not that signature.
 
-[Agreement](agreement) · [Envelopes](envelopes) · [Keys](keys) · [HPKE](hpke) · [CLI](cli) · [Claim boundary](claim-boundary)
+[Agreement](agreement) · [Envelopes](envelopes) · [Keys](keys) · [HPKE](hpke) · [Conversations](conversations) · [CLI](cli) · [Claim boundary](claim-boundary)

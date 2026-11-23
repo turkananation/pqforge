@@ -18,131 +18,154 @@ final class OsslParam extends Opaque {}
 
 final class OsslParamBld extends Opaque {}
 
-typedef _CtxNewFromNameNative =
-    Pointer<EvpPkeyCtx> Function(Pointer<Void>, Pointer<Utf8>, Pointer<Void>);
-typedef _CtxNewFromNameDart =
-    Pointer<EvpPkeyCtx> Function(Pointer<Void>, Pointer<Utf8>, Pointer<Void>);
-typedef _CtxNewFromPkeyNative =
-    Pointer<EvpPkeyCtx> Function(
-      Pointer<Void>,
-      Pointer<EvpPkey>,
-      Pointer<Void>,
-    );
-typedef _CtxNewFromPkeyDart =
-    Pointer<EvpPkeyCtx> Function(
-      Pointer<Void>,
-      Pointer<EvpPkey>,
-      Pointer<Void>,
-    );
+typedef _CtxNewFromNameNative = Pointer<EvpPkeyCtx> Function(
+  Pointer<Void>,
+  Pointer<Utf8>,
+  Pointer<Void>,
+);
+typedef _CtxNewFromNameDart = Pointer<EvpPkeyCtx> Function(
+  Pointer<Void>,
+  Pointer<Utf8>,
+  Pointer<Void>,
+);
+typedef _CtxNewFromPkeyNative = Pointer<EvpPkeyCtx> Function(
+  Pointer<Void>,
+  Pointer<EvpPkey>,
+  Pointer<Void>,
+);
+typedef _CtxNewFromPkeyDart = Pointer<EvpPkeyCtx> Function(
+  Pointer<Void>,
+  Pointer<EvpPkey>,
+  Pointer<Void>,
+);
 typedef _CtxFreeNative = Void Function(Pointer<EvpPkeyCtx>);
 typedef _CtxFreeDart = void Function(Pointer<EvpPkeyCtx>);
 typedef _PkeyFreeNative = Void Function(Pointer<EvpPkey>);
 typedef _PkeyFreeDart = void Function(Pointer<EvpPkey>);
 typedef _KeygenInitNative = Int32 Function(Pointer<EvpPkeyCtx>);
 typedef _KeygenInitDart = int Function(Pointer<EvpPkeyCtx>);
-typedef _CtxSetParamsNative =
-    Int32 Function(Pointer<EvpPkeyCtx>, Pointer<OsslParam>);
-typedef _CtxSetParamsDart =
-    int Function(Pointer<EvpPkeyCtx>, Pointer<OsslParam>);
-typedef _KeygenNative =
-    Int32 Function(Pointer<EvpPkeyCtx>, Pointer<Pointer<EvpPkey>>);
-typedef _KeygenDart =
-    int Function(Pointer<EvpPkeyCtx>, Pointer<Pointer<EvpPkey>>);
+typedef _CtxSetParamsNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<OsslParam>,
+);
+typedef _CtxSetParamsDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<OsslParam>,
+);
+typedef _KeygenNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+);
+typedef _KeygenDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+);
 typedef _FromdataInitNative = Int32 Function(Pointer<EvpPkeyCtx>);
 typedef _FromdataInitDart = int Function(Pointer<EvpPkeyCtx>);
-typedef _FromdataNative =
-    Int32 Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Pointer<EvpPkey>>,
-      Int32,
-      Pointer<OsslParam>,
-    );
-typedef _FromdataDart =
-    int Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Pointer<EvpPkey>>,
-      int,
-      Pointer<OsslParam>,
-    );
-typedef _GetOctetParamNative =
-    Int32 Function(
-      Pointer<EvpPkey>,
-      Pointer<Utf8>,
-      Pointer<Uint8>,
-      IntPtr,
-      Pointer<IntPtr>,
-    );
-typedef _GetOctetParamDart =
-    int Function(
-      Pointer<EvpPkey>,
-      Pointer<Utf8>,
-      Pointer<Uint8>,
-      int,
-      Pointer<IntPtr>,
-    );
-typedef _SignatureFetchNative =
-    Pointer<EvpSignature> Function(Pointer<Void>, Pointer<Utf8>, Pointer<Void>);
-typedef _SignatureFetchDart =
-    Pointer<EvpSignature> Function(Pointer<Void>, Pointer<Utf8>, Pointer<Void>);
+typedef _FromdataNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+  Int32,
+  Pointer<OsslParam>,
+);
+typedef _FromdataDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+  int,
+  Pointer<OsslParam>,
+);
+typedef _GetOctetParamNative = Int32 Function(
+  Pointer<EvpPkey>,
+  Pointer<Utf8>,
+  Pointer<Uint8>,
+  IntPtr,
+  Pointer<IntPtr>,
+);
+typedef _GetOctetParamDart = int Function(
+  Pointer<EvpPkey>,
+  Pointer<Utf8>,
+  Pointer<Uint8>,
+  int,
+  Pointer<IntPtr>,
+);
+typedef _SignatureFetchNative = Pointer<EvpSignature> Function(
+  Pointer<Void>,
+  Pointer<Utf8>,
+  Pointer<Void>,
+);
+typedef _SignatureFetchDart = Pointer<EvpSignature> Function(
+  Pointer<Void>,
+  Pointer<Utf8>,
+  Pointer<Void>,
+);
 typedef _SignatureFreeNative = Void Function(Pointer<EvpSignature>);
 typedef _SignatureFreeDart = void Function(Pointer<EvpSignature>);
-typedef _MessageInitNative =
-    Int32 Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<EvpSignature>,
-      Pointer<OsslParam>,
-    );
-typedef _MessageInitDart =
-    int Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<EvpSignature>,
-      Pointer<OsslParam>,
-    );
-typedef _SignNative =
-    Int32 Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-      Pointer<Uint8>,
-      IntPtr,
-    );
-typedef _SignDart =
-    int Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-      Pointer<Uint8>,
-      int,
-    );
-typedef _VerifyNative =
-    Int32 Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Uint8>,
-      IntPtr,
-      Pointer<Uint8>,
-      IntPtr,
-    );
-typedef _VerifyDart =
-    int Function(Pointer<EvpPkeyCtx>, Pointer<Uint8>, int, Pointer<Uint8>, int);
+typedef _MessageInitNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<EvpSignature>,
+  Pointer<OsslParam>,
+);
+typedef _MessageInitDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<EvpSignature>,
+  Pointer<OsslParam>,
+);
+typedef _SignNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+  Pointer<Uint8>,
+  IntPtr,
+);
+typedef _SignDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+  Pointer<Uint8>,
+  int,
+);
+typedef _VerifyNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  IntPtr,
+  Pointer<Uint8>,
+  IntPtr,
+);
+typedef _VerifyDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  int,
+  Pointer<Uint8>,
+  int,
+);
 typedef _BldNewNative = Pointer<OsslParamBld> Function();
 typedef _BldNewDart = Pointer<OsslParamBld> Function();
 typedef _BldFreeNative = Void Function(Pointer<OsslParamBld>);
 typedef _BldFreeDart = void Function(Pointer<OsslParamBld>);
 typedef _BldToParamNative = Pointer<OsslParam> Function(Pointer<OsslParamBld>);
 typedef _BldToParamDart = Pointer<OsslParam> Function(Pointer<OsslParamBld>);
-typedef _BldPushOctetNative =
-    Int32 Function(
-      Pointer<OsslParamBld>,
-      Pointer<Utf8>,
-      Pointer<Uint8>,
-      IntPtr,
-    );
-typedef _BldPushOctetDart =
-    int Function(Pointer<OsslParamBld>, Pointer<Utf8>, Pointer<Uint8>, int);
-typedef _BldPushIntNative =
-    Int32 Function(Pointer<OsslParamBld>, Pointer<Utf8>, Int32);
-typedef _BldPushIntDart =
-    int Function(Pointer<OsslParamBld>, Pointer<Utf8>, int);
+typedef _BldPushOctetNative = Int32 Function(
+  Pointer<OsslParamBld>,
+  Pointer<Utf8>,
+  Pointer<Uint8>,
+  IntPtr,
+);
+typedef _BldPushOctetDart = int Function(
+  Pointer<OsslParamBld>,
+  Pointer<Utf8>,
+  Pointer<Uint8>,
+  int,
+);
+typedef _BldPushIntNative = Int32 Function(
+  Pointer<OsslParamBld>,
+  Pointer<Utf8>,
+  Int32,
+);
+typedef _BldPushIntDart = int Function(
+  Pointer<OsslParamBld>,
+  Pointer<Utf8>,
+  int,
+);
 typedef _ParamFreeNative = Void Function(Pointer<OsslParam>);
 typedef _ParamFreeDart = void Function(Pointer<OsslParam>);
 typedef _VersionNative = Pointer<Utf8> Function(Int32);

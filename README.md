@@ -32,9 +32,12 @@ email payloads, records, signed documents, signed webhooks, signed tokens,
 release artifacts, tamper-evident logs, hybrid sessions, wrapped key custody,
 and a reusable CLI. `cert req`, `cert issue`, and `cert sign` produce the PEM
 certificate and PKCS#10 request that `openssl req` and `openssl x509 -req`
-read. SLH-DSA (FIPS 205, all 12 parameter sets) is composed into
-`keygen`, key custody, and detached `sign`/`verify`. Envelope headers, streaming
-signatures, and `hybrid-sign` remain **ML-DSA-only**.
+read. SLH-DSA (FIPS 205, all 12 parameter sets) is an equal signature
+family: `keygen`, custody, detached `sign`/`verify`, conversation bundle
+trust, one HashSLH-DSA header signature per envelope or `.pqfs`
+container, and the post-quantum leg of `hybrid-sign` (JSON version 2).
+The fast sets are SHAKE-f. An ML-DSA key still signs with ML-DSA.
+X.509 stays ML-DSA. Old `.pqf` and `.pqfs` files are unchanged.
 
 It is deliberately more than "call a primitive." It gives users named,
 auditable operations they can explain in a code review.
@@ -58,9 +61,10 @@ the `dart:io` entrypoint `package:pqforge/pqforge_io.dart`.
   primitives. It adds everything you need to *ship a feature*: KEM-DEM envelopes,
   AES-256-GCM/ChaCha20-Poly1305 AEAD, X25519/X448/Ed25519/ECDSA-P256 hybrids
   plus opt-in ECDSA-P384 and ECDSA-P521,
-  P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, RFC 9180 HPKE (X25519, X448, P-256, P-384, P-521) and X-Wing (`HpkeKem.xWing`, not a `.pqf` algorithm), streaming, multi-recipient envelopes, key custody, recipes,
-  `compose-sign`, and a CLI. SLH-DSA is composed into `keygen`, custody, and detached
-  `sign`/`verify`; envelopes and `hybrid-sign` stay ML-DSA-only. `PqEcdsaP521`
+  P-256/P-384 ECDH for TLS hybrid groups and P-521 ECDH for HPKE, RFC 9180 HPKE (X25519, X448, P-256, P-384, P-521) and X-Wing (`HpkeKem.xWing`, not a `.pqf` algorithm), a direct conversation recipe (`ConversationSession`: PQXDH, then a Double or Triple Ratchet, not libsignal bytes), streaming, multi-recipient envelopes, key custody, recipes,
+  `compose-sign`, and a CLI. SLH-DSA also signs a conversation bundle,
+  an envelope header (once), and `hybrid-sign` version 2. An ML-DSA key
+  still signs with ML-DSA. X.509 stays ML-DSA. `PqEcdsaP521`
   is not the P-521 HPKE share and not a TLS group.
 
 `pqforge`'s post-quantum security claim is inherited from `pqcrypto`. Full

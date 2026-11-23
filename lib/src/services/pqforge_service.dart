@@ -14,8 +14,10 @@ import '../keys/pq_keys.dart';
 import '../primitives/pq_primitives.dart';
 import '../recipes/pq_recipes.dart';
 
-typedef PqClassicalSignatureVerifier =
-    bool Function(Uint8List message, Uint8List signature);
+typedef PqClassicalSignatureVerifier = bool Function(
+  Uint8List message,
+  Uint8List signature,
+);
 
 class PqForge {
   const PqForge({this.profile = PqForgeProfile.balanced});
@@ -255,6 +257,7 @@ class PqForge {
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
     PqSignatureAlgorithm? signatureAlgorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     String? signerKeyId,
   }) {
     final selected = profile ?? this.profile;
@@ -287,6 +290,7 @@ class PqForge {
       metadata: metadata,
       signerSecretKey: signerSecretKey,
       signatureAlgorithm: signatureAlgorithm,
+      slhDsa: slhDsa,
       signerKeyId: signerKeyId,
     );
   }
@@ -307,18 +311,31 @@ class PqForge {
     Map<String, Object?> metadata = const {},
     Uint8List? signerSecretKey,
     PqSignatureAlgorithm? signatureAlgorithm,
+    PqSlhDsaAlgorithm? slhDsa,
     String? signerKeyId,
   }) {
+    if (signatureAlgorithm != null && slhDsa != null) {
+      throw const PqForgeException(
+        'Pass only one of signatureAlgorithm (ML-DSA) or slhDsa (SLH-DSA)',
+      );
+    }
     final aadHash = aad == null ? null : PqBytes.sha256(aad);
-    final effectiveSignatureAlgorithm = signerSecretKey == null
-        ? signatureAlgorithm
-        : (signatureAlgorithm ?? profile.signature);
+    // No signer: keep a caller-supplied algorithm label and do not invent
+    // one. A signer with neither algorithm uses the profile ML-DSA key.
+    // An SLH-DSA signer is HashSLH-DSA over the 32-byte digest, once.
+    final effectiveSlh = slhDsa;
+    final effectiveSignatureAlgorithm = effectiveSlh != null
+        ? null
+        : (signerSecretKey == null
+              ? signatureAlgorithm
+              : (signatureAlgorithm ?? profile.signature));
 
     if (signerSecretKey == null) {
       return PqEnvelope(
         profile: profile,
         kemAlgorithm: profile.kem,
         signatureAlgorithm: effectiveSignatureAlgorithm,
+        slhDsa: effectiveSlh,
         kemCiphertext: kemCiphertext,
         nonce: nonce,
         payload: payload,
@@ -335,7 +352,8 @@ class PqForge {
     final digest = _envelopeSigningDigest(
       profile: profile,
       kemAlgorithm: profile.kem,
-      signatureAlgorithm: effectiveSignatureAlgorithm,
+      signatureAlgorithmId:
+          effectiveSlh?.id ?? effectiveSignatureAlgorithm?.id ?? '',
       nonce: nonce,
       kemCiphertext: kemCiphertext,
       payload: payload,
@@ -343,17 +361,27 @@ class PqForge {
       signerKeyId: signerKeyId,
       metadata: metadata,
     );
-    final signature = sign(
-      signerSecretKey,
-      digest,
-      algorithm: effectiveSignatureAlgorithm,
-      context: _envelopeSignatureContext,
-      preHash: true,
-    );
+    final signature = effectiveSlh != null
+        ? PqSlhDsaPrimitives.sign(
+            effectiveSlh,
+            signerSecretKey,
+            digest,
+            context: _envelopeSignatureContext,
+            preHash: true,
+            allowSlowSigning: !effectiveSlh.isFast,
+          )
+        : sign(
+            signerSecretKey,
+            digest,
+            algorithm: effectiveSignatureAlgorithm,
+            context: _envelopeSignatureContext,
+            preHash: true,
+          );
     return PqEnvelope(
       profile: profile,
       kemAlgorithm: profile.kem,
       signatureAlgorithm: effectiveSignatureAlgorithm,
+      slhDsa: effectiveSlh,
       kemCiphertext: kemCiphertext,
       nonce: nonce,
       payload: payload,
@@ -536,17 +564,28 @@ class PqForge {
         'signerPublicKey is required for signed envelope',
       );
     }
-    final ok = verify(
-      signerPublicKey,
-      envelopeSigningMessage(envelope),
-      envelope.signature!,
-      algorithm: envelope.signatureAlgorithm,
-      context: _envelopeSignatureContext,
-      preHash: true,
-    );
+    final ok = envelope.slhDsa != null
+        ? PqSlhDsaPrimitives.verify(
+            envelope.slhDsa!,
+            signerPublicKey,
+            envelopeSigningMessage(envelope),
+            envelope.signature!,
+            context: _envelopeSignatureContext,
+            preHash: true,
+          )
+        : verify(
+            signerPublicKey,
+            envelopeSigningMessage(envelope),
+            envelope.signature!,
+            algorithm: envelope.signatureAlgorithm,
+            context: _envelopeSignatureContext,
+            preHash: true,
+          );
     if (!ok) {
-      throw const PqForgeException(
-        'ML-DSA envelope signature verification failed',
+      throw PqForgeException(
+        envelope.slhDsa != null
+            ? 'SLH-DSA envelope signature verification failed'
+            : 'ML-DSA envelope signature verification failed',
       );
     }
   }
@@ -1542,16 +1581,15 @@ class PqForge {
     );
   }
 
-  /// The 32-byte digest fed to ML-DSA sign/verify (`preHash:true`) for an
-  /// envelope's signature: `SHA-256(headerFields ‖ SHA-256(payload))`. The
-  /// payload is hashed in one streaming pass, so neither the digest nor the
-  /// signature scales with payload size (the M1 fix). The header binds every
-  /// envelope field except the signature itself.
+  /// The 32-byte digest fed to ML-DSA or HashSLH-DSA (`preHash:true`).
+  /// `SHA-256(headerFields ‖ SHA-256(payload))`. The payload is hashed in
+  /// one pass, so neither the digest nor the signature scales with payload
+  /// size. The header binds every envelope field except the signature itself.
   Uint8List envelopeSigningMessage(PqEnvelope envelope) =>
       _envelopeSigningDigest(
         profile: envelope.profile,
         kemAlgorithm: envelope.kemAlgorithm,
-        signatureAlgorithm: envelope.signatureAlgorithm,
+        signatureAlgorithmId: envelope.signatureAlgorithmId ?? '',
         nonce: envelope.nonce,
         kemCiphertext: envelope.kemCiphertext,
         payload: envelope.payload,
@@ -1563,7 +1601,7 @@ class PqForge {
   Uint8List _envelopeSigningDigest({
     required PqForgeProfile profile,
     required PqKemAlgorithm kemAlgorithm,
-    required PqSignatureAlgorithm? signatureAlgorithm,
+    required String signatureAlgorithmId,
     required Uint8List nonce,
     required Uint8List kemCiphertext,
     required Uint8List payload,
@@ -1576,7 +1614,7 @@ class PqForge {
       PqBytes.uint32(pqForgeEnvelopeVersion),
       PqBytes.utf8Bytes(profile.name),
       PqBytes.utf8Bytes(kemAlgorithm.id),
-      PqBytes.utf8Bytes(signatureAlgorithm?.id ?? ''),
+      PqBytes.utf8Bytes(signatureAlgorithmId),
       nonce,
       kemCiphertext,
       aadHash ?? Uint8List(0),

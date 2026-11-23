@@ -40,4 +40,9 @@ The canonical bytes are what both sides sign. Do not sign the JSON you
 stored unless `PqRecipeMessages` says that JSON is the message. A field
 the canonical form omits is not authenticated.
 
-[CLI](cli) · [Keys](keys) · [Bytes](bytes)
+A direct conversation is a different recipe. It is not one of the signed
+types above. [Conversations](conversations) is PQXDH plus a Double
+Ratchet or a Triple Ratchet. [HPKE](hpke) is the one-shot seal, including
+X-Wing. Neither one is an envelope, and neither one speaks libsignal.
+
+[CLI](cli) · [Keys](keys) · [Bytes](bytes) · [Conversations](conversations)

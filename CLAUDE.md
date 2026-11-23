@@ -14,9 +14,12 @@ ECDSA-P384 and ECDSA-P521, P-256/P-384 ECDH for TLS hybrid groups and P-521
 ECDH for HPKE, RFC 9180 HPKE, bounded-memory streaming, multi-recipient
 envelopes, Argon2id key custody, named recipes, `compose-sign`, and a CLI.
 `pqforge` depends on `pqcrypto` and **never reimplements the lattice
-primitives**. FIPS 205 SLH-DSA is composed into `keygen`, key custody,
-and detached `sign`/`verify` (`PqSlhDsaAlgorithm`, `PqSlhDsaPrimitives`). Envelope
-headers, streaming signatures, and `hybrid-sign` remain ML-DSA-only.
+primitives**. FIPS 205 SLH-DSA is an equal signature family: `keygen`,
+custody, detached `sign`/`verify`, conversation bundle trust, one
+HashSLH-DSA header signature per envelope or `.pqfs` container, and
+`hybrid-sign` version 2 (`PqSlhDsaAlgorithm`, `PqSlhDsaPrimitives`).
+The fast sets are SHAKE-f. An ML-DSA key still signs with ML-DSA.
+X.509 stays ML-DSA. Old `.pqf` and `.pqfs` files are unchanged.
 `compose-sign` can take one SLH-DSA leg when that key is passed.
 `PqEcdsaP521` is not the P-521 HPKE share and not a TLS group. See
 [doc/HYBRID_AUDIT.md](doc/HYBRID_AUDIT.md) and the

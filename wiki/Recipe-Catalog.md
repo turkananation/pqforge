@@ -23,6 +23,8 @@ Use these mappings when deciding which `pqforge` surface fits an application.
 | Dual or triple, legs you choose | `compose-sign`/`compose-verify` (2 or 3 of ML-DSA, SLH-DSA, Ed25519, ECDSA P-256/P-384/P-521). This does not replace `hybrid-sign` |
 | Standalone classical signing | `ecdsa-sign`/`ecdsa-verify`, `PqEcdsaP256`, `PqEcdsaP384`, `PqEcdsaP521` |
 | Server session bootstrap | `PqForgeHybridKeyAgreement`, `PqForgeSecureSession` |
+| Direct conversation | `ConversationSession` (`doubleRatchet` or `tripleRatchet` after PQXDH). Not a messenger, not libsignal bytes |
+| One-shot public-key seal | `PqHpke` (RFC 9180). X-Wing is `HpkeKem.xWing` (`0x647A`), base and PSK only |
 
 Every recipe binds a domain label and purpose-specific metadata into a canonical
 message or AAD value. That prevents a valid signature or envelope from being

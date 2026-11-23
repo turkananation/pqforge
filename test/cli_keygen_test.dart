@@ -52,11 +52,9 @@ void main() {
     final slhPublic = PqExportedKey.fromJson(
       Map<String, Object?>.from(
         jsonDecode(
-              await File(
-                '${outDir.path}/vault.slh-dsa-shake-256f.public.json',
-              ).readAsString(),
-            )
-            as Map,
+          await File('${outDir.path}/vault.slh-dsa-shake-256f.public.json')
+              .readAsString(),
+        ) as Map,
       ),
     );
     expect(slhPublic.kind, PqKeyKind.signaturePublic);
@@ -215,9 +213,8 @@ void main() {
       isTrue,
     );
     expect(
-      File(
-        '${outDir.path}/classic.slh-dsa-shake-128f.public.json',
-      ).existsSync(),
+      File('${outDir.path}/classic.slh-dsa-shake-128f.public.json')
+          .existsSync(),
       isFalse,
     );
     expect(
@@ -250,9 +247,8 @@ void main() {
         '${outDir.path}/archive.slh-dsa-shake-128f.secret.wrapped.json';
     expect(File(wrappedPath).existsSync(), isTrue);
     expect(
-      File(
-        '${outDir.path}/archive.slh-dsa-shake-128f.secret.json',
-      ).existsSync(),
+      File('${outDir.path}/archive.slh-dsa-shake-128f.secret.json')
+          .existsSync(),
       isFalse,
     );
 
@@ -505,19 +501,20 @@ void main() {
     ]);
   });
 
-  test('envelope signer-secret rejects an SLH-DSA key', () {
+  test('an ML-DSA-only leg still rejects an SLH-DSA key', () {
     final key = PqExportedKey(
       kind: PqKeyKind.signatureSecret,
       algorithmId: PqSlhDsaAlgorithm.shake128f.id,
       bytes: Uint8List(PqSlhDsaAlgorithm.shake128f.secretKeyBytes),
     );
+    expect(() => requireHeaderSignatureKey(key), returnsNormally);
     expect(
       () => requireMlDsaSignatureKey(key),
       throwsA(
         isA<PqForgeException>().having(
           (error) => error.message,
           'message',
-          contains('SLH-DSA keys cannot sign envelopes'),
+          contains('This command wants an ML-DSA key'),
         ),
       ),
     );

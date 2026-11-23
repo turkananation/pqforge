@@ -1,6 +1,6 @@
 ---
 title: What landed
-description: Releases that were easy to miss. 0.4.12 brainpool and FFDHE, 0.4.11 SHA-1, 0.4.10 HPKE.
+description: Releases that were easy to miss. 0.4.15 conversations, 0.4.14 X-Wing, 0.4.13 RSA and Ed448.
 ---
 
 These releases did not change the `.pqf` or `.pqfs` wire format. None of
@@ -8,6 +8,8 @@ them is a FIPS 140 module.
 
 | Release | You can call |
 | --- | --- |
+| 0.4.15 | `ConversationSession`. Double Ratchet or Triple Ratchet after PQXDH. Header encryption. Version 2 prekey ids. ML-DSA-65 on the bundle, not in SK. A 64-byte braid seed in the session record. |
+| 0.4.14 | `PqXWing` and `HpkeKem.xWing` (`0x647A`). Base and PSK. Auth throws. `pqforge hpke` writes `XW01`. Not a `.pqf` algorithm. |
 | 0.4.13 | `PqRsa` verifies a 1024-bit modulus. `PqRsaHash.sha1` and `PqRsaHash.sha224`. `PqEd448`. Generation stays 2048 and up. Ed448 is not an X.509 algorithm. |
 | 0.4.12 | `PqBrainpool` and `PqFfdhe`. brainpoolP256r1, P384r1, P512r1, and ffdhe2048 through ffdhe8192. Agreement only. Not a TLS stack, and not constant-time. |
 | 0.4.11 | `PqBytes.sha1` and `sha1OfStream`. RFC 3174, 20 bytes. Collision resistance is broken. For a standard that still names SHA-1, such as DNSSEC NSEC3. Not a signature. |
@@ -16,8 +18,9 @@ them is a FIPS 140 module.
 | 0.4.9 | `PqX509`, `PqEcdsaP384`, `PqRsa`, `PqEd25519`, and `pqforge cert`. |
 | 0.4.8 | `PqSymmetricPrimitives.chacha20`. RFC 8439 keystream, including a QUIC header-protection mask. |
 
-The recipe catalog is unchanged: ML-KEM envelopes, ML-DSA and SLH-DSA
-detached signatures, hybrid sessions, multi-recipient envelopes, Argon2id
-key custody, and the CLI.
+The recipe catalog also covers direct conversations. That is
+`ConversationSession`, not a mailbox and not Signal. ML-KEM envelopes,
+ML-DSA and SLH-DSA detached signatures, hybrid sessions, multi-recipient
+envelopes, Argon2id key custody, and the CLI are unchanged in role.
 
-[HPKE](hpke) · [Signatures](signatures) · [Certificates](certificates) · [Symmetric](symmetric) · [Classical](classical)
+[Conversations](conversations) · [HPKE](hpke) · [Signatures](signatures) · [Certificates](certificates) · [Symmetric](symmetric) · [Classical](classical)

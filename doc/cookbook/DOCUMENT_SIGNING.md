@@ -38,8 +38,11 @@ dart run pqforge sign \
   --out contract.slh.sig.json
 ```
 
-The same CLI kinds cover `text`, `media`, `artifact`, and `webhook`. Envelope
-headers and `hybrid-sign` stay ML-DSA-only.
+The same CLI kinds cover `text`, `media`, `artifact`, and `webhook`. An
+envelope or `.pqfs` header can also be HashSLH-DSA: pass the SLH-DSA secret
+as `--signer-secret`. The signature is once, over the digest, not per frame.
+`hybrid-sign` version 2 is that same key plus one classical leg. X.509 stays
+ML-DSA. An ML-DSA secret still signs with ML-DSA.
 
 You supply document canonicalization, legal/e-signature policy, signer identity
 vetting, and signature container UX.

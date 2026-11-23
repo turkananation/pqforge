@@ -662,7 +662,7 @@ dart run pqforge compose-sign --ml-dsa-secret keys/vault.sign.secret.wrapped.jso
         <a href="symmetric"><strong>Symmetric</strong><span>AES-GCM, ChaCha20-Poly1305, the ChaCha20 keystream, and session packets.</span></a>
         <a href="bytes"><strong>Bytes</strong><span>SHA-1, SHA-2, HMAC, and length prefixes.</span></a>
         <a href="classical"><strong>Classical</strong><span>X25519, X448, NIST ECDH, Ed25519, ECDSA, and RSA. P-521 ECDH is still the HPKE share.</span></a>
-        <a href="signatures"><strong>Signatures</strong><span>Opt-in dual and triple legs. hybrid-sign stays one ML-DSA leg plus one classical leg.</span></a>
+        <a href="signatures"><strong>Signatures</strong><span>ML-DSA or SLH-DSA, plus one classical leg. Three legs stay compose-sign.</span></a>
         <a href="recipes"><strong>Recipes</strong><span>Identity bindings, signed logs, tokens, and artifacts.</span></a>
         <a href="cli"><strong>CLI</strong><span>Every command, and which API it calls.</span></a>
         <a href="claim-boundary"><strong>Claim boundary</strong><span>What this package is allowed to say about itself.</span></a>

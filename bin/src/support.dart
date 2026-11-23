@@ -390,8 +390,8 @@ Future<PqExportedKey> readKey(String path, {String? passphrase}) async {
   return PqExportedKey.fromJson(json);
 }
 
-/// Reads the optional `--signer-secret` ML-DSA key, validating its kind.
-/// SLH-DSA keys are rejected: envelope headers stay ML-DSA-only.
+/// Reads the optional `--signer-secret` key. ML-DSA and SLH-DSA are both
+/// header signers. An `s` set is accepted; it is slow.
 Future<PqExportedKey?> optionalSignerSecret(
   ArgResults results,
   String? passphrase,
@@ -400,7 +400,7 @@ Future<PqExportedKey?> optionalSignerSecret(
   if (signerPath == null) return null;
   final signer = await readKey(signerPath, passphrase: passphrase);
   requireKind(signer, PqKeyKind.signatureSecret);
-  requireMlDsaSignatureKey(signer);
+  requireHeaderSignatureKey(signer);
   return signer;
 }
 
@@ -421,14 +421,24 @@ void requireKind(PqExportedKey key, String kind) {
   }
 }
 
-/// Envelope signing and hybrid-sign stay ML-DSA-only. SLH-DSA keys belong on
-/// the detached `sign`/`verify` path.
+/// Envelope and streaming header signing accept ML-DSA or SLH-DSA.
+void requireHeaderSignatureKey(PqExportedKey key) {
+  if (PqSlhDsaAlgorithm.tryById(key.algorithmId) != null) return;
+  PqSignatureAlgorithm.byId(key.algorithmId);
+}
+
+/// The SLH-DSA set on [key], or null when the key is ML-DSA.
+PqSlhDsaAlgorithm? slhDsaOf(PqExportedKey? key) =>
+    key == null ? null : PqSlhDsaAlgorithm.tryById(key.algorithmId);
+
+/// `compose-sign` still uses this when a leg is required to be ML-DSA.
+/// Envelope headers and `hybrid-sign` do not.
 void requireMlDsaSignatureKey(PqExportedKey key) {
   if (PqSlhDsaAlgorithm.tryById(key.algorithmId) != null) {
     throw const PqForgeException(
-      'SLH-DSA keys cannot sign envelopes or hybrid signatures; those remain '
-      'ML-DSA-only. Use `pqforge sign` / `pqforge verify` for hash-based '
-      'signatures.',
+      'This command wants an ML-DSA key. SLH-DSA is a header signature, '
+      'a hybrid-sign post-quantum leg, or a detached signature. It is not '
+      'this ML-DSA-only leg.',
     );
   }
   PqSignatureAlgorithm.byId(key.algorithmId);

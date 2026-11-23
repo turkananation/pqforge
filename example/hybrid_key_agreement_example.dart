@@ -56,7 +56,7 @@ void main() async {
 
   print('\nhybrid signature');
   print('classical algorithm: ${signature.classicalAlgorithm.id}');
-  print('pqc algorithm: ${signature.pqcAlgorithm.id}');
+  print('pqc algorithm: ${signature.pqcAlgorithmId}');
   print('verified: $ok');
 
   // The same signer also supports ECDSA over NIST P-256 (pure-Dart PointyCastle).

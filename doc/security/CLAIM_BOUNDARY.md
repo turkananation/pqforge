@@ -4,9 +4,13 @@ Allowed wording:
 
 - FIPS 203-aligned ML-KEM through `pqcrypto`.
 - FIPS 204-aligned ML-DSA through `pqcrypto`.
-- FIPS 205-aligned SLH-DSA through `pqcrypto`. `pqforge` composes it into
-  `keygen`, key custody, and detached `sign`/`verify`. Envelope headers,
-  streaming signatures, and `hybrid-sign` remain ML-DSA-only.
+- FIPS 205-aligned SLH-DSA through `pqcrypto`. `pqforge` uses it for
+  `keygen`, custody, detached `sign`/`verify`, conversation bundle trust,
+  one HashSLH-DSA signature on an envelope or `.pqfs` header, and the
+  post-quantum leg of `hybrid-sign` (JSON version 2). The fast sets are
+  the SHAKE-f sets. An `s` set is valid and slow. Passing an ML-DSA key
+  still signs with ML-DSA. X.509 stays ML-DSA. Old `.pqf` and `.pqfs`
+  files are unchanged.
 - Application-layer composition helpers for KEM-DEM, AEAD sessions, wrapped key
   custody, signatures, recipes, hybrid helpers, X.509 certificates, PKCS#10
   requests, RFC 9180 HPKE, and CLI workflows. A certificate that `openssl req`
@@ -22,11 +26,40 @@ Allowed wording:
   `.pqf` or `.pqfs`. There is no BoringSSL or OpenSSL evidence for
   `0x647A`.
 - The Double Ratchet (`DoubleRatchet`) is Signal revision 4 over X25519
-  and pqforge AES-256-GCM or ChaCha20-Poly1305, with a 12-byte zero nonce
-  and a 40-byte header. Healing is classical. It is not PQXDH, not the
-  Sparse Post-Quantum Ratchet, not libsignal bytes, and not a FIPS
-  module. `PqFipsMode` refuses the ChaCha suite. `Pqxdh` and
-  `TripleRatchet` are exported and throw.
+  and pqforge AES-256-GCM or ChaCha20-Poly1305. The clear header is 40
+  bytes and the body nonce is 12 zero bytes. `encryptHeaders` follows
+  section 4 of that specification: `DRH1`, a 12-byte random header
+  nonce, and header keys derived from SK with info
+  `pqforge-header-keys-v1`. A header key lasts one sending chain. The
+  nonce is not 128 bits. It is not libsignal bytes and not a FIPS
+  module. `PqFipsMode` refuses the ChaCha suite. `Pqxdh` is PQXDH
+  revision 3. Version 1 of `PQX1` is unchanged. Version 2 adds prekey
+  ids. Version 1 stays ML-KEM-1024. Version 2 may be ML-KEM-512, ML-KEM-768,
+  or ML-KEM-1024. Both sides pass the KEM. It is not read off the wire.
+  The bundle trust signature is ML-DSA-44, ML-DSA-65, ML-DSA-87, or any
+  of the twelve SLH-DSA sets. It is checked by `Pqxdh.trustAuthentic`.
+  It is not mixed into SK. `ConversationSession.start` requires a pinned
+  copy of that public key. A directory response is not the pin.
+  XEdDSA still checks the prekeys. It is not a FIPS handshake.
+  `TripleRatchet` is the public ML-KEM Braid (ML-KEM-768) beside that
+  X25519 ratchet. Encaps1 and Encaps2 are in this package. The NTT stays
+  in pqcrypto. The braid hash is SHA3-256(rho || t), not FIPS H(pk).
+  `chunksPerMessage` attaches more than one 32-byte chunk to one chain
+  step. `TRH1` is the encrypted-header form. `toBytes` stores the
+  64-byte seed and re-expands it. The expanded decapsulation key is not
+  in the record. It is not Signal Messenger, not libsignal bytes, and
+  not a FIPS handshake. `PqFipsMode` does not make it one.
+  `ConversationSession` frames either ratchet as `CV01`. Not a CLI
+  command.
+- `PqXeddsa` is Curve25519 XEdDSA as libsignal ships it. The same secret,
+  message, and 64-byte `Z` match `PrivateKey::calculate_signature`. The
+  Edwards sign bit is stored in the high bit of `S`. It is not the paper's
+  sign-bit-forced-to-zero variant, not VXEdDSA, not XEd448, and not a FIPS
+  signature. The ladder is the variable-time 4-bit window used by
+  `PqEd25519`. `signAll` draws `Z` on the caller isolate. There is no CLI
+  command. `Pqxdh.signedPrekeyAuthentic` checks a signed prekey.
+  `Pqxdh.kemPrekeyAuthentic` checks the ML-KEM key. The handshake is
+  [PQXDH](../protocols/PQXDH.md). It is not Signal Messenger.
 - `PqFipsMode` is a process-wide switch, not a validated module. It also
   rejects RSA-SHA-1 and an RSA modulus under 2048 bits at `PqRsa.signPkcs1`
   and `signPss` (verify returns false). HPKE seal and open refuse an AEAD
@@ -42,8 +75,9 @@ Allowed wording:
   and is not wiped. The random buffer used to draw it is.
 - Opt-in signature composition in the same release. `compose-sign` takes 2 or
   3 legs the caller names (ML-DSA, SLH-DSA, Ed25519, ECDSA-P256, ECDSA-P384,
-  ECDSA-P521). `hybrid-sign` stays one ML-DSA leg plus one classical leg.
-  `PqEcdsaP521` is a signature. It is not `p521SharedSecret` and not a TLS
+  ECDSA-P521). `hybrid-sign` version 1 is one ML-DSA leg plus one classical
+  leg. Version 2 is one SLH-DSA leg plus that same classical leg. It is not
+  three legs. `PqEcdsaP521` is a signature. It is not `p521SharedSecret` and not a TLS
   group. The P-521 HPKE share is unchanged.
 - Best-effort cleanup in Dart.
 
@@ -60,7 +94,8 @@ Forbidden wording:
 - RC4 is supported.
 - ECDSA-P521 is a TLS group, or is the HPKE P-521 KEM.
 - `compose-sign` or ECDSA-P384/P-521 is constant-time or a FIPS module.
-- SLH-DSA is an envelope signature or a `hybrid-sign` leg.
+- SLH-DSA is a per-frame signature, mixed into SK, or an X.509 algorithm.
+- An `s` parameter set is as fast as an `f` set.
 - Brainpool or FFDHE is a TLS stack, constant-time, or a NIST curve.
   There is no NIST P-512.
 - BoringSSL 0.20261020.0 checks ML-KEM-512 or any SLH-DSA set other than
@@ -70,7 +105,9 @@ Forbidden wording:
 - X-Wing is a FIPS construction, a `.pqf` or `.pqfs` algorithm, or
   checked against BoringSSL or OpenSSL. Id `0x647A` has no such evidence.
 - The Double Ratchet is libsignal-compatible, PQXDH, the Sparse
-  Post-Quantum Ratchet, header encryption, or a FIPS module.
+  Post-Quantum Ratchet, or a FIPS module. Header encryption here is
+  `DRH1` / `TRH1`, not libsignal header bytes. A conversation session
+  record is not a protocol message.
 
 `pqforge` can inherit algorithm-evidence wording from `pqcrypto`, but it must not
 upgrade that into module-validation wording. Public-key trust, identity vetting,

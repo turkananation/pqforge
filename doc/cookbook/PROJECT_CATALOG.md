@@ -113,3 +113,45 @@ session bootstrapping.
 - X25519 and ML-KEM are combined before traffic keys are used.
 - You supply authenticated public-key bundles, replay stores, session storage,
   authorization, and transport policy.
+
+## Direct Conversations
+
+Use for a two-party ratchet after PQXDH. Vault and messenger apps keep
+the session record. This package does not keep a mailbox.
+
+- Use: `ConversationSession.start`, `accept`, `seal`, `open`, `toBytes`.
+- Pass a `ConversationLevel`. The default is ML-KEM-1024, ML-DSA-65,
+  AES-256-GCM. `compact`, `balanced`, `maximum`, and `hashBased` are
+  the other built-ins. `ConversationLevel.hash` takes any SLH-DSA set.
+  The signature is on the bundle, once. It is not mixed into SK.
+- Choose `ConversationRatchet.doubleRatchet` or `tripleRatchet`.
+  `accept` requires the same value. A flipped `CV01` byte throws.
+- `trustPublicKey` is the pin. Compare it with the key you already
+  trust. A key from the same directory response is not that pin.
+- Headers are encrypted. The triple recipe sends four braid chunks per
+  message. The session record stores a 64-byte ML-KEM seed, not the
+  expanded decapsulation key.
+- You supply transport, the prekey directory, one-time prekey deletion,
+  and replay protection for the initial message.
+- Not Signal Messenger and not libsignal bytes.
+
+## HPKE
+
+Use for a one-shot seal to a KEM public key, including an exporter.
+
+- Use: `PqHpke`.
+- RFC 9180 base, PSK, auth, and authPSK over X25519, X448, P-256, P-384,
+  and P-521.
+- You supply the peer's public key authenticity and replay policy.
+- Not TLS and not a FIPS module.
+
+## X-Wing
+
+Use for draft-11 X-Wing as its own KEM, or as an HPKE KEM (`0x647A`).
+
+- Use: `PqXWing`, `HpkeKem.xWing`.
+- Base and PSK only. Auth throws. Not a `.pqf` algorithm.
+- Not PQXDH and not the custom hybrid. A 1216-byte key is not an
+  ML-KEM public key.
+- You supply the agreement that this KEM is the one in use.
+
