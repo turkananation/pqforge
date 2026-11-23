@@ -34,16 +34,26 @@ final class OsslParamBld extends Opaque {}
 // ── FFI typedefs ─────────────────────────────────────────────────────────────
 
 // EvpPkeyCtx_new_from_name(NULL, "ML-KEM-768", NULL)
-typedef EvpPkeyCtxNewFromNameNative =
-    Pointer<EvpPkeyCtx> Function(Pointer<Void>, Pointer<Utf8>, Pointer<Void>);
-typedef EvpPkeyCtxNewFromNameDart =
-    Pointer<EvpPkeyCtx> Function(Pointer<Void>, Pointer<Utf8>, Pointer<Void>);
+typedef EvpPkeyCtxNewFromNameNative = Pointer<EvpPkeyCtx> Function(
+  Pointer<Void>,
+  Pointer<Utf8>,
+  Pointer<Void>,
+);
+typedef EvpPkeyCtxNewFromNameDart = Pointer<EvpPkeyCtx> Function(
+  Pointer<Void>,
+  Pointer<Utf8>,
+  Pointer<Void>,
+);
 
 // EvpPkeyCtx_new(EvpPkey*, ENGINE*)  — for encaps/decaps ctx from a key
-typedef EvpPkeyCtxNewNative =
-    Pointer<EvpPkeyCtx> Function(Pointer<EvpPkey>, Pointer<Void>);
-typedef EvpPkeyCtxNewDart =
-    Pointer<EvpPkeyCtx> Function(Pointer<EvpPkey>, Pointer<Void>);
+typedef EvpPkeyCtxNewNative = Pointer<EvpPkeyCtx> Function(
+  Pointer<EvpPkey>,
+  Pointer<Void>,
+);
+typedef EvpPkeyCtxNewDart = Pointer<EvpPkeyCtx> Function(
+  Pointer<EvpPkey>,
+  Pointer<Void>,
+);
 
 typedef EvpPkeyCtxFreeNative = Void Function(Pointer<EvpPkeyCtx>);
 typedef EvpPkeyCtxFreeDart = void Function(Pointer<EvpPkeyCtx>);
@@ -56,8 +66,10 @@ typedef EvpPkeyKeygenInitNative = Int32 Function(Pointer<EvpPkeyCtx>);
 typedef EvpPkeyKeygenInitDart = int Function(Pointer<EvpPkeyCtx>);
 
 // EvpPkey_encapsulate_init(ctx, params[]) / EvpPkey_decapsulate_init(ctx, params[])
-typedef EvpPkeyKemInitNative =
-    Int32 Function(Pointer<EvpPkeyCtx>, Pointer<Void>);
+typedef EvpPkeyKemInitNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Void>,
+);
 typedef EvpPkeyKemInitDart = int Function(Pointer<EvpPkeyCtx>, Pointer<Void>);
 
 // EvpPkey_fromdata_init(ctx)
@@ -65,52 +77,56 @@ typedef EvpPkeyFromdataInitNative = Int32 Function(Pointer<EvpPkeyCtx>);
 typedef EvpPkeyFromdataInitDart = int Function(Pointer<EvpPkeyCtx>);
 
 // EvpPkey_keygen(ctx, EvpPkey**)
-typedef EvpPkeyKeygenNative =
-    Int32 Function(Pointer<EvpPkeyCtx>, Pointer<Pointer<EvpPkey>>);
-typedef EvpPkeyKeygenDart =
-    int Function(Pointer<EvpPkeyCtx>, Pointer<Pointer<EvpPkey>>);
+typedef EvpPkeyKeygenNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+);
+typedef EvpPkeyKeygenDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+);
 
 // EvpPkey_get1_encoded_public_key(pkey, unsigned char**) -> size_t
-typedef EvpPkeyGet1EncodedPublicKeyNative =
-    IntPtr Function(Pointer<EvpPkey>, Pointer<Pointer<Uint8>>);
-typedef EvpPkeyGet1EncodedPublicKeyDart =
-    int Function(Pointer<EvpPkey>, Pointer<Pointer<Uint8>>);
+typedef EvpPkeyGet1EncodedPublicKeyNative = IntPtr Function(
+  Pointer<EvpPkey>,
+  Pointer<Pointer<Uint8>>,
+);
+typedef EvpPkeyGet1EncodedPublicKeyDart = int Function(
+  Pointer<EvpPkey>,
+  Pointer<Pointer<Uint8>>,
+);
 
 // EvpPkey_encapsulate(ctx, wrappedkey*, wrappedkeylen*, genkey*, genkeylen*)
-typedef EvpPkeyEncapsulateNative =
-    Int32 Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-    );
-typedef EvpPkeyEncapsulateDart =
-    int Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-    );
+typedef EvpPkeyEncapsulateNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+);
+typedef EvpPkeyEncapsulateDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+);
 
 // EvpPkey_decapsulate(ctx, unwrapped*, unwrappedlen*, wrapped*, wrappedlen)
-typedef EvpPkeyDecapsulateNative =
-    Int32 Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-      Pointer<Uint8>,
-      IntPtr,
-    );
-typedef EvpPkeyDecapsulateDart =
-    int Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Uint8>,
-      Pointer<IntPtr>,
-      Pointer<Uint8>,
-      int,
-    );
+typedef EvpPkeyDecapsulateNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+  Pointer<Uint8>,
+  IntPtr,
+);
+typedef EvpPkeyDecapsulateDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Uint8>,
+  Pointer<IntPtr>,
+  Pointer<Uint8>,
+  int,
+);
 
 // OsslParamBld_new / free / to_param
 typedef OsslParamBldNewNative = Pointer<OsslParamBld> Function();
@@ -119,39 +135,42 @@ typedef OsslParamBldNewDart = Pointer<OsslParamBld> Function();
 typedef OsslParamBldFreeNative = Void Function(Pointer<OsslParamBld>);
 typedef OsslParamBldFreeDart = void Function(Pointer<OsslParamBld>);
 
-typedef OsslParamBldToParamNative =
-    Pointer<OsslParam> Function(Pointer<OsslParamBld>);
-typedef OsslParamBldToParamDart =
-    Pointer<OsslParam> Function(Pointer<OsslParamBld>);
+typedef OsslParamBldToParamNative = Pointer<OsslParam> Function(
+  Pointer<OsslParamBld>,
+);
+typedef OsslParamBldToParamDart = Pointer<OsslParam> Function(
+  Pointer<OsslParamBld>,
+);
 
-typedef OsslParamBldPushOctetStringNative =
-    Int32 Function(
-      Pointer<OsslParamBld>,
-      Pointer<Utf8>,
-      Pointer<Uint8>,
-      IntPtr,
-    );
-typedef OsslParamBldPushOctetStringDart =
-    int Function(Pointer<OsslParamBld>, Pointer<Utf8>, Pointer<Uint8>, int);
+typedef OsslParamBldPushOctetStringNative = Int32 Function(
+  Pointer<OsslParamBld>,
+  Pointer<Utf8>,
+  Pointer<Uint8>,
+  IntPtr,
+);
+typedef OsslParamBldPushOctetStringDart = int Function(
+  Pointer<OsslParamBld>,
+  Pointer<Utf8>,
+  Pointer<Uint8>,
+  int,
+);
 
 typedef OsslParamFreeNative = Void Function(Pointer<OsslParam>);
 typedef OsslParamFreeDart = void Function(Pointer<OsslParam>);
 
 // EvpPkey_fromdata(ctx, EvpPkey**, selection, OsslParam[])
-typedef EvpPkeyFromdataNative =
-    Int32 Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Pointer<EvpPkey>>,
-      Int32,
-      Pointer<OsslParam>,
-    );
-typedef EvpPkeyFromdataDart =
-    int Function(
-      Pointer<EvpPkeyCtx>,
-      Pointer<Pointer<EvpPkey>>,
-      int,
-      Pointer<OsslParam>,
-    );
+typedef EvpPkeyFromdataNative = Int32 Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+  Int32,
+  Pointer<OsslParam>,
+);
+typedef EvpPkeyFromdataDart = int Function(
+  Pointer<EvpPkeyCtx>,
+  Pointer<Pointer<EvpPkey>>,
+  int,
+  Pointer<OsslParam>,
+);
 
 // CRYPTO_free
 typedef CryptoFreeNative = Void Function(Pointer<Void>, Pointer<Utf8>, Int32);

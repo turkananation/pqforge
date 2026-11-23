@@ -35,46 +35,56 @@ typedef _EvpCipherCtxFreeNative = Void Function(Pointer<EVP_CIPHER_CTX>);
 typedef _EvpCipherCtxFreeDart = void Function(Pointer<EVP_CIPHER_CTX>);
 typedef _EvpCipherFnNative = Pointer<EVP_CIPHER> Function();
 typedef _EvpCipherFnDart = Pointer<EVP_CIPHER> Function();
-typedef _EvpInitNative =
-    Int32 Function(
-      Pointer<EVP_CIPHER_CTX>,
-      Pointer<EVP_CIPHER>,
-      Pointer<Void>,
-      Pointer<Uint8>,
-      Pointer<Uint8>,
-    );
-typedef _EvpInitDart =
-    int Function(
-      Pointer<EVP_CIPHER_CTX>,
-      Pointer<EVP_CIPHER>,
-      Pointer<Void>,
-      Pointer<Uint8>,
-      Pointer<Uint8>,
-    );
-typedef _EvpUpdateNative =
-    Int32 Function(
-      Pointer<EVP_CIPHER_CTX>,
-      Pointer<Uint8>,
-      Pointer<Int32>,
-      Pointer<Uint8>,
-      Int32,
-    );
-typedef _EvpUpdateDart =
-    int Function(
-      Pointer<EVP_CIPHER_CTX>,
-      Pointer<Uint8>,
-      Pointer<Int32>,
-      Pointer<Uint8>,
-      int,
-    );
-typedef _EvpFinalNative =
-    Int32 Function(Pointer<EVP_CIPHER_CTX>, Pointer<Uint8>, Pointer<Int32>);
-typedef _EvpFinalDart =
-    int Function(Pointer<EVP_CIPHER_CTX>, Pointer<Uint8>, Pointer<Int32>);
-typedef _EvpCtrlNative =
-    Int32 Function(Pointer<EVP_CIPHER_CTX>, Int32, Int32, Pointer<Void>);
-typedef _EvpCtrlDart =
-    int Function(Pointer<EVP_CIPHER_CTX>, int, int, Pointer<Void>);
+typedef _EvpInitNative = Int32 Function(
+  Pointer<EVP_CIPHER_CTX>,
+  Pointer<EVP_CIPHER>,
+  Pointer<Void>,
+  Pointer<Uint8>,
+  Pointer<Uint8>,
+);
+typedef _EvpInitDart = int Function(
+  Pointer<EVP_CIPHER_CTX>,
+  Pointer<EVP_CIPHER>,
+  Pointer<Void>,
+  Pointer<Uint8>,
+  Pointer<Uint8>,
+);
+typedef _EvpUpdateNative = Int32 Function(
+  Pointer<EVP_CIPHER_CTX>,
+  Pointer<Uint8>,
+  Pointer<Int32>,
+  Pointer<Uint8>,
+  Int32,
+);
+typedef _EvpUpdateDart = int Function(
+  Pointer<EVP_CIPHER_CTX>,
+  Pointer<Uint8>,
+  Pointer<Int32>,
+  Pointer<Uint8>,
+  int,
+);
+typedef _EvpFinalNative = Int32 Function(
+  Pointer<EVP_CIPHER_CTX>,
+  Pointer<Uint8>,
+  Pointer<Int32>,
+);
+typedef _EvpFinalDart = int Function(
+  Pointer<EVP_CIPHER_CTX>,
+  Pointer<Uint8>,
+  Pointer<Int32>,
+);
+typedef _EvpCtrlNative = Int32 Function(
+  Pointer<EVP_CIPHER_CTX>,
+  Int32,
+  Int32,
+  Pointer<Void>,
+);
+typedef _EvpCtrlDart = int Function(
+  Pointer<EVP_CIPHER_CTX>,
+  int,
+  int,
+  Pointer<Void>,
+);
 typedef _OpenSslVersionNative = Pointer<Utf8> Function(Int32);
 typedef _OpenSslVersionDart = Pointer<Utf8> Function(int);
 
@@ -328,9 +338,8 @@ final class OpenSslAead {
         var written = 0;
         if (ciphertextLength > 0) {
           final ctP = arena<Uint8>(ciphertextLength)
-            ..asTypedList(
-              ciphertextLength,
-            ).setAll(0, cipherTextWithTag.sublist(0, ciphertextLength));
+            ..asTypedList(ciphertextLength)
+                .setAll(0, cipherTextWithTag.sublist(0, ciphertextLength));
           _check(
             _decryptUpdate(ctx, outP, outl, ctP, ciphertextLength),
             'EVP_DecryptUpdate',
@@ -338,9 +347,8 @@ final class OpenSslAead {
           written = outl.value;
         }
         final tagP = arena<Uint8>(tagLength)
-          ..asTypedList(
-            tagLength,
-          ).setAll(0, cipherTextWithTag.sublist(ciphertextLength));
+          ..asTypedList(tagLength)
+              .setAll(0, cipherTextWithTag.sublist(ciphertextLength));
         _check(
           _ctxCtrl(ctx, _evpCtrlAeadSetTag, tagLength, tagP.cast()),
           'EVP_CIPHER_CTX_ctrl(SET_TAG)',
